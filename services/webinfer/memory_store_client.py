@@ -1,0 +1,281 @@
+"""memory-store v0.2 client.
+
+Thin async wrapper over the memory-store JSON API (port 8996 by default).
+All operations are fail-soft: if the upstream is unreachable, calls return
+empty results and log a single warning; the live adapter never raises to
+its caller.
+
+Protocol targets lock at the v0.1 skeleton spec — see
+``doc/specs/memory-store-skeleton-spec.md`` D-3 (data model) and D-2
+(endpoints). The endpoint URLs intentionally match that document.
+
+Endpoints used:
+
+- ``POST /v1/blocks/push`` — ingest a list of ``MemoryBlock``-shaped dicts
+- ``POST /v1/blocks/recall`` — retrieve by query or ``__warmup__`` keyword
+- ``GET  /health`` — connectivity / version probe
+- ``GET  /v1/backends`` — list active + available backends
+
+The client is stateless except for a single async ``httpx.AsyncClient`` that
+is shared across calls. It is safe to construct once per ``StreamingInferAdapter``
+instance; the adapter calls ``aclose()`` from ``stop_background_tasks``.
+
+Only standard-library + ``httpx`` (already declared as a transitive dep via
+``FastAPI`` in the memory-store pyproject) are used; nothing here is
+specific to the webinfer process model.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Any, Iterable
+
+import httpx
+
+
+LOGGER = logging.getLogger("streaming_infer_adapter.memory_client")
+
+DEFAULT_BASE_URL = "http://127.0.0.1:8996"
+DEFAULT_TIMEOUT_S = 5.0
+
+
+def _now_iso() -> str:
+    """ISO-8601 UTC, second precision. Match memory-store schema requirement."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _normalize_block(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """Trim/validate an upstream memory-store block to the keys live_adapter
+    actually consumes. Return ``None`` if the row is unusable so callers
+    can skip it without crashing."""
+    if not isinstance(raw, dict):
+        return None
+    content = raw.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return None
+    block_id = raw.get("block_id")
+    if not isinstance(block_id, str) or not block_id:
+        block_id = ""
+    return {
+        "block_id": block_id,
+        "content": content.strip(),
+        "session_id": raw.get("session_id") or "",
+        "score": float(raw.get("score") or 0.0),
+        "created_at": raw.get("created_at") or "",
+        "last_hit_at": raw.get("last_hit_at"),
+        "hit_count": int(raw.get("hit_count") or 0),
+    }
+
+
+class MemoryStoreClient:
+    """Async wrapper around the memory-store JSON API.
+
+    Construct one per adapter, then ``await warmup(...)``,
+    ``recall(...)`` and ``push(...)`` per session lifecycle.
+    """
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        timeout_s: float = DEFAULT_TIMEOUT_S,
+        enabled: bool = True,
+    ) -> None:
+        self.base_url = (
+            base_url
+            or os.environ.get("MEMORY_STORE_URL")
+            or DEFAULT_BASE_URL
+        ).rstrip("/")
+        self.timeout_s = float(timeout_s)
+        self.enabled = bool(enabled)
+        # We avoid eagerly opening the client so a misconfigured URL does not
+        # spam warnings during tests. Callers that want a connection still
+        # get one on the first request.
+        self._client: httpx.AsyncClient | None = None
+        self._lock = asyncio.Lock()
+        self._healthy: bool | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        async with self._lock:
+            if self._client is None or self._client.is_closed:
+                self._client = httpx.AsyncClient(
+                    base_url=self.base_url,
+                    timeout=self.timeout_s,
+                    headers={"Content-Type": "application/json"},
+                )
+            return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+
+    @property
+    def is_enabled(self) -> bool:
+        """True when the client should attempt upstream calls."""
+        return self.enabled
+
+    async def ping(self) -> bool:
+        """Probe /health. Caches the result once a success has been seen so
+        the live adapter does not log a warning every chunk."""
+        if not self.enabled:
+            return False
+        try:
+            client = await self._get_client()
+            resp = await client.get("/health")
+        except httpx.HTTPError as exc:
+            if self._healthy is not False:
+                LOGGER.warning("memory-store ping failed: %s", exc)
+            self._healthy = False
+            return False
+        if resp.status_code != 200:
+            self._healthy = False
+            return False
+        self._healthy = True
+        return True
+
+    async def warmup(
+        self,
+        session_id: str,
+        top_k: int = 16,
+        min_score: float = 0.0,
+    ) -> list[dict[str, Any]]:
+        """Pull blocks scoped to ``session_id``.
+
+        Uses the spec ``query="__warmup__"`` convention so the backend
+        skips BM25 reranking and returns the most recent ``top_k`` rows.
+        Safe to call before the first user message.
+        """
+        if not self.enabled or not session_id:
+            return []
+        payload = {
+            "query": "__warmup__",
+            "top_k": max(1, int(top_k)),
+            "min_score": float(min_score),
+            "filter": {"session_ids": [session_id]},
+        }
+        try:
+            client = await self._get_client()
+            resp = await client.post("/v1/blocks/recall", json=payload)
+        except httpx.HTTPError as exc:
+            LOGGER.warning("memory-store warmup failed for %s: %s", session_id, exc)
+            return []
+        if resp.status_code != 200:
+            LOGGER.warning(
+                "memory-store warmup %s returned %s: %s",
+                session_id,
+                resp.status_code,
+                resp.text[:200],
+            )
+            return []
+        try:
+            body = resp.json()
+        except ValueError:
+            return []
+        return [b for b in (_normalize_block(b) for b in body.get("blocks", [])) if b]
+
+    async def recall(
+        self,
+        query: str,
+        *,
+        session_id: str | None = None,
+        top_k: int = 6,
+        min_score: float = 0.0,
+    ) -> list[dict[str, Any]]:
+        """Pull blocks similar to ``query``. Optional ``session_id`` filter."""
+        if not self.enabled or not query:
+            return []
+        payload: dict[str, Any] = {
+            "query": query,
+            "top_k": max(1, int(top_k)),
+            "min_score": float(min_score),
+        }
+        if session_id:
+            payload["filter"] = {"session_ids": [session_id]}
+        try:
+            client = await self._get_client()
+            resp = await client.post("/v1/blocks/recall", json=payload)
+        except httpx.HTTPError as exc:
+            LOGGER.warning("memory-store recall failed: %s", exc)
+            return []
+        if resp.status_code != 200:
+            LOGGER.warning(
+                "memory-store recall returned %s: %s",
+                resp.status_code,
+                resp.text[:200],
+            )
+            return []
+        try:
+            body = resp.json()
+        except ValueError:
+            return []
+        return [b for b in (_normalize_block(b) for b in body.get("blocks", [])) if b]
+
+    async def push(
+        self,
+        session_id: str,
+        blocks: Iterable[dict[str, Any]],
+    ) -> int:
+        """Push a batch of blocks. Returns count actually accepted; 0 on
+        failure (never raises)."""
+        if not self.enabled or not session_id:
+            return 0
+        cleaned: list[dict[str, Any]] = []
+        for b in blocks:
+            if not isinstance(b, dict):
+                continue
+            content = b.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            cleaned.append(
+                {
+                    "content": content.strip(),
+                    "score": float(b.get("score") or 1.0),
+                    # ``created_at`` is generated server-side if absent; we
+                    # only forward what we explicitly know.
+                }
+            )
+        if not cleaned:
+            return 0
+        payload = {"session_id": session_id, "blocks": cleaned}
+        try:
+            client = await self._get_client()
+            resp = await client.post("/v1/blocks/push", json=payload)
+        except httpx.HTTPError as exc:
+            LOGGER.warning("memory-store push failed for %s: %s", session_id, exc)
+            return 0
+        if resp.status_code != 200:
+            LOGGER.warning(
+                "memory-store push %s returned %s: %s",
+                session_id,
+                resp.status_code,
+                resp.text[:200],
+            )
+            return 0
+        try:
+            return int(resp.json().get("pushed", 0))
+        except ValueError:
+            return 0
+
+    async def push_block(
+        self,
+        session_id: str,
+        content: str,
+        score: float = 1.0,
+    ) -> int:
+        """Convenience helper for the ``_memory_push`` flush path."""
+        return await self.push(
+            session_id,
+            [{"content": content, "score": score}],
+        )
+
+    def health_snapshot(self) -> dict[str, Any]:
+        """Return a cached health view (no IO). Useful in sync handler paths.
+
+        Reads the last cached ``_healthy`` value set by :meth:`ping`. Returns
+        ``healthy=None`` when ping has never been called yet.
+        """
+        if not self.enabled:
+            return {"enabled": False, "healthy": False, "url": self.base_url}
+        return {"enabled": True, "healthy": self._healthy, "url": self.base_url}
