@@ -37,8 +37,10 @@ from openai import AsyncOpenAI
 from PIL import Image
 
 from memory_summarizer import SummarizerModel
+from memory_store_client import MemoryStoreClient
 from system_prompts import (
     compose_system_prompt,
+    compose_system_prompt_with_memory,
     load_character_prompts,
     resolve_prompt_paths,
 )
@@ -580,6 +582,8 @@ class AdapterConfig:
     system_prompt: str = DEFAULT_SYSTEM_PROMPT_EN
     character_prompts_enabled: bool = True
     character_prompt_paths: tuple[str, ...] = ()
+    memory_store_url: str = "http://127.0.0.1:8996"
+    memory_store_enabled: bool = True
 
 
 @dataclass
@@ -617,6 +621,11 @@ class SessionState:
     last_access: float = field(default_factory=time.time)
     _pending_qa_archive: Optional[tuple[str, Optional[str]]] = field(default=None, repr=False)
     _pending_write_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    # Memory-store v0.2 fields (live adapter spec D-9):
+    _memory_block_cache: list = field(default_factory=list)
+    _memory_warmed: bool = False
+    _memory_pushed: bool = False
+    _memory_warmup_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
 
 class StreamingInferAdapter:
@@ -624,6 +633,11 @@ class StreamingInferAdapter:
         self.config = config
         self.sessions: dict[str, SessionState] = {}
         self._cleanup_task: Optional[asyncio.Task] = None
+        # memory-store v0.2: client is fail-soft; no raise on connect fail
+        self.memory_store = MemoryStoreClient(
+            base_url=config.memory_store_url,
+            enabled=config.memory_store_enabled,
+        )
         Path(config.frame_save_dir).mkdir(parents=True, exist_ok=True)
         self.main_client = AsyncOpenAI(
             base_url=config.main_api_base,
@@ -771,6 +785,29 @@ class StreamingInferAdapter:
         self._system_prompt_cache[key] = composed
         return composed
 
+    def _build_memory_prompt(self, session_state: Optional["SessionState"]) -> str:
+        """Return system prompt with optional memory blocks appended.
+
+        Fast path: when the session has no memory blocks cached, this
+        just re-uses the regular cached system prompt (no extra IO).
+
+        Slow path: when memory blocks are present, we re-compose the
+        base+character+language prompt and append the [Local Wiki]
+        block list. We do NOT poison the no-memory cache because the
+        block content varies per session.
+        """
+        blocks = list(getattr(session_state, "_memory_block_cache", None) or [])
+        if not blocks:
+            return self._build_system_prompt(self.config.language)
+        base = self.config.system_prompt or ""
+        profiles = self._load_character_profiles()
+        return compose_system_prompt_with_memory(
+            base,
+            character_prompts=profiles,
+            language=self.config.language,
+            memory_blocks=blocks,
+        )
+
     def _resolve_backend(self, model_name: Optional[str] = None) -> tuple[AsyncOpenAI, str]:
         if model_name and model_name in self.main_clients:
             return self.main_clients[model_name]
@@ -792,6 +829,17 @@ class StreamingInferAdapter:
             frame_dir.mkdir(parents=True, exist_ok=True)
             state.session_frame_dir = frame_dir
             self.sessions[session_id] = state
+            # Memory-store v0.2: fire-and-forget warmup so the first
+            # /v1/chat request may already see a populated cache.
+            if self.memory_store.is_enabled and state._memory_warmup_task is None:
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    pass  # not in async context; warmup is lazy on first recall
+                else:
+                    state._memory_warmup_task = asyncio.ensure_future(
+                        self._memory_warmup(state)
+                    )
             LOGGER.info(
                 "Created session %s (output=%s light=%s debug_input=%s frames=%s)",
                 session_id,
@@ -827,12 +875,116 @@ class StreamingInferAdapter:
                 expired_states = self._cleanup_expired_sessions()
                 for state in expired_states:
                     await self._flush_session_outputs(state)
+                    await self._memory_push(state)
             except Exception:
                 LOGGER.exception("session cleanup error")
 
+
+
+    # -------------------------------------------------------------------
+    # Memory-store v0.2 hooks (live adapter spec D-9).
+    # All hooks are no-ops if the memory_store client is disabled or
+    # unreachable; the adapter never blocks the main request path on them.
+    # -------------------------------------------------------------------
+    async def _memory_warmup(self, state):
+        """Pull blocks for this session from memory-store and cache.
+
+        Safe to call concurrently for the same session -- only the first
+        result is kept. Failures are logged at WARNING and otherwise
+        degrade to an empty cache (no exception bubbles up).
+        """
+        if state._memory_warmed:
+            return
+        state._memory_warmed = True
+        try:
+            blocks = await self.memory_store.warmup(state.session_id)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("memory warmup failed for %s: %s", state.session_id, exc)
+            return
+        if blocks:
+            state._memory_block_cache = blocks
+            LOGGER.info("memory warmup %s: pulled %d block(s)", state.session_id, len(blocks))
+
+    async def _memory_recall(self, state, question):
+        """Per-question recall. Uses warmup cache; warms up if needed.
+
+        The first question a Pilot asks may arrive before the warmup task
+        finished (fire-and-forget on session create). In that case we wait
+        briefly for the warmup so the first answer benefits from previous
+        session memory without a separate round-trip.
+        """
+        if not question:
+            return list(state._memory_block_cache)
+        if not state._memory_warmed:
+            await self._memory_warmup(state)
+        # v0.1 spec skips per-question rerank -- the cache is the answer.
+        # v0.3+ may add per-question hot-fetch against the live query.
+        return list(state._memory_block_cache)
+
+    async def _memory_push(self, state):
+        """Push session memory blocks to memory-store at session end.
+
+        Concatenates ``mid_term_summaries`` (skeleton entries) and
+        ``long_term_history`` (compressed batch texts) into a single push.
+        Idempotent: repeated calls return 0 the second time.
+        """
+        if state._memory_pushed or not self.memory_store.is_enabled:
+            return 0
+        state._memory_pushed = True
+        blocks = []
+        for entry in (state.mid_term_summaries or []):
+            if not isinstance(entry, dict):
+                continue
+            text = entry.get("summary_text") or entry.get("text") or ""
+            if not text:
+                continue
+            blocks.append({"content": text, "score": 1.0})
+        for entry in (state.long_term_history or []):
+            if not isinstance(entry, dict):
+                continue
+            text = entry.get("compressed_text") or ""
+            if not text:
+                continue
+            blocks.append({"content": text, "score": 1.0})
+        if not blocks:
+            return 0
+        try:
+            pushed = await self.memory_store.push(state.session_id, blocks)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("memory push failed for %s: %s", state.session_id, exc)
+            return 0
+        if pushed:
+            LOGGER.info("memory push %s: persisted %d block(s)", state.session_id, pushed)
+        return pushed
+
     def start_background_tasks(self) -> None:
+
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.ensure_future(self._session_cleanup_loop())
+
+    async def stop_background_tasks(self) -> None:
+        """Cancel the cleanup loop and close the memory-store client.
+
+        Wired to aiohttp ``on_cleanup`` so the process can exit cleanly
+        without leaking the httpx connection pool.
+        """
+        if self._cleanup_task is not None:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+            self._cleanup_task = None
+        # Cancel any in-flight per-session warmup tasks.
+        for state in list(self.sessions.values()):
+            task = getattr(state, "_memory_warmup_task", None)
+            if task is not None and not task.done():
+                task.cancel()
+        # Best-effort close of the memory-store httpx pool.
+        try:
+            await self.memory_store.aclose()
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("memory_store aclose raised: %s", exc)
 
     def _init_session_dirs(self, state: SessionState) -> None:
         """Create per-session timestamped output/input directories."""
@@ -873,6 +1025,7 @@ class StreamingInferAdapter:
                 "backends": list(self.main_clients.keys()),
                 "summarizer_enabled": self.summarizer is not None,
                 "sessions": len(self.sessions),
+                "memory_store": self.memory_store.health_snapshot(),
             }
         )
 
@@ -885,8 +1038,18 @@ class StreamingInferAdapter:
             for job in removed_state.async_pending_summary_jobs:
                 job["task"].cancel()
             await self._flush_session_outputs(removed_state)
+            pushed = await self._memory_push(removed_state)
+        else:
+            pushed = 0
         removed = removed_state is not None
-        return web.json_response({"ok": True, "session_id": session_id, "removed": removed})
+        return web.json_response(
+            {
+                "ok": True,
+                "session_id": session_id,
+                "removed": removed,
+                "pushed": pushed,
+            }
+        )
 
     async def handle_prompts_active(self, request: web.Request) -> web.Response:
         del request
@@ -1377,7 +1540,20 @@ class StreamingInferAdapter:
             internal_messages, prefix_content = self._build_main_internal_messages(state)
             api_messages = self._build_cached_api_messages(state, internal_messages)
             generation_kwargs = self._main_generation_kwargs(payload)
-            http_messages = self._build_main_http_messages(api_messages)
+            http_messages = self._build_main_http_messages(
+                api_messages, session_state=state
+            )
+            # DEBUG v0.2: print first message roles + system content length
+            try:
+                roles = [m.get('role') for m in http_messages]
+                sys_lens = [len(m.get('content') or '') for m in http_messages if m.get('role') == 'system']
+                LOGGER.info('DEBUG v0.2 http_messages roles=%s sys_content_lengths=%s', roles, sys_lens)
+                if state._memory_block_cache:
+                    LOGGER.info('DEBUG v0.2 cache blocks=%d first_id=%s', len(state._memory_block_cache), state._memory_block_cache[0].get('block_id'))
+                else:
+                    LOGGER.info('DEBUG v0.2 cache empty (warmed=%s)', state._memory_warmed)
+            except Exception as e:
+                LOGGER.warning('DEBUG v0.2 failed: %s', e)
             turn_model_input_record = build_model_input_record(
                 chunk_index=state.chunk_index,
                 messages=http_messages,
@@ -1719,15 +1895,21 @@ class StreamingInferAdapter:
     def _build_main_http_messages(
         self,
         api_messages: list[dict[str, Any]],
+        *,
+        session_state: Optional["SessionState"] = None,
     ) -> list[dict[str, Any]]:
         """Build the OpenAI chat-completions payload for the main model.
 
         The system prompt is composed via :meth:`_build_system_prompt`
         so that the character profile (when enabled) is injected ahead
         of the base decision-token prompt and re-reads are cached.
+
+        When ``session_state`` carries a populated memory-block cache
+        (memory-store v0.2) the cached blocks are appended as a
+        [Local Wiki] section via :func:`compose_system_prompt_with_memory`.
         """
         messages = list(api_messages)
-        system_prompt = self._build_system_prompt(self.config.language)
+        system_prompt = self._build_memory_prompt(session_state)
         if system_prompt:
             messages = [{"role": "system", "content": system_prompt}] + messages
         return messages
@@ -1746,7 +1928,9 @@ class StreamingInferAdapter:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
         generation_kwargs = generation_kwargs or self._main_generation_kwargs(inbound_payload)
-        api_messages = http_messages or self._build_main_http_messages(api_messages)
+        api_messages = http_messages or self._build_main_http_messages(
+            api_messages, session_state=session_state
+        )
         response = await client.chat.completions.create(
             model=model_name,
             messages=api_messages,
@@ -2750,6 +2934,16 @@ def parse_args() -> AdapterConfig:
         help="Disable character-prompt injection. Same as ENABLE_CHARACTER_PROMPT=0 in the env.",
     )
     parser.add_argument(
+        "--memory-store-url",
+        default=os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8996"),
+        help="memory-store JSON API base URL (env MEMORY_STORE_URL).",
+    )
+    parser.add_argument(
+        "--no-memory-store",
+        action="store_true",
+        help="Disable memory-store integration (default: enabled).",
+    )
+    parser.add_argument(
         "--language",
         default=os.environ.get("ADAPTER_LANGUAGE", "en"),
         choices=["zh", "en"],
@@ -2866,6 +3060,8 @@ def parse_args() -> AdapterConfig:
         system_prompt=args.system_prompt,
         character_prompts_enabled=not args.no_character_prompt,
         character_prompt_paths=tuple(args.character_prompt or ()),
+        memory_store_url=args.memory_store_url,
+        memory_store_enabled=not args.no_memory_store,
     )
 
 
@@ -2875,7 +3071,24 @@ def create_app(config: AdapterConfig) -> web.Application:
     app["adapter"] = adapter
     async def _on_startup(_app: web.Application) -> None:
         adapter.start_background_tasks()
+        # Memory-store v0.2: one-shot health probe so the adapter logs
+        # a clear WARNING at boot instead of failing silently later.
+        try:
+            ok = await adapter.memory_store.ping()
+            if ok:
+                LOGGER.info("memory-store reachable at %s", adapter.memory_store.base_url)
+            else:
+                LOGGER.warning(
+                    "memory-store not reachable at %s; warmup/push will degrade to no-op",
+                    adapter.memory_store.base_url,
+                )
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("memory-store startup ping raised: %s", exc)
     app.on_startup.append(_on_startup)
+
+    async def _on_cleanup(_app: web.Application) -> None:
+        await adapter.stop_background_tasks()
+    app.on_cleanup.append(_on_cleanup)
     app.router.add_get("/health", adapter.handle_health)
     app.router.add_get("/v1/models", adapter.handle_models)
     app.router.add_post("/v1/chat/completions", adapter.handle_chat_completions)
