@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "joyvl-webinfer-adapter"
+version = "0.1.0"
+description = "StreamingHarness live OpenAI-compatible adapter (webinfer service)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Joy Future Academy"},
+]
+keywords = [
+    "vlm",
+    "vision-language-model",
+    "openai-compatible",
+    "streaming",
+    "llama-server",
+    "vllm",
+    "character-prompt",
+    "persona",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+
+# No new dependencies are required for the character-prompt work;
+# everything in `system_prompts.py` uses the Python stdlib.  The
+# runtime dependencies below mirror `install/pyproject.toml` so the
+# service can be installed standalone in a fresh venv.
+dependencies = [
+    "aiohttp>=3.9.5",
+    "aiohttp-cors>=0.7.0",
+    "Pillow>=10.4.0",
+    "openai>=1.54.3",
+    "httpx>=0.27.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+joyvl-webinfer-adapter = "live_adapter:main"
+
+[tool.setuptools]
+py-modules = ["live_adapter", "memory_summarizer", "system_prompts"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
