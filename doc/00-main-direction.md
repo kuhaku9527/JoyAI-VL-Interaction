@@ -78,6 +78,7 @@
 - **v3.24**（2026-07-13）：Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路（详见 DELIVERY.md §7 v3.24）。
 - **#3 memory-store v0.1 skeleton（2026-07-13 v3.25）**：`services/memory-store/` 落地 SqliteBackend + FTS5 BM25（Psql/Obsidian `NotImplementedError` 占位），端口 8996，端点 `/v1/blocks/push|recall` + `/health` + `/v1/backends`；16/16 测试通过；不影响 `live_adapter.py`。详见 `doc/specs/memory-store-skeleton-spec.md` + `doc/adr/0005-memory-store-start.md`。后续 v0.2 才把钩子接到 webinfer `live_adapter.py`。
 - **#3 memory-store v0.2 hooks（2026-07-13 v3.26）**：services/webinfer/live_adapter.py 落地 5 处钩子——get_session fire-and-forget warmup、_session_cleanup_loop 与 handle_reset end-of-session push（pushed 字段回执）、_build_main_http_messages 经 _build_memory_prompt 注入 [Local Wiki] / [本地知识库] 上下文、handle_health 暴露 memory_store 健康字段、on_cleanup 调用 stop_background_tasks 关闭 httpx pool；新增 memory_store_client.py + system_prompts.compose_system_prompt_with_memory；27/27 webinfer 测试通过（含 _memory_warmup / _memory_recall / _memory_push / _build_memory_prompt）。--no-memory-store 可关闭，fail-soft 永不阻塞主请求路径。详见 memory-architecture.md §6 + specs/memory-store-skeleton-spec.md D-9。
+- **#1 Screen Capture + #6 hermes-agent 接入（2026-07-13 v3.27）**：(a) `static/screen_capture.js` 去 ES module 改全局 (`window.startScreenCapture / stopScreenCapture / isScreenCapturing`)，新增 fallback 走 `<video>` + drawImage 应对 ImageCapture 不可用；`static/index.html` Video Source 加 Screen Capture tab + `screenControls` div，start()/stop() 加 `inputSource === 'screen'` 分支；`server.py` `websocket_handler` 加 `elif t == "frame"`（base64 → PIL → `vlm_service.process_frame` → `get_session_callback` 广播 vlm_response）；79/79 webui 测试通过，模拟帧端到端 5.5s 拿到 llama-server 回复。(b) hermes-gateway(8642) + background-agent shim(8079) 接入链路打通：补 `$env:LOCALAPPDATA\hermes\bin\hermes.cmd` wrapper（venv python → `python -m hermes_cli.main`），`Start-Hermes` 用 `API_SERVER_HOST/PORT/KEY` env，`background-agent.env` + `scripts/run-windows.env` 同步 `HERMES_API_KEY`；/health（gateway 200/shim 200） + /v1/solve smoke test 返回中文"烟测通过。"(prompt_tokens=24157/5.9s)；详见 `screen-capture.md` §11 + `hermes-integration.md` §11。
 ### §4.1 优先级说明
 
 - **P0（必须）**：v3.2 的核心交付物，决定项目是否进入"产品形态"
@@ -100,4 +101,4 @@
 
 ---
 
-> 文档版本：v3.26 配套  |  最近更新：2026-07-13（memory-store v0.2 hooks 落地 + webinfer end-to-end 钩子）  |  作者：Codex
+> 文档版本：v3.27 配套  |  最近更新：2026-07-13（Screen Capture 接入 + hermes-agent gateway/shim 端到端跑通）  |  作者：Codex

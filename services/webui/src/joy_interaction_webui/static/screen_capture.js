@@ -1,98 +1,154 @@
-/**
- * Screen Capture via getDisplayMedia.
- * 
- * Captures a game window at 1fps, encodes to JPEG, and sends as base64
- * over the existing WebSocket connection (replaces RTSP).
- * 
- * Usage: call `startScreenCapture(ws)` from the UI.
- * To stop: call `stopScreenCapture()`.
- */
+// Screen Capture via getDisplayMedia.
+// Captures a user-selected window/tab at 1 fps and ships JPEG frames to the
+// server over the existing WebSocket (type: frame). Runs alongside the
+// WebRTC webcam / RTSP pipeline -- does not touch VideoProcessorTrack.
+//
+// Public API (attached to window for non-module usage):
+//   startScreenCapture(ws?, options?)  -> Promise<void>
+//   stopScreenCapture()                -> void
+//   isScreenCapturing()                -> boolean
 
-let screenCaptureStream = null;
-let screenCaptureInterval = null;
+(function () {
+  let screenCaptureStream = null;
+  let screenCaptureInterval = null;
+  let screenCaptureVideo = null;
 
-/**
- * Start capturing a display surface (game window).
- * @param {WebSocket} ws - already-established WebSocket connection
- * @param {Object} options
- * @param {number} [options.fps=1] - capture frame rate
- * @param {string} [options.preferredWindow] - window name hint (ignored, browser picks)
- */
-export async function startScreenCapture(ws, options = {}) {
-  if (screenCaptureStream) {
-    console.warn("Screen capture already active");
-    return;
+  function resolveWebSocket(ws) {
+    if (ws && ws.readyState !== undefined) return ws;
+    if (typeof window !== 'undefined' && window.websocket) return window.websocket;
+    return null;
   }
 
-  const fps = options.fps || 1;
-  const intervalMs = Math.floor(1000 / fps);
+  async function startScreenCapture(ws, options) {
+    if (options === undefined) options = {};
+    if (screenCaptureStream) {
+      console.warn('Screen capture already active');
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      console.error('getDisplayMedia not supported in this browser');
+      return;
+    }
 
-  try {
-    // Prompt user to select a window/tab/screen
-    screenCaptureStream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        displaySurface: "window",   // prefer application window
-        frameRate: { ideal: fps },
-        width: { ideal: 960 },      // low-res capture (game runs in window)
-        height: { ideal: 540 },
-      },
-      audio: false,                  // no audio from video capture
-    });
+    const fps = options.fps || 1;
+    const intervalMs = Math.floor(1000 / fps);
 
-    console.log("Screen capture started:", screenCaptureStream);
+    try {
+      screenCaptureStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: 'window',
+          frameRate: { ideal: fps },
+          width: { ideal: 960 },
+          height: { ideal: 540 },
+        },
+        audio: false,
+      });
 
-    const track = screenCaptureStream.getVideoTracks()[0];
-    const imageCapture = new ImageCapture(track);
+      console.log('Screen capture started:', screenCaptureStream);
 
-    // Listen for user clicking "Stop Sharing" in browser UI
-    track.addEventListener("ended", () => stopScreenCapture());
+      const track = screenCaptureStream.getVideoTracks()[0];
+      let imageCapture = null;
+      if (typeof ImageCapture === 'function') {
+        try {
+          imageCapture = new ImageCapture(track);
+        } catch (err) {
+          console.warn('ImageCapture unavailable, falling back to video + drawImage:', err);
+        }
+      }
 
-    screenCaptureInterval = setInterval(async () => {
+      screenCaptureVideo = document.createElement('video');
+      screenCaptureVideo.srcObject = screenCaptureStream;
+      screenCaptureVideo.muted = true;
+      screenCaptureVideo.playsInline = true;
       try {
-        const bitmap = await imageCapture.grabFrame();
-        const canvas = document.createElement("canvas");
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(bitmap, 0, 0);
+        await screenCaptureVideo.play();
+      } catch (err) {
+        console.warn('screen capture video play() rejected:', err);
+      }
 
-        // To JPEG base64 (smaller than PNG)
-        const jpegDataUrl = canvas.toDataURL("image/jpeg", 0.75);
-        const base64 = jpegDataUrl.split(",")[1];
+      track.addEventListener('ended', () => stopScreenCapture());
 
-        // Send over WS (same protocol as old RTSP frames)
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: "frame",
-            format: "jpeg",
-            width: canvas.width,
-            height: canvas.height,
+      screenCaptureInterval = setInterval(async () => {
+        try {
+          const liveWs = resolveWebSocket(ws);
+          if (!liveWs || liveWs.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          let width = 0;
+          let height = 0;
+          let bitmap = null;
+          if (imageCapture) {
+            bitmap = await imageCapture.grabFrame();
+            width = bitmap.width;
+            height = bitmap.height;
+          } else if (screenCaptureVideo && screenCaptureVideo.readyState >= 2 && screenCaptureVideo.videoWidth > 0) {
+            width = screenCaptureVideo.videoWidth;
+            height = screenCaptureVideo.videoHeight;
+          } else {
+            return;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (bitmap) {
+            ctx.drawImage(bitmap, 0, 0, width, height);
+          } else if (screenCaptureVideo) {
+            ctx.drawImage(screenCaptureVideo, 0, 0, width, height);
+          }
+          const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          const base64 = jpegDataUrl.split(',')[1];
+          liveWs.send(JSON.stringify({
+            type: 'frame',
+            format: 'jpeg',
+            width: width,
+            height: height,
             data: base64,
             timestamp: Date.now(),
+            source: 'screen',
           }));
+        } catch (err) {
+          console.error('Screen capture frame error:', err);
         }
+      }, intervalMs);
+    } catch (err) {
+      console.error('Failed to start screen capture:', err);
+      stopScreenCapture();
+    }
+  }
+
+  function stopScreenCapture() {
+    if (screenCaptureInterval) {
+      clearInterval(screenCaptureInterval);
+      screenCaptureInterval = null;
+    }
+    if (screenCaptureStream) {
+      try {
+        screenCaptureStream.getTracks().forEach(function (t) { t.stop(); });
       } catch (err) {
-        console.error("Screen capture frame error:", err);
+        console.warn('stopScreenCapture track.stop failed:', err);
       }
-    }, intervalMs);
+      screenCaptureStream = null;
+    }
+    if (screenCaptureVideo) {
+      try {
+        screenCaptureVideo.pause();
+      } catch (err) {
+        // ignore
+      }
+      screenCaptureVideo.srcObject = null;
+      screenCaptureVideo = null;
+    }
+    console.log('Screen capture stopped');
+  }
 
-  } catch (err) {
-    console.error("Failed to start screen capture:", err);
-    stopScreenCapture();
+  function isScreenCapturing() {
+    return screenCaptureStream !== null;
   }
-}
 
-/**
- * Stop screen capture and clean up.
- */
-export function stopScreenCapture() {
-  if (screenCaptureStream) {
-    screenCaptureStream.getTracks().forEach(t => t.stop());
-    screenCaptureStream = null;
+  if (typeof window !== 'undefined') {
+    window.startScreenCapture = startScreenCapture;
+    window.stopScreenCapture = stopScreenCapture;
+    window.isScreenCapturing = isScreenCapturing;
   }
-  if (screenCaptureInterval) {
-    clearInterval(screenCaptureInterval);
-    screenCaptureInterval = null;
-  }
-  console.log("Screen capture stopped");
-}
+})();
