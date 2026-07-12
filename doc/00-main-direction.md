@@ -63,7 +63,7 @@
 |---|---|---|---|---|---|
 | 1 | **API 化**（TTS / 声音克隆 / LLM 云端化；ASR 已固定本地） | **P0** | 设计完整 | 大 | `api-optimization.md` |
 | 2 | **MiniMax Token Plan 接入** | **P0** | 半落地（凭证 + 模型就绪） | 中 | `token-plan-comparison.md` + `voice-clone.md` §13 |
-| 3 | **P2 记忆持久化** | P1 | 设计完整 | 中 | `memory-architecture.md` |
+| 3 | **P2 记忆持久化** | P1 | **落地（v0.1 skeleton，2026-07-13）** → 见 §4.0 | 中 | `memory-architecture.md` + `specs/memory-store-skeleton-spec.md` |
 | 4 | **Jarvis 状态机主循环** | P1 | 设计完整 | 大 | `jarvis-mode.md` |
 | ~~5~~ | ~~**KWS 训练**（`"bt 在吗"`）~~ | ~~P2~~ | ~~预训练实测 0/7 命中，待自训~~ → **v4 已落地 2026-07-10** | ~~中~~ | `jarvis-mode.md §2.4`（自训 FAR 2% / recall 49%）|
 | 6 | **Codex fallback**（hermes 不可用时） | P2 | 文档完整 | 小 | `hermes-integration.md` |
@@ -76,6 +76,7 @@
 - #1 API 化（主路径云端化）/ #3 记忆持久化 / #4 jarvis 全链路 e2e 仍待落地。
 
 - **v3.24**（2026-07-13）：Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路（详见 DELIVERY.md §7 v3.24）。
+- **#3 memory-store v0.1 skeleton（2026-07-13 v3.25）**：`services/memory-store/` 落地 SqliteBackend + FTS5 BM25（Psql/Obsidian `NotImplementedError` 占位），端口 8996，端点 `/v1/blocks/push|recall` + `/health` + `/v1/backends`；16/16 测试通过；不影响 `live_adapter.py`。详见 `doc/specs/memory-store-skeleton-spec.md` + `doc/adr/0005-memory-store-start.md`。后续 v0.2 才把钩子接到 webinfer `live_adapter.py`。
 ### §4.1 优先级说明
 
 - **P0（必须）**：v3.2 的核心交付物，决定项目是否进入"产品形态"

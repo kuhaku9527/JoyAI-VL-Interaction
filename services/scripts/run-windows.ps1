@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   One-shot orchestrator for the native Windows + RTX 5060 Ti JoyAI-VL-Interaction
@@ -111,6 +111,7 @@ $P = @{
     VoiceClone  = if ($env:VOICE_CLONE_PORT)      { [int]$env:VOICE_CLONE_PORT }      else { 8985 }
     AsrModel    = if ($env:ASR_MODEL_PORT)        { [int]$env:ASR_MODEL_PORT }        else { 8993 }
     AsrAdapter  = if ($env:ASR_ADAPTER_PORT)      { [int]$env:ASR_ADAPTER_PORT }      else { 8994 }
+    MemoryStore = if ($env:MEMORY_PORT) { [int]$env:MEMORY_PORT } else { 8996 }
 }
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -139,6 +140,7 @@ $PortMap = @{
     "webinfer"          = $P.Webinfer
     "asr-adapter"       = $P.AsrAdapter
     "webui"             = $P.Webui
+    "memory-store"      = $P.MemoryStore
 }
 
 function Save-Pid {
@@ -485,6 +487,23 @@ function Start-Webui {
         -ExtraEnv $envs)
 }
 
+function Start-MemoryStore {
+    Write-Sec "memory-store (port $($P.MemoryStore))"
+    Stop-ByName "memory-store"
+    $workdir = Join-Path $ServicesDir "memory-store"
+    $args = @("-m", "memory_store.app")
+    if ($env:MEMORY_EXTRA_ARGS) { $args += @($env:MEMORY_EXTRA_ARGS -split " ") }
+    $envs = @{
+        "MEMORY_PORT"        = "$($P.MemoryStore)"
+        "MEMORY_BACKEND"     = if ($env:MEMORY_BACKEND)     { $env:MEMORY_BACKEND }     else { "sqlite" }
+        "MEMORY_SQLITE_PATH" = if ($env:MEMORY_SQLITE_PATH) { $env:MEMORY_SQLITE_PATH } else { (Join-Path $workdir "data\memory.sqlite") }
+    }
+    return (Start-Background "memory-store" $VenvPy $args `
+        -Workdir $workdir `
+        -LogBase (Join-Path $LogDir "memory-store") `
+        -ExtraEnv $envs)
+}
+
 # ---------------------------------------------------------------------------
 # Mode planner
 # ---------------------------------------------------------------------------
@@ -526,6 +545,11 @@ Write-Host "================================================================" -F
 Write-Host " run-windows.ps1 :: $Mode mode" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 $plan = Plan-For $Mode
+# memory-store opt-in (off by default in v3.25, see services/memory-store/README.md)
+if ($env:JOYAI_ENABLE_MEMORY_STORE -eq "1") {
+    $plan["memory-store"] = $true
+}
+
 Write-Host (" {0,-22} {1,-7} {2,-7} {3}" -f "Service", "Enabled", "Port", "Source") -ForegroundColor Yellow
 foreach ($k in $plan.Keys) {
     $on = if ($plan[$k]) { "Y" } else { "-" }
@@ -541,6 +565,7 @@ foreach ($k in $plan.Keys) {
         "asr-adapter"      { "joyvl_asr_adapter serve" }
         "webui"            { "joy_interaction_webui.server" }
         default            { "-" }
+        "memory-store"    { "memory_store.app" }
     }
     Write-Host (" {0,-22} {1,-7} {2,-7} {3}" -f $k, $on, $port, $src)
 }
@@ -576,6 +601,7 @@ if ($Restart) {
         "webinfer"         = "Start-Webinfer"
         "asr-adapter"      = "Start-AsrAdapter"
         "webui"            = "Start-Webui"
+    "memory-store"         = "Start-MemoryStore"
     }
     $targets = if ($Restart -eq "all") { @($plan.Keys | Where-Object { $plan[$_] }) } else { @($Restart) }
     foreach ($t in $targets) {
@@ -596,6 +622,7 @@ if ($Restart) {
         "webinfer"         = "http://127.0.0.1:$($P.Webinfer)/health"
         "asr-adapter"      = "http://127.0.0.1:$($P.AsrAdapter)/health"
         "webui"            = "http://127.0.0.1:$($P.Webui)/"
+        "memory-store"     = "http://127.0.0.1:$($P.MemoryStore)/health"
     }
     foreach ($t in $targets) {
         $u = $readyMap[$t]
@@ -630,7 +657,9 @@ $consoleCancel = [System.ConsoleCancelEventHandler]{
 
 try {
     $ordered = @("llama-main", "llama-summary", "whisper", "voice-clone",
-                 "hermes-gateway", "background-agent", "webinfer", "asr-adapter", "webui")
+                 "hermes-gateway", "background-agent", "webinfer", "asr-adapter", "webui",
+                 "memory-store"
+    )
     $orderMap = @{
         "llama-main"       = "Start-LlamaMain"
         "llama-summary"    = "Start-Llama-Summary"
@@ -641,6 +670,7 @@ try {
         "webinfer"         = "Start-Webinfer"
         "asr-adapter"      = "Start-AsrAdapter"
         "webui"            = "Start-Webui"
+        "memory-store"     = "Start-MemoryStore"
     }
     $readyMap = @{
         "llama-main"       = "http://127.0.0.1:$($P.Main)/v1/models"
@@ -652,6 +682,7 @@ try {
         "webinfer"         = "http://127.0.0.1:$($P.Webinfer)/health"
         "asr-adapter"      = "http://127.0.0.1:$($P.AsrAdapter)/health"
         "webui"            = "http://127.0.0.1:$($P.Webui)/"
+        "memory-store"     = "http://127.0.0.1:$($P.MemoryStore)/health"
     }
 
     foreach ($name in $ordered) {

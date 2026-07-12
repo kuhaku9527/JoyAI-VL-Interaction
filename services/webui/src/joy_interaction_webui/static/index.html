@@ -1563,6 +1563,39 @@ limitations under the License.
             display: flex;
             flex-direction: column;
         }
+        /* Higher-specificity override: outer wrapper carries BOTH
+           .result-text (which sets min-height:120px for empty-state fallback)
+           and .vlm-history-shell. Without this rule the .result-text
+           min-height wins and the panel stays 120px tall even when the
+           conversation grows past it, leaving a visible empty strip below
+           the dialog entries. v3.25 fix. */
+        .result-text.vlm-history-shell {
+            min-height: 0;
+            background: transparent;
+            border: none;
+        }
+        /* Reserve a sensible empty-state floor (240px) so the panel reads as
+           'VLM Output Info' even before the first pilot utterance arrives.
+           Once entries populate, the shell grows naturally inside its flex
+           container. v3.25 fix. */
+        #resultText:has(#vlmHistoryEmpty:not([style*="display: none"])) {
+            min-height: 240px;
+        }
+        #vlmOutputCard .vlm-history {
+            min-height: 200px;
+            max-height: min(60dvh, 560px);
+        }
+
+            max-width: 100%;
+            flex: 1 1 auto;
+            min-height: 0;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            display: flex;
+            flex-direction: column;
+        }
 
         .vlm-history .result-text {
             display: block;

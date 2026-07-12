@@ -197,6 +197,7 @@ un-windows.env 凭证配置未沉淀 / v3.2 #2 收尾未做 / v3.2 #4 全链路 
 ---
 
 | 2026-07-13 | v3.24 | Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路 （受影响：`doc\jarvis-mode.md`; `doc\architecture-local.md`; `doc\adr\0004-service-lifecycle.md`；改动文件：-） | Codex |
+| 2026-07-13 | v3.25 | **memory-store v0.1 skeleton（落地 v3.2 #3 P2 记忆持久化骨架）**：新增 `services/memory-store/`（SqliteBackend + FTS5 BM25、Psql/Obsidian 占位 `NotImplementedError`），端口 8996，端点 `/v1/blocks/push` `POST`、`/v1/blocks/recall` `POST`、`/health` `GET`、`/v1/backends` `GET`；schema 留 score / last_hit_at / hit_count 字段（runtime 默认，recency decay 不在 v0.1）；16/16 测试通过；不影响 `live_adapter.py`（ADR 0005 D 锁定 v0.1 范围）。**前端 vlm-history CSS 修复**：`services/webui/.../static/index.html` 1563 行附近覆盖 `.result-text.vlm-history-shell { min-height:0 }` + `:has(#vlmHistoryEmpty:not([style*='display: none']))` 240px empty-state 兜底 + `.vlm-history { max-height: min(60dvh, 560px) }`，解决空 vlm-history 残留 120px strip 与「对话可见但框不长大」。**生命周期扩**：`run-windows.ps1` 加 `$P.MemoryStore` + `Start-MemoryStore`（env opt-in `JOYAI_ENABLE_MEMORY_STORE=1` 默认 false，避免 v3.x 启动回归）；`stop-joyai.ps1` PortMap 加 8996。受影响：`doc/jarvis-mode.md` §15、`doc/00-main-direction.md` §4 + §4.0、`doc/specs/memory-store-skeleton-spec.md` 落地、`doc/adr/0005-memory-store-start.md` 实施。改动文件：`services/memory-store/**`、`services/scripts/run-windows.ps1`、`stop-joyai.ps1`、`services/webui/.../static/index.html` | Codex |
 ## 8. 复盘后补充（P1 / P2 决策项，2026-07-07）
 
 > 上一版交付清单（§1-§7）只覆盖了 P0 已实现功能。复盘发现 2 个 P1/P2 缺口必须在路线图里显式记录。

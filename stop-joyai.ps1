@@ -69,6 +69,7 @@ $AllPorts = [ordered]@{
     "webui"             = 8099
     "hermes-gateway"    = 8642
     "voice-clone"       = 8985
+    "memory-store"      = 8996
     "cosyvoice"         = 8991
     "tts-adapter"       = 8992
     "whisper"           = 8993
