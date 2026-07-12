@@ -1,6 +1,6 @@
 # 屏幕捕获方案（getDisplayMedia）
 
-> 状态：**P1 规划**。webui 端浏览器 API，0 后端改动。
+> 状态：**P0 落地（v3.27）**。webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复。
 > 配套文档：`doc/jarvis-mode.md`（产品）+ `doc/tech-local.md §3.7`（实现）。
 
 ---
@@ -295,3 +295,4 @@ ffmpeg -f gdigrab -i title="Game Window" -r 1 -f image2pipe -vcodec mjpeg
 | 日期 | 版本 | 变更 | 作者 |
 | - | - | - | - |
 | 2026-07-09 | v1.0 | 初版：getDisplayMedia 屏幕捕获方案 | Codex |
+| 2026-07-13 | v3.27 | 落地接入：screen_capture.js 去 ES module 改全局 + ImageCapture 不可用 fallback、index.html 加 Screen Capture tab + screenControls、server.py websocket_handler 加 frame 分支（base64 → PIL → vlm_service.process_frame → get_session_callback 广播 vlm_response）；79/79 webui 测试通过 | Codex |

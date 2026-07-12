@@ -3647,6 +3647,7 @@ limitations under the License.
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+    <script src="./screen_capture.js"></script>
     <script>
         document.title = 'JoyAI VL Live';
 
@@ -3997,6 +3998,10 @@ limitations under the License.
                             RTSP Stream
                             <span class="beta-badge">BETA</span>
                         </button>
+                        <button class="input-source-tab" data-source="screen" title="Screen Capture (browser-native getDisplayMedia, 1 fps JPEG frames)">
+                            <i data-lucide="monitor" style="width: 14px; height: 14px; margin-right: 4px;"></i>
+                            Screen Capture
+                        </button>
                     </div>
 
                     <!-- Webcam Controls -->
@@ -4032,6 +4037,25 @@ limitations under the License.
                             <div id="rtspStatus" class="input-hint" style="margin-top: -8px; margin-bottom: 12px; display: none;"></div>
                         </div>
                     </div>
+
+                    <!-- Screen Capture Controls -->
+                    <div id="screenControls" style="display: none;">
+                        <div class="form-group">
+                            <label>Capture Target</label>
+                            <div class="input-hint" style="margin-bottom: 8px;">A browser picker will ask you to pick a window/tab. Picks stay on this machine -- nothing is uploaded until you press Start.</div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button">
+                                    <i data-lucide="play"></i>
+                                </button>
+                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled>
+                                    <i data-lucide="square"></i>
+                                </button>
+                                <span id="screenStatus" class="input-hint" style="margin: 0;">Idle</span>
+                            </div>
+                            <div id="screenFpsHint" class="input-hint" style="margin-top: 0;">Default 1 fps JPEG (~200 KB/s) -- matches VLM cadence.</div>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <!-- RTSP Beta Warning (shown only when RTSP tab is active) -->
                         <div id="rtspBetaWarning" class="input-hint" style="margin-top: 12px; color: var(--warning-color); display: none; align-items: center; gap: 4px;">
@@ -4672,17 +4696,68 @@ limitations under the License.
                 tab.classList.add('active');
 
                 // Show/hide controls
+                const screenControls = document.getElementById('screenControls');
                 if (source === 'webcam') {
                     webcamControls.style.display = 'block';
                     rtspControls.style.display = 'none';
                     rtspBetaWarning.style.display = 'none';
+                    if (screenControls) screenControls.style.display = 'none';
                 } else if (source === 'rtsp') {
                     webcamControls.style.display = 'none';
                     rtspControls.style.display = 'block';
                     rtspBetaWarning.style.display = 'flex';
+                    if (screenControls) screenControls.style.display = 'none';
+                } else if (source === 'screen') {
+                    webcamControls.style.display = 'none';
+                    rtspControls.style.display = 'none';
+                    rtspBetaWarning.style.display = 'none';
+                    if (screenControls) screenControls.style.display = 'block';
                 }
             });
         });
+
+        // Screen Capture inline controls
+        (function () {
+            const startBtn = document.getElementById('screenStartBtn');
+            const stopBtn = document.getElementById('screenStopBtn');
+            const status = document.getElementById('screenStatus');
+            function setStatus(text, color) {
+                if (!status) return;
+                status.textContent = text;
+                if (color) status.style.color = color; else status.style.color = '';
+            }
+            function refresh() {
+                const running = !!(window.isScreenCapturing && window.isScreenCapturing());
+                if (startBtn) startBtn.disabled = running;
+                if (stopBtn) stopBtn.disabled = !running;
+                setStatus(running ? 'Capturing (1 fps)' : 'Idle', running ? 'var(--success-color, #4caf50)' : '');
+            }
+            if (startBtn) startBtn.addEventListener('click', async () => {
+                if (typeof window.startScreenCapture !== 'function') {
+                    setStatus('screen_capture.js missing', 'var(--warning-color, #ff6b35)');
+                    return;
+                }
+                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                    connectWebSocket();
+                }
+                setStatus('Requesting capture...', 'var(--warning-color, #ff6b35)');
+                try {
+                    await window.startScreenCapture(websocket, { fps: 1 });
+                } catch (err) {
+                    console.error('startScreenCapture failed:', err);
+                    setStatus('Failed: ' + (err && err.message ? err.message : err), 'var(--warning-color, #ff6b35)');
+                }
+                refresh();
+            });
+            if (stopBtn) stopBtn.addEventListener('click', () => {
+                if (typeof window.stopScreenCapture === 'function') {
+                    window.stopScreenCapture();
+                }
+                refresh();
+            });
+            setInterval(refresh, 1000);
+            refresh();
+        })();
 
         // Clear RTSP status message when user types
         const rtspUrlInput = document.getElementById('rtspUrl');
@@ -9308,6 +9383,25 @@ limitations under the License.
                 await startWebcam(token);
             } else if (inputSource === 'rtsp') {
                 await startRTSP(token);
+            } else if (inputSource === 'screen') {
+                // Screen capture path: WS-only JPEG frames, no WebRTC, no local <video> tile.
+                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                    connectWebSocket();
+                }
+                if (typeof window.startScreenCapture !== 'function') {
+                    updateStatus('screen_capture.js missing', 'error');
+                    return;
+                }
+                setVideoWaitingForStream(true);
+                updateStatus('Selecting window...', 'processing');
+                try {
+                    await window.startScreenCapture(websocket, { fps: 1 });
+                    updateStatus('Screen capturing', 'connected');
+                } catch (err) {
+                    console.error('startScreenCapture failed:', err);
+                    updateStatus('Capture failed: ' + (err && err.message ? err.message : err), 'error');
+                    setVideoWaitingForStream(false);
+                }
             }
 
         }
@@ -9541,6 +9635,11 @@ limitations under the License.
             if (peerConnection) {
                 peerConnection.close();
                 peerConnection = null;
+            }
+
+            // Stop screen capture (if active)
+            if (typeof window.stopScreenCapture === 'function') {
+                try { window.stopScreenCapture(); } catch (err) { console.warn('stopScreenCapture:', err); }
             }
 
             videoElement.srcObject = null;

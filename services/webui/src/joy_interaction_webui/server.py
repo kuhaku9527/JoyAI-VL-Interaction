@@ -5,7 +5,7 @@ WebRTC Joy VL Interaction Server
 Main server that handles WebRTC connections and serves the web interface
 """
 
-import asyncio, json, logging, os, signal, socket, subprocess, sys, time, uuid
+import asyncio, base64, io, json, logging, os, signal, socket, subprocess, sys, time, uuid
 
 # Fix double-module-load bug: when run via `python -m joy_interaction_webui.server`,
 # Python executes this file as __main__ and *also* registers a separate module
@@ -168,6 +168,26 @@ async def websocket_handler(request):
                     elif t == "update_frames_per_batch":
                         from .video_processor import VideoProcessorTrack
                         await ws.send_json({"type": "frames_per_batch_updated", "frames_per_batch": VideoProcessorTrack.frames_per_batch})
+                    elif t == "frame":
+                        # Screen capture frames shipped via WebSocket (parallel to WebRTC).
+                        # Decode base64 JPEG -> PIL Image -> vlm_service.process_frame, then broadcast the
+                        # resulting text exactly like VideoProcessorTrack does for webcam/RTSP streams.
+                        payload = data.get("data") or ""
+                        if not isinstance(payload, str) or not payload:
+                            logger.warning("frame: empty data")
+                        else:
+                            try:
+                                from PIL import Image as _PILImage
+                                raw = base64.b64decode(payload)
+                                img = _PILImage.open(io.BytesIO(raw)).convert("RGB")
+                                meta = {"source": data.get("source") or "screen", "format": data.get("format") or "jpeg", "width": data.get("width"), "height": data.get("height"), "timestamp": data.get("timestamp")}
+                                await svc.process_frame(img, frame_metadata=meta)
+                                response, _ = svc.get_current_response()
+                                metrics = svc.get_metrics()
+                                if response:
+                                    get_session_callback(session_id)(response, metrics)
+                            except Exception as frame_exc:
+                                logger.warning("frame decode/process failed: %s", frame_exc)
                     elif t == "background_request":
                         if background_service and data.get("question"):
                             try:

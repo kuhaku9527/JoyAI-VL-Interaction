@@ -1,6 +1,6 @@
 # Hermes-agent 集成（严格隔离）
 
-> 状态：**P1 规划**。`</delegate>` 时通过 hermes_api shim 调用 hermes gateway。
+> 状态：**P0 落地（v3.27）**。hermes-gateway(8642) + hermes_api shim(8079) 端到端跑通，/v1/solve smoke 返回"烟测通过。"(prompt_tokens=24157/5.9s)。`</delegate>` token 已在 BT-7274 prompt 链路预留；webui 解析待后续与 jarvis 主循环一并接入。
 > 配套文档：`doc/jarvis-mode.md` §6 + `doc/tech-local.md §3.6` + `services/background-agent/hermes_api/`。
 
 ---
@@ -264,3 +264,4 @@ class SolveResponse(BaseModel):
 | 日期 | 版本 | 变更 | 作者 |
 | - | - | - | - |
 | 2026-07-09 | v1.0 | 初版：Hermes-agent 严格隔离方案 | Codex |
+| 2026-07-13 | v3.27 | 落地接入：`$env:LOCALAPPDATA\hermes\bin\hermes.cmd` wrapper（venv python → `python -m hermes_cli.main`）解决 `bin\hermes.cmd` 不存在的问题；`Start-Hermes` 用 `API_SERVER_HOST/PORT/KEY` env；`services\background-agent\background-agent.env` 与 `services\scripts\run-windows.env` 同步 `HERMES_API_KEY`；gateway `/health` 200 OK、`/v1/models` 返回 `hermes-agent`、shim `/health` 透出 `hermes_gateway:200`；smoke 调用 `/v1/solve` 返回中文"烟测通过。" | Codex |
