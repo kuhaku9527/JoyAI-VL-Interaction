@@ -218,20 +218,48 @@ class JarvisSessionManager:
         return cb
 
     def _make_llm_callback(self, session_id: str):
-        """Build a callback that pushes LLM replies to the browser.
+        """Build a callback that pushes LLM replies to the browser AND routes
+        ``</delegation>`` to the hermes shim.
 
-        The state machine invokes this from ``_send_to_llm`` once
-        the LLM has produced its response. The server-level
-        ``notify_session_llm_reply`` helper is imported lazily to
-        avoid a circular import (server.py imports this module).
+        The state machine invokes this from ``_send_to_llm`` once the LLM has
+        produced its response. We:
+
+          1. Broadcast the raw text via ``notify_session_llm_reply`` (existing).
+          2. Hand the text to ``BackgroundModelService.handle_foreground_response``,
+             which scans for ``</delegation>`` (or ``<delegation>`` /
+             ``<|background_call|>``), kicks off an async /v1/solve to the
+             hermes shim on 8079, and broadcasts ``background_result_ready``
+             to the WS when the sub-agent returns.
+
+        The server's BackgroundModelService is reached via the ``sessions``
+        dict in server.py; if it is missing (e.g. test fixtures) we fall
+        back to plain broadcast without breaking the voice path.
         """
         def cb(text: str):
             try:
-                from .server import notify_session_llm_reply
+                from .server import notify_session_llm_reply, sessions as _server_sessions
+            except Exception as exc:  # pragma: no cover
+                logger.warning(
+                    "LLM reply broadcast import failed for %s: %s",
+                    session_id, exc,
+                )
+                return
+            try:
                 notify_session_llm_reply(session_id, text, source="jarvis")
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "LLM reply broadcast failed for %s: %s",
+                    session_id, exc,
+                )
+            # v3.28: route </delegation> to hermes shim via BackgroundModelService.
+            try:
+                bg = (_server_sessions.get(session_id) or {}).get("background_service")
+                if bg is not None and getattr(bg, "enabled", True) and not getattr(bg, "_closed", False):
+                    metrics = {"user_prompt": text}
+                    bg.handle_foreground_response(text, metrics=metrics)
+            except Exception as exc:  # pragma: no cover
+                logger.warning(
+                    "Background delegation parse failed for %s: %s",
                     session_id, exc,
                 )
         return cb

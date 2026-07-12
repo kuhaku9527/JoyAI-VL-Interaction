@@ -1,6 +1,6 @@
 # Hermes-agent 集成（严格隔离）
 
-> 状态：**P0 落地（v3.27）**。hermes-gateway(8642) + hermes_api shim(8079) 端到端跑通，/v1/solve smoke 返回"烟测通过。"(prompt_tokens=24157/5.9s)。`</delegate>` token 已在 BT-7274 prompt 链路预留；webui 解析待后续与 jarvis 主循环一并接入。
+> 状态：**P0 落地 + 闭环（v3.28）**。`prompts/bt-7274.txt` 加 Delegation Protocol 章节、`jarvis_session.py::_make_llm_callback` 调 `BackgroundModelService.handle_foreground_response` 触发 `</delegation>` → shim(8079) → gateway(8642) → MiniMax M2 + web_extract → `background_result_ready` WS 广播。E2E 烟测：BT-7274 4-case 行为符合预期 + 真实查 Cyberpunk 螳螂帮攻略 11s 拿到 MiniMax 返回。
 > 配套文档：`doc/jarvis-mode.md` §6 + `doc/tech-local.md §3.6` + `services/background-agent/hermes_api/`。
 
 ---
@@ -265,3 +265,4 @@ class SolveResponse(BaseModel):
 | - | - | - | - |
 | 2026-07-09 | v1.0 | 初版：Hermes-agent 严格隔离方案 | Codex |
 | 2026-07-13 | v3.27 | 落地接入：`$env:LOCALAPPDATA\hermes\bin\hermes.cmd` wrapper（venv python → `python -m hermes_cli.main`）解决 `bin\hermes.cmd` 不存在的问题；`Start-Hermes` 用 `API_SERVER_HOST/PORT/KEY` env；`services\background-agent\background-agent.env` 与 `services\scripts\run-windows.env` 同步 `HERMES_API_KEY`；gateway `/health` 200 OK、`/v1/models` 返回 `hermes-agent`、shim `/health` 透出 `hermes_gateway:200`；smoke 调用 `/v1/solve` 返回中文"烟测通过。" | Codex |
+| 2026-07-13 | v3.28 | 闭环触发：`prompts/bt-7274.txt` 加 **Delegation Protocol (P-D)** 章节（外部查才触发、tag 必须结尾、foreground 短句、self-contained 问题、3 个中英示例）；`jarvis_session.py::_make_llm_callback` 在 broadcast 后调 `BackgroundModelService.handle_foreground_response(text, metrics)`，从 `sessions[session_id]["background_service"]` 拿实例。E2E：4-case 行为烟测（chitchat/已知识 → 不触发、外查/天气/cyberpunk → 触发并自动改写）+ 真实查询 11s 拿到 MiniMax M2 整理后的攻略。不破坏 hermes env：`HERMES_API_KEY` env 文件不动，shim/gateway 用同 key 由 env 注入 | Codex |
