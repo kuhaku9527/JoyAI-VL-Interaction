@@ -1,6 +1,7 @@
 # 记忆架构设计（持久化 + 可插拔外部库）
 
-> 状态：**v3.1 方案确认**，P0 实施完后启动 P2 排期。配套 `doc/asr-streaming.md`（Jarvis 模式）。
+> 状态：**v3.2 落地中（v0.2 hooks 2026-07-13 完成，v0.3 obsidian/bge-m3 待排期）**。配套 `doc/asr-streaming.md`（Jarvis 模式）。
+> v0.1 skeleton（v3.25）：services/memory-store/ SqliteBackend + FTS5；v0.2 hooks（v3.26）：live_adapter.py push/pull/recall + [Local Wiki] prompt 注入；后续 v0.3 才接 bge-m3 与 obsidian。
 > 触发：原项目有 3 层进程内记忆，但**无持久化、无外部接口、无 RAG**——重启即丢。
 > 修订：
 > - v3.1：去掉 namespace 字段（YAGNI）、storage 优先 psql（复用 hermes）。
@@ -326,8 +327,8 @@ class MemoryBackend(Protocol):
 
 ```text
 1. P2-1 memory-store 骨架 + psql backend（~2-3 天）
-2. P2-1.1 live_adapter on_session_end push 钩子（0.5 天）
-3. P2-1.2 live_adapter on_session_start pull 钩子（0.5 天）
+2. P2-1.1 live_adapter on_session_end push 钩子（0.5 天） **— v3.26 完成**（`_session_cleanup_loop` + `handle_reset`）
+3. P2-1.2 live_adapter on_session_start pull 钩子（0.5 天） **— v3.26 完成**（`get_session` fire-and-forget warmup + `_build_memory_prompt` 注入）
 4. P2-3 bge-m3 本地服务 FastAPI :8997（1 天）
 5. P2-2 向量检索集成 + obsidian 同步（2-3 天）
 6. 验收：重启 webinfer 后能召回上轮对话 + obsidian wiki

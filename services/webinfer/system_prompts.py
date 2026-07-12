@@ -166,3 +166,73 @@ def compose_system_prompt(
         f"{_CHARACTER_OPEN_TAG}\n{joined}\n{_CHARACTER_CLOSE_TAG}\n\n"
         f"{base}{_in_character_tail(language)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Memory-block context (live adapter pulls from memory-store on warmup).
+# ---------------------------------------------------------------------------
+# Each block is a dict with `content` (str) and optional `block_id` / `score`.
+_MEMORY_HEADER_EN = (
+    "\n\n[Local Wiki]\n"
+    "The following are previous-session memory blocks from persistent storage."
+    " Use them as background context if the current User Query relates to them."
+    " Stay silent when the query is unrelated."
+)
+_MEMORY_HEADER_ZH = (
+    "\n\n[本地知识库]\n"
+    "以下是从持久化记忆库中拉出的历史摘要。"
+    "当用户问题与之相关时作为背景上下文使用；无关时不要拼凑回答。"
+)
+
+_MAX_INLINE_BLOCK_CHARS = 600
+_MAX_TOTAL_BLOCK_CHARS = 4000
+
+
+def _clip_memory_blocks(blocks, language):
+    """Render a memory-store block list to a deterministic string.
+
+    Returns "" when the list is empty or unusable. Each block is clipped at
+    600 chars; the total is clipped at 4000 chars. Never raises.
+    """
+    out = []
+    total = 0
+    for raw in blocks or []:
+        if not isinstance(raw, dict):
+            continue
+        text = raw.get("content")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        text = text.strip()
+        if len(text) > _MAX_INLINE_BLOCK_CHARS:
+            text = text[: _MAX_INLINE_BLOCK_CHARS - 1] + "\u2026"
+        block_id = raw.get("block_id") or ""
+        prefix = "(id=" + block_id + ") " if block_id else ""
+        line = "- " + prefix + text
+        if total + len(line) > _MAX_TOTAL_BLOCK_CHARS:
+            remaining = _MAX_TOTAL_BLOCK_CHARS - total
+            if remaining <= 0:
+                break
+            line = line[:remaining] + "\u2026"
+        out.append(line)
+        total += len(line)
+        if total >= _MAX_TOTAL_BLOCK_CHARS:
+            break
+    if not out:
+        return ""
+    body = "\n".join(out)
+    if str(language or "").lower().startswith("zh"):
+        return _MEMORY_HEADER_ZH + "\n" + body + "\n"
+    return _MEMORY_HEADER_EN + "\n" + body + "\n"
+
+
+def compose_system_prompt_with_memory(base, character_prompts=None, language="en", memory_blocks=None):
+    """Compose system prompt, appending a [Local Wiki] block at the end.
+
+    Empty / falsy memory_blocks degrades to compose_system_prompt semantics
+    so callers can always pass the warmup result without branching.
+    """
+    composed = compose_system_prompt(base, character_prompts, language)
+    block = _clip_memory_blocks(memory_blocks, language)
+    if not block:
+        return composed
+    return composed.rstrip() + "\n" + block

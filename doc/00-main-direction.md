@@ -63,7 +63,7 @@
 |---|---|---|---|---|---|
 | 1 | **API 化**（TTS / 声音克隆 / LLM 云端化；ASR 已固定本地） | **P0** | 设计完整 | 大 | `api-optimization.md` |
 | 2 | **MiniMax Token Plan 接入** | **P0** | 半落地（凭证 + 模型就绪） | 中 | `token-plan-comparison.md` + `voice-clone.md` §13 |
-| 3 | **P2 记忆持久化** | P1 | **落地（v0.1 skeleton，2026-07-13）** → 见 §4.0 | 中 | `memory-architecture.md` + `specs/memory-store-skeleton-spec.md` |
+| 3 | **P2 记忆持久化** | P1 | **落地（v0.2 hooks，2026-07-13 v3.26）** → 见 §4.0 | 中 | `memory-architecture.md` + `specs/memory-store-skeleton-spec.md` |
 | 4 | **Jarvis 状态机主循环** | P1 | 设计完整 | 大 | `jarvis-mode.md` |
 | ~~5~~ | ~~**KWS 训练**（`"bt 在吗"`）~~ | ~~P2~~ | ~~预训练实测 0/7 命中，待自训~~ → **v4 已落地 2026-07-10** | ~~中~~ | `jarvis-mode.md §2.4`（自训 FAR 2% / recall 49%）|
 | 6 | **Codex fallback**（hermes 不可用时） | P2 | 文档完整 | 小 | `hermes-integration.md` |
@@ -77,6 +77,7 @@
 
 - **v3.24**（2026-07-13）：Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路（详见 DELIVERY.md §7 v3.24）。
 - **#3 memory-store v0.1 skeleton（2026-07-13 v3.25）**：`services/memory-store/` 落地 SqliteBackend + FTS5 BM25（Psql/Obsidian `NotImplementedError` 占位），端口 8996，端点 `/v1/blocks/push|recall` + `/health` + `/v1/backends`；16/16 测试通过；不影响 `live_adapter.py`。详见 `doc/specs/memory-store-skeleton-spec.md` + `doc/adr/0005-memory-store-start.md`。后续 v0.2 才把钩子接到 webinfer `live_adapter.py`。
+- **#3 memory-store v0.2 hooks（2026-07-13 v3.26）**：services/webinfer/live_adapter.py 落地 5 处钩子——get_session fire-and-forget warmup、_session_cleanup_loop 与 handle_reset end-of-session push（pushed 字段回执）、_build_main_http_messages 经 _build_memory_prompt 注入 [Local Wiki] / [本地知识库] 上下文、handle_health 暴露 memory_store 健康字段、on_cleanup 调用 stop_background_tasks 关闭 httpx pool；新增 memory_store_client.py + system_prompts.compose_system_prompt_with_memory；27/27 webinfer 测试通过（含 _memory_warmup / _memory_recall / _memory_push / _build_memory_prompt）。--no-memory-store 可关闭，fail-soft 永不阻塞主请求路径。详见 memory-architecture.md §6 + specs/memory-store-skeleton-spec.md D-9。
 ### §4.1 优先级说明
 
 - **P0（必须）**：v3.2 的核心交付物，决定项目是否进入"产品形态"
@@ -99,4 +100,4 @@
 
 ---
 
-> 文档版本：v3.7 配套  |  最近更新：2026-07-12（webui 对话历史可见 + 语音 Pilot 文本事件 + 文本测试避免双 TTS）  |  作者：Codex
+> 文档版本：v3.26 配套  |  最近更新：2026-07-13（memory-store v0.2 hooks 落地 + webinfer end-to-end 钩子）  |  作者：Codex
