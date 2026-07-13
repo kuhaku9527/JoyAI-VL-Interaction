@@ -81,7 +81,7 @@ if (-not $NoMmproj) { Write-Host "  mmproj: $MmprojPath" }
 Write-Host "  port:   $Port   ctx: $CtxSize   ngl: $Ngl"
 Write-Host "  log:    $logFile"
 
-$proc = Start-Process -FilePath $serverExe -ArgumentList $args -WorkingDirectory $llamaCpp -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" -PassThru
+$proc = Start-Process -FilePath $serverExe -ArgumentList $args -WorkingDirectory $llamaCpp -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err" -WindowStyle Hidden -PassThru
 Set-Content -Path $pidFile -Value $proc.Id
 
 $ok = $false
