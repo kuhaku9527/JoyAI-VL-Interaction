@@ -7,6 +7,13 @@
 //   startScreenCapture(ws?, options?)  -> Promise<void>
 //   stopScreenCapture()                -> void
 //   isScreenCapturing()                -> boolean
+//   getScreenCaptureStream()           -> MediaStream | null
+//   getScreenCaptureVideo()            -> HTMLVideoElement | null
+//
+// v3.33: getScreenCaptureStream / getScreenCaptureVideo let index.html mount
+// the same MediaStream on <video id="videoElement"> for a local preview tile,
+// so the operator can see the captured window in the WebUI while BT-7274
+// also receives the 1 fps JPEG frames over the WS frame pipeline.
 
 (function () {
   let screenCaptureStream = null;
@@ -146,9 +153,19 @@
     return screenCaptureStream !== null;
   }
 
+  function getScreenCaptureStream() {
+    return screenCaptureStream;
+  }
+
+  function getScreenCaptureVideo() {
+    return screenCaptureVideo;
+  }
+
   if (typeof window !== 'undefined') {
     window.startScreenCapture = startScreenCapture;
     window.stopScreenCapture = stopScreenCapture;
     window.isScreenCapturing = isScreenCapturing;
+    window.getScreenCaptureStream = getScreenCaptureStream;
+    window.getScreenCaptureVideo = getScreenCaptureVideo;
   }
 })();
