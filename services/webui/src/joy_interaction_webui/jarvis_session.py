@@ -175,6 +175,24 @@ class JarvisSessionManager:
             audio_output=audio_output,
         )
 
+        # v3.37: wire the BackgroundModelService that server.py registered
+        # in ``sessions[session_id]`` so that ``_send_to_llm`` can route
+        # ``</delegation>`` replies to the same hermes shim that the video
+        # path uses. Looked up lazily so the binding survives later
+        # server-side session creation (e.g. ``/api/session/cleanup``
+        # recreates the session dict after a reset).
+        try:
+            from .server import sessions as _server_sessions
+
+            def _bind_background_service():
+                session_dict = _server_sessions.get(session_id) or {}
+                bg = session_dict.get("background_service")
+                if bg is not None:
+                    sm._background_service = bg
+            _bind_background_service()
+        except Exception:  # pragma: no cover
+            logger.debug("background_service lookup skipped for %s", session_id)
+
         session = JarvisSession(session_id=session_id, state_machine=sm)
         await session.start()
         self._sessions[session_id] = session
@@ -218,26 +236,17 @@ class JarvisSessionManager:
         return cb
 
     def _make_llm_callback(self, session_id: str):
-        """Build a callback that pushes LLM replies to the browser AND routes
-        ``</delegation>`` to the hermes shim.
+        """Broadcast the LLM reply to the browser.
 
-        The state machine invokes this from ``_send_to_llm`` once the LLM has
-        produced its response. We:
-
-          1. Broadcast the raw text via ``notify_session_llm_reply`` (existing).
-          2. Hand the text to ``BackgroundModelService.handle_foreground_response``,
-             which scans for ``</delegation>`` (or ``<delegation>`` /
-             ``<|background_call|>``), kicks off an async /v1/solve to the
-             hermes shim on 8079, and broadcasts ``background_result_ready``
-             to the WS when the sub-agent returns.
-
-        The server's BackgroundModelService is reached via the ``sessions``
-        dict in server.py; if it is missing (e.g. test fixtures) we fall
-        back to plain broadcast without breaking the voice path.
+        v3.37: ``</delegation>`` routing moved into
+        :meth:`jarvis_mode.JarvisStateMachine._send_to_llm` so the voice
+        path uses the same webinfer decision tokens that the video path
+        does. The callback here only mirrors the cleaned text to the WS;
+        no delegation routing here.
         """
         def cb(text: str, source: str = "jarvis_voice"):
             try:
-                from .server import notify_session_llm_reply, sessions as _server_sessions
+                from .server import notify_session_llm_reply
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "LLM reply broadcast import failed for %s: %s",
@@ -249,17 +258,6 @@ class JarvisSessionManager:
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "LLM reply broadcast failed for %s: %s",
-                    session_id, exc,
-                )
-            # v3.28: route </delegation> to hermes shim via BackgroundModelService.
-            try:
-                bg = (_server_sessions.get(session_id) or {}).get("background_service")
-                if bg is not None and getattr(bg, "enabled", True) and not getattr(bg, "_closed", False):
-                    metrics = {"user_prompt": text}
-                    bg.handle_foreground_response(text, metrics=metrics)
-            except Exception as exc:  # pragma: no cover
-                logger.warning(
-                    "Background delegation parse failed for %s: %s",
                     session_id, exc,
                 )
         return cb

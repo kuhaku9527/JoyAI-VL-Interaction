@@ -161,7 +161,13 @@ class JarvisConfig:
     tts_voice_id: str = "minimax_man_33333"  # dashboard-cloned BT-7274 voice (2026-07-11); override via JARVIS_TTS_VOICE_ID env
     
     # LLM (OpenAI-compatible HTTP) — llama-server 7060
-    llm_api_url: str = "http://127.0.0.1:7060/v1"
+    # v3.37 single-LLM-gateway: voice path goes through webinfer, NOT
+    # directly to llama-server. Default base is the OpenAI-compatible
+    # adapter; per-media-type sub-paths are kept explicit so callers
+    # can swap a different gateway without code changes.
+    llm_api_url: str = "http://127.0.0.1:8070/v1"
+    llm_text_path: str = "/text/chat"
+    llm_multimodal_path: str = "/chat/completions"
     llm_model: str = "joyai-vl-interaction-preview-iq4_nl-imat.gguf"
     llm_system_prompt: str = ""  # populated by __post_init__ from prompts/bt-7274.txt
 
@@ -257,6 +263,10 @@ class JarvisConfig:
             kws_fresh_window_direct_wake=_get_bool("JARVIS_KWS_FRESH_DIRECT_WAKE", cls.kws_fresh_window_direct_wake),
             llm_api_url=_get_str("JARVIS_LLM_API_URL", cls.llm_api_url),
             llm_model=_get_str("JARVIS_LLM_MODEL", cls.llm_model),
+            llm_text_path=_get_str("JARVIS_LLM_TEXT_PATH", cls.llm_text_path),
+            llm_multimodal_path=_get_str(
+                "JARVIS_LLM_MULTIMODAL_PATH", cls.llm_multimodal_path
+            ),
             tts_api_url=_get_str("JARVIS_TTS_API_URL", cls.tts_api_url),
             tts_voice_id=_get_str("JARVIS_TTS_VOICE_ID", cls.tts_voice_id),
             events_dir=_get_str("JARVIS_EVENTS_DIR", cls.events_dir),
@@ -344,6 +354,12 @@ class JarvisStateMachine:
         self._last_speech_time: float = 0.0
         self._current_asr_text: str = ""
         self._tts_task: Optional[asyncio.Task] = None
+        # v3.37: when webinfer returns decision="delegation", route the
+        # delegated question to BackgroundModelService.handle_foreground_response
+        # so the same sub-agent fires for voice requests as for video.
+        # Set by JarvisSessionManager.create_session; kept off the class
+        # signature so tests can patch it without re-imports.
+        self._background_service: Optional[object] = None
         self._consume_task: Optional[asyncio.Task] = None
         self._audio_queue: "asyncio.Queue[bytes]" = asyncio.Queue(maxsize=1024)
         self._tts_done = asyncio.Event()
@@ -1097,8 +1113,18 @@ class JarvisStateMachine:
         import httpx
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
+                # v3.37 single-LLM-gateway: route by media type.
+                # text-only path -> /v1/text/chat (orchestration: prompt
+                # composition, token guard, decision-token parsing).
+                # multimodal path -> /v1/chat/completions (existing).
+                endpoint_path = (
+                    self.config.llm_multimodal_path
+                    if image_b64
+                    else self.config.llm_text_path
+                )
+                endpoint_url = f"{self.config.llm_api_url}{endpoint_path}"
                 resp = await client.post(
-                    f"{self.config.llm_api_url}/chat/completions",
+                    endpoint_url,
                     json={
                         "model": self.config.llm_model,
                         "messages": messages,
@@ -1107,24 +1133,55 @@ class JarvisStateMachine:
                     },
                 )
                 resp.raise_for_status()
-                response = resp.json()["choices"][0]["message"]["content"].strip()
+                response_payload = resp.json()
+                choice = (response_payload.get("choices") or [{}])[0]
+                response = (choice.get("message") or {}).get("content") or ""
+                response = response.strip() if isinstance(response, str) else ""
+                harness = response_payload.get("streamingharness") or {}
+                decision = harness.get("decision") or (
+                    "response" if response else "silence"
+                )
+                delegation_question = harness.get("delegation_question")
         except Exception as exc:
             logger.error("LLM call failed: %s", exc)
             response = f"[LLM error: {exc}]"
+            decision = "silence"
+            delegation_question = None
 
-        logger.info("LLM response: '%s'", response)
+        logger.info("LLM response (decision=%s): '%s'", decision, response)
+
+        # v3.37: when the model opted to delegate, fire BackgroundModelService
+        # with the assistant's reply + the user's original ask as the
+        # delegated question (webinfer extracts it from </delegation> Q).
+        if decision == "delegation":
+            try:
+                bg = self._background_service
+                if bg is not None and getattr(bg, "enabled", True) and not getattr(bg, "_closed", False):
+                    payload_text = (response or "").strip() or text
+                    if delegation_question:
+                        payload_text = (
+                            f"{payload_text}\n\n</delegation> {delegation_question}"
+                        )
+                    metrics = {"user_prompt": text, "delegation_question": delegation_question}
+                    bg.handle_foreground_response(payload_text, metrics=metrics)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("delegation routing failed: %s", exc)
+            # Skip TTS for delegated replies; the foreground line is empty
+            # and the background agent will surface the real answer.
+            stream_tts = False
+
         # v3.24: append to conversation history (turn-by-turn)
         self._conv_history.append(("user", text))
         self._conv_history.append(("assistant", response))
+
         # Tag the broadcast with whether the back-end also streamed TTS to the
         # WebRTC audio_output track, so the front-end can avoid double-playing.
         reply_source = "jarvis_voice" if stream_tts else "jarvis_text"
         if self.on_llm_response:
             self.on_llm_response(response, source=reply_source)
 
-        # Stream TTS for true voice mode. Text-only webui tests play audio
-        # through /api/tts/synthesize in the browser, so they skip this path.
-        if stream_tts:
+        # Stream TTS for true voice mode. Silence + delegation suppress TTS.
+        if stream_tts and decision != "silence":
             self._tts_task = asyncio.create_task(self._stream_tts(response))
 
     async def _stream_tts(self, text: str):
