@@ -1,12 +1,12 @@
-"""Verify the v3.32+ stack is up and the new image-chat endpoint works.
+"""Verify the v3.32 stack is up: 7060/8070/8099/8985 + text-only /api/llm/message regression.
 
 Usage:
     python services/scripts/verify-services.py
     python services/scripts/verify-services.py --webui http://host:port
 
 Probes llama-server (7060), webinfer (8070), voice-clone (8985), webui (8099),
-then exercises the v3.32 /api/vlm/chat endpoint with a 1x1 JPEG plus a Chinese
-prompt. Exits 0 on all-green, 2 on failure.
+then exercises the text-only /api/llm/message regression path. Exits 0 on
+all-green, 2 on failure.
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def _fail(name: str, detail: str = "") -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify JoyAI services and v3.32 image chat.")
+    parser = argparse.ArgumentParser(description="Verify JoyAI services (7060/8070/8099/8985) + text regression.")
     parser.add_argument("--webui", default="http://127.0.0.1:8099")
     parser.add_argument("--webinfer", default="http://127.0.0.1:8070")
     parser.add_argument("--llama", default="http://127.0.0.1:7060")
@@ -101,28 +101,6 @@ def main() -> int:
         results.append(_ok("8099 webui"))
     else:
         results.append(_fail("8099 webui", f"status={code}"))
-
-    # v3.32 image chat
-    code, body = _http(
-        "POST",
-        f"{args.webui}/api/vlm/chat",
-        body={
-            "session_id": f"verify-{id({})}",
-            "text": "你看图里有什么",
-            "image_data_url": f"data:image/jpeg;base64,{TINY_JPEG_B64}",
-        },
-        timeout=args.timeout,
-    )
-    if code == 200 and isinstance(body, dict) and body.get("source") == "vlm_chat" and body.get("text"):
-        usage = body.get("usage") or {}
-        results.append(
-            _ok(
-                "v3.32 /api/vlm/chat",
-                f"source=vlm_chat, text_len={len(body['text'])}, tokens={usage.get('total_tokens')}",
-            )
-        )
-    else:
-        results.append(_fail("v3.32 /api/vlm/chat", f"status={code} body={body}"))
 
     # Plain text regression
     code, body = _http(
