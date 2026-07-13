@@ -41,7 +41,7 @@ def test_llm_reply_goes_to_vlm_output_and_triggers_tts():
     body = _function_body(html, "installLlmReplyHandler")
 
     assert "appendJarvisToResult(data.text || '', data.source || 'jarvis')" in body
-    assert "playLlmReplyAudio(data.text || '')" in body
+    assert "playLlmReplyAudio(data.text || '', { source: data.source || 'jarvis' })" in body
     assert "data.type === 'pilot_utterance'" in body
     assert "appendPilotToResult(data.text || '')" in body
 
