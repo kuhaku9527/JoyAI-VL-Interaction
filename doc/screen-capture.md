@@ -1,6 +1,6 @@
 # 屏幕捕获方案（getDisplayMedia）
 
-> 状态：**P0 落地（v3.27）**。webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复。
+> 状态：**P0 落地（v3.27 + v3.33）**。v3.27 webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复；v3.33 在此之上加本地预览：操作员在 webui `<video id="videoElement">` 上能直接看到被捕获的窗口/标签（同时 BT-7274 仍通过 1fps WS frame 看到同一路画面）。
 > 配套文档：`doc/jarvis-mode.md`（产品）+ `doc/tech-local.md §3.7`（实现）。
 
 ---
@@ -162,6 +162,66 @@ async def handle_video_frame(ws, data):
     )
 ```
 
+
+---
+
+## 3.5 v3.33 本地预览（本地看到被捕获的窗口）
+
+> **问题**：v3.27 落地后，webui 已经能把窗口画面以 1 fps JPEG 推给 BT-7274（LLM 看得到），但 webui 页面上 `<video id="videoElement">` 一直是黑屏/等待中——**操作员自己看不到**自己捕获的是什么窗口，无法确认是否选对了、是否有画面。
+
+> **解决**：复用 `screen_capture.js` 内部拿到的同一个 `MediaStream`，把它挂到 `<video id="videoElement">` 上做本地预览。**零新增**后端、零新协议、零新端口——视觉管线（WS frame → webinfer → llama-server）一行没动。
+
+### 3.5.1 改动点（共 2 个文件）
+
+| 文件 | 改动 | 行数 |
+| - | - | -: |
+| `services/webui/.../static/screen_capture.js` | 暴露 `getScreenCaptureStream()` / `getScreenCaptureVideo()` 全局 getter | +8 |
+| `services/webui/.../static/index.html` | `start()` Screen Capture 分支：`await startScreenCapture` 之后挂 `videoElement.srcObject` + 去镜像 + `setVideoWaitingForStream(false)` | +12 |
+
+### 3.5.2 关键代码（`index.html` start() Screen 分支）
+
+```javascript
+} else if (inputSource === "screen") {
+    // v3.33: Screen capture path -- WS JPEG frames for BT + local <video> preview
+    // ...
+    try {
+        await window.startScreenCapture(websocket, { fps: 1 });
+        const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
+        if (previewStream) {
+            // Game/tab content must not be mirrored (UI text would be unreadable).
+            videoElement.classList.remove("mirrored");
+            videoElement.srcObject = previewStream;
+            setVideoWaitingForStream(false);
+            updateStatus("Screen capturing", "connected");
+        } else {
+            updateStatus("Screen capture cancelled", "disconnected");
+            setVideoWaitingForStream(false);
+        }
+    } catch (err) {
+        // ...
+    }
+}
+```
+
+### 3.5.3 关键设计决策
+
+| 决策 | 理由 |
+| - | - |
+| **复用同一个 MediaStream，不重新 `getDisplayMedia` 一次** | 一份 stream 同时给 `<video>` 预览和 1 fps JPEG 推帧用；省一次用户授权 + 少一个视频轨道 |
+| **`stop()` 自动清理** | `stopScreenCapture()` 已经在 `screen_capture.js` 内部 `screenCaptureStream = null` + `screenCaptureVideo.srcObject = null`；外层 `index.html stop()` 也已做 `videoElement.srcObject = null` + `setVideoWaitingForStream(false)`，无需新逻辑 |
+| **主动 `classList.remove("mirrored")`** | `.mirrored` 是 `transform: scaleX(-1)`，给 Webcam 用的（前置摄像头镜像）；游戏窗口/标签应用了会让 UI 文字左右颠倒、无法阅读 |
+| **不增加 mirror toggle 的 source-aware 逻辑** | 保持改动最小；切到 Webcam tab 时用户自己再点 Mirror 按钮即可 |
+| **不动 Webcam / RTSP tab** | 物理摄像头是 WebRTC pipeline，本地预览本来就由 WebRTC 远端流推过来（不归本任务） |
+| **不动 webinfer / 端口 / 协议** | 视觉管线（WS frame → vlm_service）v3.27 已跑通，本任务只在 webui 前端加一个 `<video>` 预览 |
+
+### 3.5.4 取消授权的处理
+
+`screen_capture.js` 内部对 `getDisplayMedia` 错误做了 try/catch，不会 throw 出来。如果用户点了取消，`getScreenCaptureStream()` 返回 `null`，本任务新增的代码会走 else 分支：`updateStatus("Screen capture cancelled", "disconnected")` + `setVideoWaitingForStream(false)`。**不会卡在 "Selecting window..." 的中间态**。
+
+### 3.5.5 适用场景（用户视角）
+
+- 玩单机游戏（无物理摄像头）：点 Screen Capture → 选游戏窗口 → 视频框实时显示游戏画面，BT-7274 同时看到游戏画面，玩家可以直接喊 "bt，这个怪怎么打" → BT 回复攻略。
+
 ---
 
 ## 4. 关键设计
@@ -296,3 +356,4 @@ ffmpeg -f gdigrab -i title="Game Window" -r 1 -f image2pipe -vcodec mjpeg
 | - | - | - | - |
 | 2026-07-09 | v1.0 | 初版：getDisplayMedia 屏幕捕获方案 | Codex |
 | 2026-07-13 | v3.27 | 落地接入：screen_capture.js 去 ES module 改全局 + ImageCapture 不可用 fallback、index.html 加 Screen Capture tab + screenControls、server.py websocket_handler 加 frame 分支（base64 → PIL → vlm_service.process_frame → get_session_callback 广播 vlm_response）；79/79 webui 测试通过 | Codex |
+| 2026-07-13 | v3.33 | Screen Capture 本地预览：screen_capture.js 暴露 `getScreenCaptureStream`/`getScreenCaptureVideo` 全局 getter;`index.html` `start()` Screen 分支挂 `videoElement.srcObject` + `classList.remove("mirrored")` + `setVideoWaitingForStream(false)`。操作员在 webui 上能直接看到被捕获的窗口/标签,同时 BT-7274 仍通过 1fps WS frame 看到同一路画面(视觉管线 / webinfer / 端口 / 协议全部零改动)。 | Codex |

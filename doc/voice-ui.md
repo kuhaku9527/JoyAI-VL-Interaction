@@ -1,7 +1,7 @@
 ---
 title: WebUI 视觉与交互规约
 status: active
-last_updated: 2026-07-12
+last_updated: 2026-07-13
 related:
   - architecture-local.md
   - api-optimization.md
@@ -83,9 +83,48 @@ related:
   - `.llm-err` -> 错误
 - 不允许使用单一色调家族作为整个 HUD 主色（如全紫 / 全蓝）。
 
-## 3. 待补章节
+## 3. Video 元素在 Screen Capture tab 的行为（v3.33）
+
+### 3.1 元素定位
+
+`<video id="videoElement" autoplay playsinline muted>` 位于 `services/webui/.../static/index.html` 顶部 Video Source 卡片内，是 webui 唯一可见的视频预览元素。
+
+### 3.2 三个 tab 的视频源与本地预览关系（v3.33 后）
+
+| Tab | 视频源 | 本地预览（v3.33 前） | 本地预览（v3.33 后） |
+| - | - | - | - |
+| Webcam | `getUserMedia` 物理摄像头 | 由 WebRTC 远端流显示（不归本任务） | 同上（不变） |
+| RTSP | 服务端 RTSP 推流 | 由 WebRTC 远端流显示（不归本任务） | 同上（不变） |
+| **Screen Capture** | `getDisplayMedia` 选窗口/标签 | ❌ **不显示**（hidden video） | ✅ **实时显示**（挂到 `videoElement`） |
+
+### 3.3 切换行为
+
+- 切到 Screen Capture tab → `startScreenCapture()` 后 `videoElement.srcObject = previewStream`，同时 `classList.remove('mirrored')`（避免游戏 UI 文字被 `transform: scaleX(-1)` 颠倒）
+- 切回 Webcam / RTSP → `start()` 开头自动 `videoElement.srcObject = null` + `setVideoWaitingForStream(true)`，新 tab 接管视频源
+- 点 Stop → `stopScreenCapture()` 清空内部 stream，外层 `stop()` 再清 `videoElement.srcObject = null`
+
+### 3.4 取消授权处理
+
+- 用户在 `getDisplayMedia` 弹窗里点取消 → `getScreenCaptureStream()` 返回 `null` → 走 `updateStatus('Screen capture cancelled', 'disconnected')` + `setVideoWaitingForStream(false)`，**不会卡在 'Selecting window...'**
+
+### 3.5 样式注意
+
+- `<video id="videoElement">` 现有的 `autoplay playsinline muted` 属性已就位，**不需要改**
+- `setVideoWaitingForStream(waiting)` 切换 `videoCard` 的 `.waiting-for-stream` class（用于显示占位文本）
+- `.mirrored` class 仅在 Webcam 模式下手动开启（前置摄像头镜像），Screen Capture 模式启动时主动移除
+
+---
+
+## 4. 待补章节（原 §3，章节号顺延）
+
+
 
 - 聊天面板布局（消息气泡、用户/助手区分、延迟时间戳）
-- KWS 监听模式下的音频波形 / RMS 指示器
+- KWS 监听模式下的音频波形 / RMS 指示器（v3.29 已加 RMS 条，详见 §3.6 后续）
 - ASR 输入框状态机（idle / recording / final / error）
 - 设置 Modal 内字段
+
+### 4.1 引用 v3.33 改动的其他文档
+
+- `doc/screen-capture.md` §3.5（本任务的完整设计与决策记录）
+- `doc/00-main-direction.md` §4 v3.33 变更条目

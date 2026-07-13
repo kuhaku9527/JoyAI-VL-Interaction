@@ -1,6 +1,6 @@
 # 主方向与项目定位
 
-> **当前生产链路（2026-07-12）**：WebUI `8099` → webinfer `8070`（视频/VLM）→ 本地社区量化 JoyAI llama-server `7060`；Jarvis 文字/语音对话在 WebUI 内直连同一个 `7060`。KWS + Paraformer ASR 固定本地，TTS/声音克隆固定 MiniMax `8985`。
+> **当前生产链路（2026-07-13 v3.33）**：WebUI `8099` → webinfer `8070`（视频/VLM）→ 本地社区量化 JoyAI llama-server `7060`；v3.33 在 webui 上加了 Screen Capture 本地预览（操作员能在 `<video id="videoElement">` 上看到被捕获的窗口/标签，同时 BT 仍走 1fps WS frame）；Jarvis 文字/语音对话在 WebUI 内直连同一个 `7060`。KWS + Paraformer ASR 固定本地，TTS/声音克隆固定 MiniMax `8985`。
 > **MiniMax-only**：不启动 CosyVoice、TTS stub、whisper/asr-adapter 或 tts-adapter；历史端口只在停止脚本中保留，用于清理旧进程。
 > **LLM 选型**：主对话/VLM 使用本地社区量化版；云端 LLM 只作为未来 fallback 或 Hermes 委派，不是当前主链路。
 > 详见下方阅读优先级和 v3.2 路线图。
@@ -105,4 +105,4 @@
 - **v3.32a verify-services.py/ps1 (2026-07-13)**: pure-Python end-to-end probe (no PowerShell parser issues), pings llama-server (7060) / webinfer (8070) / voice-clone (8985) / webui (8099). `stop-windows.ps1` / `verify-services.py` both green.
 - **v3.32b 撤回 v3.32 image chat (2026-07-13)**: 删除 paperclip 按钮 + `/api/vlm/chat` 端点 + `pendingVlmImage` state machine + webinfer multimodal `image_url` 分支 + static contract test。视觉走 v3.27 `screen capture` 路径（`getDisplayMedia` 1fps 推 frame -> VLM）。`JARVIS_KWS_THRESHOLD` 保留 v3.32 的 0.20（NVIDIA Broadcast 干净环境，识别率优先）。
 
-> 文档版本：v3.32b 配套  |  最近更新：2026-07-13（撤回 v3.32 image chat，保留 KWS 0.20）  |  作者：Codex
+> 文档版本：v3.33 配套  |  最近更新：2026-07-13（Screen Capture 本地预览，详见 `doc/screen-capture.md` §3.5 + `doc/voice-ui.md` §3）  |  作者：Codex

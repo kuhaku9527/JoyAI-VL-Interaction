@@ -9399,7 +9399,10 @@ limitations under the License.
             } else if (inputSource === 'rtsp') {
                 await startRTSP(token);
             } else if (inputSource === 'screen') {
-                // Screen capture path: WS-only JPEG frames, no WebRTC, no local <video> tile.
+                // v3.33: Screen capture path -- WS JPEG frames for BT + local <video> preview
+                // for the operator. The captured MediaStream is mounted on videoElement
+                // so the user can see the captured window/tab while BT-7274 receives
+                // the same frames over the existing type:'frame' WS pipeline.
                 if (!websocket || websocket.readyState !== WebSocket.OPEN) {
                     connectWebSocket();
                 }
@@ -9411,7 +9414,19 @@ limitations under the License.
                 updateStatus('Selecting window...', 'processing');
                 try {
                     await window.startScreenCapture(websocket, { fps: 1 });
-                    updateStatus('Screen capturing', 'connected');
+                    // Stream is null when the user cancels the picker; keep the
+                    // waiting state in that case and surface a status hint.
+                    const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
+                    if (previewStream) {
+                        // Game/tab content must not be mirrored (UI text would be unreadable).
+                        videoElement.classList.remove('mirrored');
+                        videoElement.srcObject = previewStream;
+                        setVideoWaitingForStream(false);
+                        updateStatus('Screen capturing', 'connected');
+                    } else {
+                        updateStatus('Screen capture cancelled', 'disconnected');
+                        setVideoWaitingForStream(false);
+                    }
                 } catch (err) {
                     console.error('startScreenCapture failed:', err);
                     updateStatus('Capture failed: ' + (err && err.message ? err.message : err), 'error');
