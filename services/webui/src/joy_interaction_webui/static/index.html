@@ -4248,10 +4248,21 @@ limitations under the License.
                                 <span class="check">✓</span>
                             </button>
                         </div>
+                        <div class="vlm-image-preview" id="vlmImagePreview" hidden style="display:none;align-items:center;gap:8px;padding:6px 10px;margin-bottom:6px;background:var(--bg-secondary);border:1px dashed var(--border-color);border-radius:6px;font-size:12px;color:var(--text-secondary);">
+                            <img id="vlmImageThumb" alt="staged image" style="max-width:48px;max-height:36px;border-radius:4px;object-fit:cover;">
+                            <span id="vlmImageLabel" style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">图片已附加</span>
+                            <button class="icon-btn" id="vlmImageClear" title="移除图片" type="button" style="background:transparent;border:0;color:var(--text-secondary);cursor:pointer;">
+                                <i data-lucide="x"></i>
+                            </button>
+                        </div>
                         <textarea class="chat-prompt-input" id="promptText" rows="1" placeholder="输入文字，或点麦克风语音识别后发送给 BT-7274"></textarea>
                         <button class="chat-prompt-action listen" id="btListenBtn" title="监听 BT 唤醒词" type="button" aria-pressed="false">
                             <i data-lucide="radio"></i>
                             <span class="listen-label">监听</span>
+                        </button>
+                        <input type="file" id="vlmImageInput" accept="image/*" style="display:none;">
+                        <button class="chat-prompt-action image-pick" id="vlmImageBtn" title="附加图片（发给 VLM）" type="button" aria-label="Image attach">
+                            <i data-lucide="paperclip"></i>
                         </button>
                         <button class="chat-prompt-action speech speech-control" id="speechBtn" title="语音识别" type="button">
                             <i class="mic-icon" data-lucide="mic"></i>
@@ -4318,6 +4329,14 @@ limitations under the License.
         const speechBtn = document.getElementById('speechBtn');
         const speechButtons = [speechBtn].filter(Boolean);
         const promptSendBtn = document.getElementById('promptSendBtn');
+        // VLM image-chat attachments
+        const vlmImageInput = document.getElementById('vlmImageInput');
+        const vlmImageBtn = document.getElementById('vlmImageBtn');
+        const vlmImagePreview = document.getElementById('vlmImagePreview');
+        const vlmImageThumb = document.getElementById('vlmImageThumb');
+        const vlmImageLabel = document.getElementById('vlmImageLabel');
+        const vlmImageClear = document.getElementById('vlmImageClear');
+        let pendingVlmImage = null; // { dataUrl, name, sizeBytes }
         const modelSelect = document.getElementById('modelSelect');
         const refreshModelsBtn = document.getElementById('refreshModelsBtn');
         const processEvery = document.getElementById('processEvery');
@@ -8696,7 +8715,8 @@ limitations under the License.
         const btTtsPlayer = document.getElementById('btTtsPlayer');
         async function sendBtPrompt() {
             const text = (promptText.value || '').trim();
-            if (!text) {
+            const image = pendingVlmImage;
+            if (!text && !image) {
                 promptText.focus();
                 return;
             }
@@ -8707,29 +8727,90 @@ limitations under the License.
                 await stopSpeech({ sendEnd: false, sendPrompt: false });
             }
             renderBtLatency();
-            appendPilotToResult(text);
+            const promptForEcho = text || '看看这张图';
+            appendPilotToResult(promptForEcho);
             promptText.value = '';
             resetAsrTranscriptState('');
             try {
-                const resp = await fetch('/api/llm/message', {
+                const url = image ? '/api/vlm/chat' : '/api/llm/message';
+                const body = image
+                    ? { text: text || '', image_data_url: image.dataUrl, session_id: sessionId }
+                    : { text: text, session_id: sessionId };
+                const resp = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: text,
-                        session_id: sessionId,
-                    }),
+                    body: JSON.stringify(body),
                 });
                 btLatency.sendAckAt = performance.now();
                 renderBtLatency();
                 if (!resp.ok) {
-                    appendJarvisToResult(`[bt-send] POST /api/llm/message failed: HTTP ${resp.status}`, 'error');
+                    const tag = image ? 'vlm-chat' : 'bt-send';
+                    const route = image ? '/api/vlm/chat' : '/api/llm/message';
+                    appendJarvisToResult(`[${tag}] POST ${route} failed: HTTP ${resp.status}`, 'error');
                 }
+                if (image) clearPendingVlmImage();
             } catch (err) {
-                appendJarvisToResult(`[bt-send] POST /api/llm/message error: ${err && err.message ? err.message : err}`, 'error');
+                const tag = image ? 'vlm-chat' : 'bt-send';
+                appendJarvisToResult(`[${tag}] send error: ${err && err.message ? err.message : err}`, 'error');
+                if (image) clearPendingVlmImage();
             }
             promptText.value = '';
             resetAsrTranscriptState('');
             flashPromptControl(promptText);
+        }
+
+        // ---- VLM image-chat attachment state -------------------------------------
+        function setPendingVlmImage(dataUrl, name) {
+            pendingVlmImage = { dataUrl, name, sizeBytes: Math.round(dataUrl.length * 0.75) };
+            if (vlmImageThumb) vlmImageThumb.src = dataUrl;
+            const kb = (pendingVlmImage.sizeBytes / 1024).toFixed(1);
+            if (vlmImageLabel) vlmImageLabel.textContent = `${name || 'image'} (${kb} KB)`;
+            if (vlmImagePreview) {
+                vlmImagePreview.hidden = false;
+                vlmImagePreview.style.display = 'flex';
+            }
+        }
+        function clearPendingVlmImage() {
+            pendingVlmImage = null;
+            if (vlmImageInput) vlmImageInput.value = '';
+            if (vlmImageThumb) vlmImageThumb.src = '';
+            if (vlmImagePreview) {
+                vlmImagePreview.hidden = true;
+                vlmImagePreview.style.display = 'none';
+            }
+        }
+        function readFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+                reader.readAsDataURL(file);
+            });
+        }
+        async function onVlmImageFileChange(ev) {
+            const file = ev && ev.target && ev.target.files && ev.target.files[0];
+            if (!file) return;
+            if (file.size > 6 * 1024 * 1024) {
+                alert('图片太大（最大 ~6 MB）');
+                ev.target.value = '';
+                return;
+            }
+            try {
+                const dataUrl = await readFileAsDataUrl(file);
+                setPendingVlmImage(dataUrl, file.name || 'image');
+            } catch (err) {
+                console.warn('vlm image read failed', err);
+                alert('读取图片失败');
+            }
+        }
+        if (vlmImageBtn && vlmImageInput) {
+            vlmImageBtn.addEventListener('click', () => vlmImageInput.click());
+        }
+        if (vlmImageInput) {
+            vlmImageInput.addEventListener('change', onVlmImageFileChange);
+        }
+        if (vlmImageClear) {
+            vlmImageClear.addEventListener('click', clearPendingVlmImage);
         }
         // Allow Cmd/Ctrl+Enter to send to BT-7274.
         promptText.addEventListener('keydown', (e) => {
