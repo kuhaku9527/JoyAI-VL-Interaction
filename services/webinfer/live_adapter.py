@@ -97,6 +97,82 @@ def _get_i18n(language: str = "en") -> dict[str, str]:
         "qa_response_label": QA_RESPONSE_LABEL_ZH,
     }
 
+# ---------------------------------------------------------------------------
+# v3.34: Prompt token guard
+# ---------------------------------------------------------------------------
+# llama-server -c is a hard limit. Visual pipeline + 3-layer memory +
+# accumulated turns can blow past it. webinfer estimates total chars of the
+# messages list right before dispatch and, when the budget
+# (main_ctx_tokens * 3 chars * 0.85) is exceeded, drops the oldest
+# user/assistant turns while keeping the system message + the last
+# _PROMPT_GUARD_MIN_RECENT turns. Goal: degrade gracefully instead of
+# hitting 502 exceed_context_size_error.
+#
+# Chars/token budget uses 3 (English ~4, Chinese ~1.5, mixed conservative).
+# We do not chase precision; the goal is to avoid llama-server 400 errors.
+
+_CHARS_PER_TOKEN_BUDGET: float = 3.0
+_CTX_SAFETY_FACTOR: float = 0.85
+_PROMPT_GUARD_MIN_RECENT: int = 2
+
+
+def _estimate_messages_chars(messages):
+    # Estimate total character count of an OpenAI messages list.
+    # Uses a cheap linear scan over the content field. Image content
+    # parts contribute a fixed 1 KB placeholder so a multimodal request
+    # is not severely under-counted (a real JPEG base64 is 100-300 KB
+    # which would dominate the budget on its own).
+    total = 0
+    for message in messages or ():
+        content = message.get('content') if isinstance(message, dict) else None
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get('type') == 'text':
+                    text_value = part.get('text')
+                    if isinstance(text_value, str):
+                        total += len(text_value)
+                elif part.get('type') in ('image', 'image_url'):
+                    total += 1024
+        total += 16  # role + json framing overhead
+    return total
+
+
+def _trim_messages_to_ctx(messages, max_total_chars, min_recent=_PROMPT_GUARD_MIN_RECENT):
+    # Trim the messages list to fit within max_total_chars.
+    # Always preserves the first message (the system prompt) and the last
+    # min_recent user/assistant turns. Older turns are dropped from the
+    # front (index 1..end-min_recent) until the budget is met.
+    # Returns the (possibly trimmed) list and the number of messages removed.
+    if not messages or max_total_chars <= 0:
+        return list(messages or []), 0
+    if _estimate_messages_chars(messages) <= max_total_chars:
+        return list(messages), 0
+    head = messages[:1]
+    if len(messages) > 1 + min_recent:
+        tail = messages[-min_recent:]
+        middle = messages[1 : len(messages) - min_recent]
+    else:
+        tail = []
+        middle = messages[1:]
+    removed = 0
+    while middle and (_estimate_messages_chars(head + middle + tail) > max_total_chars):
+        middle.pop(0)
+        removed += 1
+    return head + middle + tail, removed
+
+
+def _compute_prompt_guard_max_chars(ctx_tokens):
+    # Compute the total character budget for the prompt guard.
+    # Multiplies ctx_tokens by the chars-per-token budget and the safety
+    # factor. A non-positive ctx_tokens disables the guard (returns 0).
+    if not ctx_tokens or ctx_tokens <= 0:
+        return 0
+    return int(ctx_tokens * _CHARS_PER_TOKEN_BUDGET * _CTX_SAFETY_FACTOR)
+
 def _build_system_prompt(
     base: str,
     character_prompts: list[str],
@@ -530,6 +606,12 @@ class AdapterConfig:
     frame_seconds: float = 1.0
     max_pixels: int = 262144
     main_max_tokens: int = 128
+    # v3.34: llama-server -c context window (sync with run-windows.env MAIN_CTX_TOKENS).
+    # Visual pipeline + 3-layer memory + accumulated turns can blow past it.
+    # webinfer estimates total chars in _build_main_http_messages and trims the
+    # oldest user/assistant turns when the budget (main_ctx_tokens * 3 chars * 0.85)
+    # is exceeded.
+    main_ctx_tokens: int = 16384
     main_temperature: float = 0.8
     main_top_p: float = 0.9
     main_top_k: int = 40
@@ -1897,6 +1979,7 @@ class StreamingInferAdapter:
         api_messages: list[dict[str, Any]],
         *,
         session_state: Optional["SessionState"] = None,
+        max_total_chars: int = 0,
     ) -> list[dict[str, Any]]:
         """Build the OpenAI chat-completions payload for the main model.
 
@@ -1907,11 +1990,27 @@ class StreamingInferAdapter:
         When ``session_state`` carries a populated memory-block cache
         (memory-store v0.2) the cached blocks are appended as a
         [Local Wiki] section via :func:`compose_system_prompt_with_memory`.
+
+        v3.34 prompt guard: when ``max_total_chars`` is positive and the
+        assembled messages exceed that budget, the oldest user/assistant
+        turns are dropped (keeping the system message + the last
+        ``_PROMPT_GUARD_MIN_RECENT`` turns) so the request stays inside
+        the llama-server -c context window.
         """
         messages = list(api_messages)
         system_prompt = self._build_memory_prompt(session_state)
         if system_prompt:
             messages = [{"role": "system", "content": system_prompt}] + messages
+        if max_total_chars > 0:
+            before = len(messages)
+            messages, removed = _trim_messages_to_ctx(messages, max_total_chars)
+            if removed:
+                LOGGER.warning(
+                    "v3.34 prompt guard: dropped %d oldest turn(s) to fit ctx "
+                    "budget (max_total_chars=%d, before=%d, after=%d, est_chars=%d)",
+                    removed, max_total_chars, before, len(messages),
+                    _estimate_messages_chars(messages),
+                )
         return messages
 
     async def _call_main_model(
@@ -1928,8 +2027,11 @@ class StreamingInferAdapter:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
         generation_kwargs = generation_kwargs or self._main_generation_kwargs(inbound_payload)
+        max_total_chars = _compute_prompt_guard_max_chars(self.config.main_ctx_tokens)
         api_messages = http_messages or self._build_main_http_messages(
-            api_messages, session_state=session_state
+            api_messages,
+            session_state=session_state,
+            max_total_chars=max_total_chars,
         )
         response = await client.chat.completions.create(
             model=model_name,
@@ -2658,6 +2760,12 @@ def parse_args() -> AdapterConfig:
     parser.add_argument("--max-pixels", type=int, default=_env_int("MAX_PIXELS", 262144))
     parser.add_argument("--main-max-tokens", type=int, default=_env_int("MAIN_MAX_TOKENS", 128))
     parser.add_argument(
+        "--main-ctx-tokens",
+        type=int,
+        default=_env_int("MAIN_CTX_TOKENS", 16384),
+        help="llama-server -c context window (sync with run-windows.env MAIN_CONTEXT).",
+    )
+    parser.add_argument(
         "--main-temperature",
         type=float,
         default=_env_float("MAIN_TEMPERATURE", 0.8),
@@ -3009,6 +3117,7 @@ def parse_args() -> AdapterConfig:
         frame_seconds=args.frame_seconds,
         max_pixels=args.max_pixels,
         main_max_tokens=args.main_max_tokens,
+        main_ctx_tokens=args.main_ctx_tokens,
         main_temperature=args.main_temperature,
         main_top_p=args.main_top_p,
         main_top_k=args.main_top_k,
