@@ -1,6 +1,6 @@
 # 屏幕捕获方案（getDisplayMedia）
 
-> 状态：**P0 落地（v3.27 + v3.33）**。v3.27 webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复；v3.33 在此之上加本地预览：操作员在 webui `<video id="videoElement">` 上能直接看到被捕获的窗口/标签（同时 BT-7274 仍通过 1fps WS frame 看到同一路画面）。
+> 状态：**P0 落地（v3.27 + v3.33 + v3.33.1）**。v3.27 webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复；v3.33 在此之上加本地预览（仅覆盖大 Start 按钮路径）；v3.33.1 把 v3.33 的本地预览逻辑补到 `screenStartBtn`（Video Source 面板里的小 Start 按钮）——这条路径用户实际在用，没补上时视频框一直黑屏。
 > 配套文档：`doc/jarvis-mode.md`（产品）+ `doc/tech-local.md §3.7`（实现）。
 
 ---
@@ -176,7 +176,7 @@ async def handle_video_frame(ws, data):
 | 文件 | 改动 | 行数 |
 | - | - | -: |
 | `services/webui/.../static/screen_capture.js` | 暴露 `getScreenCaptureStream()` / `getScreenCaptureVideo()` 全局 getter | +8 |
-| `services/webui/.../static/index.html` | `start()` Screen Capture 分支：`await startScreenCapture` 之后挂 `videoElement.srcObject` + 去镜像 + `setVideoWaitingForStream(false)` | +12 |
+| `services/webui/.../static/index.html` | **v3.33** `start()` Screen Capture 分支 + **v3.33.1** `screenStartBtn` click handler(Video Source 面板路径)：挂 `videoElement.srcObject` + 去镜像 + `setVideoWaitingForStream(false)` + 同步 `connectionStatus` 顶栏文案 | +12 + +28 |
 
 ### 3.5.2 关键代码（`index.html` start() Screen 分支）
 
@@ -213,6 +213,7 @@ async def handle_video_frame(ws, data):
 | **不增加 mirror toggle 的 source-aware 逻辑** | 保持改动最小；切到 Webcam tab 时用户自己再点 Mirror 按钮即可 |
 | **不动 Webcam / RTSP tab** | 物理摄像头是 WebRTC pipeline，本地预览本来就由 WebRTC 远端流推过来（不归本任务） |
 | **不动 webinfer / 端口 / 协议** | 视觉管线（WS frame → vlm_service）v3.27 已跑通，本任务只在 webui 前端加一个 `<video>` 预览 |
+| **v3.33.1: 覆盖两条启动路径** | v3.27 落地时 Screen Capture 有两条触发路径——大 Start 按钮（`start()` 函数）和 `screenStartBtn`（Video Source 面板里的小按钮），v3.33 只改了前者。真人测试时用户走的是 `screenStartBtn` 路径，导致视频框一直黑屏（v3.27 的 vlm pipeline 还在推帧给 BT，但操作员自己看不到）。v3.33.1 把 v3.33 的本地预览逻辑补到 `screenStartBtn` click handler，行为与大 Start 按钮对齐。 |
 
 ### 3.5.4 取消授权的处理
 
@@ -357,3 +358,4 @@ ffmpeg -f gdigrab -i title="Game Window" -r 1 -f image2pipe -vcodec mjpeg
 | 2026-07-09 | v1.0 | 初版：getDisplayMedia 屏幕捕获方案 | Codex |
 | 2026-07-13 | v3.27 | 落地接入：screen_capture.js 去 ES module 改全局 + ImageCapture 不可用 fallback、index.html 加 Screen Capture tab + screenControls、server.py websocket_handler 加 frame 分支（base64 → PIL → vlm_service.process_frame → get_session_callback 广播 vlm_response）；79/79 webui 测试通过 | Codex |
 | 2026-07-13 | v3.33 | Screen Capture 本地预览：screen_capture.js 暴露 `getScreenCaptureStream`/`getScreenCaptureVideo` 全局 getter;`index.html` `start()` Screen 分支挂 `videoElement.srcObject` + `classList.remove("mirrored")` + `setVideoWaitingForStream(false)`。操作员在 webui 上能直接看到被捕获的窗口/标签,同时 BT-7274 仍通过 1fps WS frame 看到同一路画面(视觉管线 / webinfer / 端口 / 协议全部零改动)。 | Codex |
+| 2026-07-13 | v3.33.1 | **真人测试 hotfix**: v3.33 漏了 `screenStartBtn`（Video Source 面板里的小 Start 按钮）路径——用户实际走的是这条,导致视频框一直黑屏。补 `screenStartBtn` + `screenStopBtn` click handler 里的 v3.33 逻辑(挂 `srcObject` + 去镜像 + `setVideoWaitingForStream` + 同步 `connectionStatus` 顶栏文案),与大 Start 按钮行为对齐。20/20 webui 静态契约测试仍过。 | Codex |
