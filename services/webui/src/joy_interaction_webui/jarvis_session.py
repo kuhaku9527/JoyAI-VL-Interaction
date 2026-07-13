@@ -235,7 +235,7 @@ class JarvisSessionManager:
         dict in server.py; if it is missing (e.g. test fixtures) we fall
         back to plain broadcast without breaking the voice path.
         """
-        def cb(text: str):
+        def cb(text: str, source: str = "jarvis_voice"):
             try:
                 from .server import notify_session_llm_reply, sessions as _server_sessions
             except Exception as exc:  # pragma: no cover
@@ -245,7 +245,7 @@ class JarvisSessionManager:
                 )
                 return
             try:
-                notify_session_llm_reply(session_id, text, source="jarvis")
+                notify_session_llm_reply(session_id, text, source=source)
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "LLM reply broadcast failed for %s: %s",

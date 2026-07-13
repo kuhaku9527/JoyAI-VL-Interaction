@@ -4367,7 +4367,7 @@ limitations under the License.
                             btLatency.llmReplyAt = performance.now();
                             renderBtLatency();
                             appendJarvisToResult(data.text || '', data.source || 'jarvis');
-                            playLlmReplyAudio(data.text || '');
+                            playLlmReplyAudio(data.text || '', { source: data.source || 'jarvis' });
                         } else if (data && data.type === 'pilot_utterance') {
                             // ASR final: drop the draft bubble and commit
                             // the canonical pilot message.
@@ -8741,8 +8741,23 @@ limitations under the License.
 
         // Play TTS audio whenever an llm_reply WS event arrives.
         // Hooked BEFORE connectWebSocket so the very first reply is caught.
-        async function playLlmReplyAudio(text) {
+        let lastLlmReplyAt = 0;
+        let lastLlmReplyKey = null;
+        async function playLlmReplyAudio(text, meta) {
             if (!text || !btTtsPlayer) return;
+            // The jarvis state machine streams TTS to the WebRTC audio_output
+            // track in addition to broadcasting llm_reply. Skip the front-end
+            // /api/tts/synthesize call in that case so we don't double-play.
+            // jarvis_voice is the back-end's tag for the streaming path;
+            // jarvis_text is the text-only path that needs the front-end TTS.
+            if (meta && meta.source === 'jarvis_voice') return;
+            // Dedupe: same reply text within 8s is treated as one utterance so a
+            // retry / late WS broadcast never replays the last reply.
+            const dedupKey = text + '|' + ((meta && meta.source) || 'default');
+            const now = Date.now();
+            if (lastLlmReplyKey === dedupKey && (now - lastLlmReplyAt) < 8000) return;
+            lastLlmReplyKey = dedupKey;
+            lastLlmReplyAt = now;
             btLatency.ttsStartAt = performance.now();
             btLatency.ttsReadyAt = null;
             btLatency.ttsPlayAt = null;

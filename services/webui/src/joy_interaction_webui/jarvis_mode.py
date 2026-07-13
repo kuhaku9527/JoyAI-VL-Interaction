@@ -316,7 +316,7 @@ class JarvisStateMachine:
         on_goodbye: Optional[Callable[[], None]] = None,
         on_asr_partial: Optional[Callable[[AsrPartial], None]] = None,
         on_user_utterance: Optional[Callable[[str], None]] = None,
-        on_llm_response: Optional[Callable[[str], None]] = None,
+        on_llm_response: Optional[Callable[[str, str], None]] = None,
         audio_output: Optional[Callable[[bytes, int], "asyncio.Future"]] = None,
     ):
         """
@@ -1101,8 +1101,11 @@ class JarvisStateMachine:
         # v3.24: append to conversation history (turn-by-turn)
         self._conv_history.append(("user", text))
         self._conv_history.append(("assistant", response))
+        # Tag the broadcast with whether the back-end also streamed TTS to the
+        # WebRTC audio_output track, so the front-end can avoid double-playing.
+        reply_source = "jarvis_voice" if stream_tts else "jarvis_text"
         if self.on_llm_response:
-            self.on_llm_response(response)
+            self.on_llm_response(response, source=reply_source)
 
         # Stream TTS for true voice mode. Text-only webui tests play audio
         # through /api/tts/synthesize in the browser, so they skip this path.
