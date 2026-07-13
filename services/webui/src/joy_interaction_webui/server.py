@@ -415,17 +415,17 @@ async def llm_message(request):
         sm._init_asr()
     except Exception as exc:
         logger.debug("LLM-message: ASR init skipped (%s)", exc)
-    asyncio.create_task(sm._send_to_llm(text, stream_tts=False))
+    task = asyncio.create_task(sm._send_to_llm(text, stream_tts=False))
+    app.setdefault("_llm_tasks", set()).add(task)
+    task.add_done_callback(app["_llm_tasks"].discard)
     return web.json_response({"session_id": session_id, "queued": True, "text_chars": len(text)})
-
 def get_or_create_session(session_id):
-    if session_id not in sessions:
-        api_base = default_vlm_config.get("api_base", "http://127.0.0.1:8070/v1")
-        model_name = default_vlm_config.get("model", "streaming-infer-adapter")
-        prompt = default_vlm_config.get("prompt")
-        vlm = VLMService(api_base=api_base, model=model_name, prompt=prompt)
-        sessions[session_id] = {"vlm_service": vlm, "background_service": BackgroundModelService(session_id=session_id, notify_callback=lambda payload, sid=session_id: notify_session_json(sid, payload), summarizer_api_base=api_base), "show_request_payload": False}
-        logger.info("Created new session: %s", session_id)
+    api_base = default_vlm_config.get("api_base", "http://127.0.0.1:8070/v1")
+    model_name = default_vlm_config.get("model", "streaming-infer-adapter")
+    prompt = default_vlm_config.get("prompt")
+    vlm = VLMService(api_base=api_base, model=model_name, prompt=prompt)
+    sessions[session_id] = {"vlm_service": vlm, "background_service": BackgroundModelService(session_id=session_id, notify_callback=lambda payload, sid=session_id: notify_session_json(sid, payload), summarizer_api_base=api_base), "show_request_payload": False}
+    logger.info("Created new session: %s", session_id)
     return sessions[session_id]
 
 async def session_cleanup(request):
