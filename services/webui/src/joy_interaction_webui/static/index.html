@@ -4044,10 +4044,10 @@ limitations under the License.
                             <label>Capture Target</label>
                             <div class="input-hint" style="margin-bottom: 8px;">A browser picker will ask you to pick a window/tab. Picks stay on this machine -- nothing is uploaded until you press Start.</div>
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button">
+                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button" onclick="start()">
                                     <i data-lucide="play"></i>
                                 </button>
-                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled>
+                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled onclick="stop({ clearConversation: false })">
                                     <i data-lucide="square"></i>
                                 </button>
                                 <span id="screenStatus" class="input-hint" style="margin: 0;">Idle</span>
@@ -4732,52 +4732,6 @@ limitations under the License.
                 if (stopBtn) stopBtn.disabled = !running;
                 setStatus(running ? 'Capturing (1 fps)' : 'Idle', running ? 'var(--success-color, #4caf50)' : '');
             }
-            if (startBtn) startBtn.addEventListener('click', async () => {
-                if (typeof window.startScreenCapture !== 'function') {
-                    setStatus('screen_capture.js missing', 'var(--warning-color, #ff6b35)');
-                    return;
-                }
-                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-                    connectWebSocket();
-                }
-                setStatus('Requesting capture...', 'var(--warning-color, #ff6b35)');
-                // v3.33: mirror start() Screen branch -- waiting state + reset srcObject
-                setVideoWaitingForStream(true);
-                videoElement.srcObject = null;
-                updateStatus('Selecting window...', 'processing');
-                try {
-                    await window.startScreenCapture(websocket, { fps: 1 });
-                    // v3.33: mount the captured stream on <video id="videoElement"> for local preview.
-                    // Stream is null when the user cancels the picker; surface a status hint in that case.
-                    const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
-                    if (previewStream) {
-                        // Game/tab content must not be mirrored (UI text would be unreadable).
-                        videoElement.classList.remove('mirrored');
-                        videoElement.srcObject = previewStream;
-                        setVideoWaitingForStream(false);
-                        updateStatus('Screen capturing', 'connected');
-                    } else {
-                        updateStatus('Screen capture cancelled', 'disconnected');
-                        setVideoWaitingForStream(false);
-                    }
-                } catch (err) {
-                    console.error('startScreenCapture failed:', err);
-                    setStatus('Failed: ' + (err && err.message ? err.message : err), 'var(--warning-color, #ff6b35)');
-                    updateStatus('Capture failed: ' + (err && err.message ? err.message : err), 'error');
-                    setVideoWaitingForStream(false);
-                }
-                refresh();
-            });
-            if (stopBtn) stopBtn.addEventListener('click', () => {
-                if (typeof window.stopScreenCapture === 'function') {
-                    window.stopScreenCapture();
-                }
-                // v3.33: clear the local preview tile and sync connection status
-                videoElement.srcObject = null;
-                setVideoWaitingForStream(false);
-                updateStatus('Disconnected', 'disconnected');
-                refresh();
-            });
             setInterval(refresh, 1000);
             refresh();
         })();
