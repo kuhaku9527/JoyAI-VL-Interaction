@@ -282,8 +282,13 @@ async def llm_status(request):
         llm_payload = _probe_llm(llm_url)
         cached["payload"] = llm_payload
         cached["ts"] = now
-    tts_payload = _probe_tts(tts_url)
-    kws_payload = _probe_kws(kws_dir) if kws_dir else {"status": "missing", "reason": "kws_model_dir not configured"}
+    loop = asyncio.get_running_loop()
+    tts_future = loop.run_in_executor(None, _probe_tts, tts_url)
+    kws_future = loop.run_in_executor(None, _probe_kws, kws_dir) if kws_dir else None
+    tts_payload, kws_payload = await asyncio.gather(
+        tts_future,
+        kws_future if kws_future is not None else asyncio.sleep(0, result={"status": "missing", "reason": "kws_model_dir not configured"}),
+    )
     overall = "ok"
     for p in (llm_payload, tts_payload, kws_payload):
         if p.get("status") in ("error", "missing"):
@@ -295,7 +300,7 @@ async def llm_status(request):
 
 async def tts_health(request):
     _llm_url, tts_url = _resolve_service_targets(request.app)
-    payload = _probe_tts(tts_url)
+    payload = await asyncio.get_running_loop().run_in_executor(None, _probe_tts, tts_url)
     return web.json_response({"ts": _now(), "url": tts_url, **payload})
 
 
