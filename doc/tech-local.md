@@ -1072,6 +1072,7 @@ sequenceDiagram
 | - | - | - | - |
 | 2026-07-09 | v1.4 | **§18 P2 记忆架构技术实现**：memory-store + bge-m3 + live_adapter 改造 + 性能/失败处理 | Codex |
 | 2026-07-13 | v3.34 | **llama-server ctx 4096→16384 + webinfer prompt guard**: 视觉链路 + 三层记忆 + 累积对话会让 prompt 暴涨到 50k+ tokens,撞 4096 硬限爆 502 exceed_context_size_error。改 `run-windows.env MAIN_CONTEXT=16384` + `MAIN_CTX_TOKENS=16384` + `start-llama-server.ps1` 默认 CtxSize=16384 重启 llama-server;`live_adapter.py` 加 `_estimate_messages_chars` / `_trim_messages_to_ctx` / `_compute_prompt_guard_max_chars` 三个 helper + `_build_main_http_messages` 接 `max_total_chars`,`_call_main_model` 在 dispatch 前按 `main_ctx_tokens * 3 chars * 0.85` 算总字符预算,超了从最老的 user/assistant 开始裁,保留 system + 最后 2 条 turn。11/11 新单测 + 27/27 webinfer + 20/20 webui 静态契约全过。| Codex |
+| 2026-07-13 | v3.35a | **隐藏 llama-server 控制台窗口**: `install/windows/start-llama-server.ps1` 的 `Start-Process` 缺 `-WindowStyle Hidden`,拉起 7060 时会弹黑色控制台窗口,被误点 X 就 kill PID。补上参数后 7060 静默后台运行,只剩 PID 文件 + 时间戳日志。`run-windows.ps1` 本身用 `$psi.WindowStyle="Hidden"`、voice_clone_api 分支也带 `-WindowStyle Hidden`,均无需改动。零代码逻辑变化。 | Codex |
 
 ---
 
