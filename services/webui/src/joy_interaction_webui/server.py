@@ -631,6 +631,18 @@ def main():
         app.router.add_static("/favicon", favicon_dir, name="favicon"); logger.info("Serving favicon files from: %s", favicon_dir)
     else:
         logger.warning("favicon directory missing: %s", favicon_dir)
+    # v3.27 missed this: serve the entire static dir at "/" so /screen_capture.js
+    # (loaded by index.html line 3650 <script src="./screen_capture.js">) returns
+    # 200 instead of 404. Without it the browser never registers
+    # window.startScreenCapture / stopScreenCapture and the video frame pipeline
+    # stays empty. Static add is registered AFTER explicit routes, so
+    # /, /ws, /api/* keep their handlers; only undeclared GETs fall through here.
+    static_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
+    if os.path.exists(static_root_dir):
+        app.router.add_static("/", static_root_dir, name="static-root", show_index=False, append_version=False)
+        logger.info("Serving static root files from: %s", static_root_dir)
+    else:
+        logger.warning("static root directory missing: %s", static_root_dir)
     test_mode = os.environ.get("JOYAI_TEST_MODE") == "1"
     if not test_mode:
         app.on_startup.append(on_startup); app.on_shutdown.append(on_shutdown)
