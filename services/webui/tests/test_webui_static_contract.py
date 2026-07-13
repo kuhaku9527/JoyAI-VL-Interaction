@@ -227,3 +227,83 @@ def test_bt_mic_gain_change_handler_is_not_nested_in_listen_click():
     assert gain_index < click_index
     click_to_send = html[click_index:html.index("promptSendBtn.addEventListener('click'", click_index)]
     assert "btMicGainSelectEl.addEventListener('change'" not in click_to_send
+
+
+
+# =====================================================================
+# v3.35 paper-plane multimodal: text + current video frame to LLM
+# =====================================================================
+
+def test_paper_plane_has_capture_frame_helper():
+    """v3.35: index.html exposes captureBtFrameB64() helper that snapshots
+    the active <video> source (screen capture > webcam) as JPEG base64.
+    """
+    html = _index_html()
+    body = _function_body(html, "captureBtFrameB64")
+
+    assert "videoElement" in body
+    assert "getScreenCaptureVideo" in body
+    assert "toDataURL" in body
+    assert ".split" not in body  # v3.35 uses indexOf(",") + slice, not split
+    assert "image/jpeg" in body
+    assert "0.7" in body
+    assert "drawImage" in body
+
+
+def test_paper_plane_sends_image_b64_to_llm_endpoint():
+    """v3.35: sendBtPrompt() now calls captureBtFrameB64 and only attaches
+    image_b64 when a frame was captured. Endpoint /api/llm/message stays.
+    """
+    html = _index_html()
+    body = _function_body(html, "sendBtPrompt")
+
+    assert "captureBtFrameB64" in body
+    assert "payload.image_b64" in body
+    assert "'/api/llm/message'" in body
+    assert "image_b64: image_b64" in body or "image_b64" in body
+    assert "session_id: sessionId" in body
+    # grace fall-back: no frame -> payload must still ship text
+    assert "text: text" in body
+
+
+
+def test_server_llm_message_accepts_image_b64():
+    """v3.35: /api/llm/message reads optional image_b64 and forwards it to
+    the jarvis state machine. Large payloads (>= 3MB base64) are dropped
+    so the request stays bounded.
+    """
+    server_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "server.py").read_text(encoding="utf-8")
+    assert "async def llm_message(request):" in server_py
+
+    # Find the llm_message function block (up to next top-level def).
+    import re
+    m = re.search(
+        r"async def llm_message\(request\):(?P<body>.*?)(?=^def |^async def )",
+        server_py,
+        re.S | re.M,
+    )
+    assert m, "llm_message function body not found"
+    body = m.group("body")
+
+    assert "image_b64 = data.get(" + chr(34) + "image_b64" + chr(34) + ")" in body
+    assert "sm._send_to_llm(text, stream_tts=False, image_b64=image_b64)" in body
+    assert "3 * 1024 * 1024" in body
+    assert chr(34) + "image_attached" + chr(34) + ": bool(image_b64)" in body
+
+
+def test_jarvis_send_to_llm_supports_multimodal():
+    """v3.35: _send_to_llm accepts image_b64 and shapes the user message as
+    a multimodal content array (text + image_url) when provided.
+    """
+    jarvis_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "jarvis_mode.py").read_text(encoding="utf-8")
+
+    idx = jarvis_py.index("async def _send_to_llm(")
+    next_def = jarvis_py.index("async def _stream_tts", idx)
+    body = jarvis_py[idx:next_def]
+
+    assert "image_b64: Optional[str] = None" in body
+    assert chr(34) + "image_url" + chr(34) in body
+    assert "data:image/jpeg;base64," in body
+    assert chr(34) + "type" + chr(34) + ": " + chr(34) + "text" + chr(34) in body
+    # text-only fall-back branch is preserved (else clause)
+    assert "messages.append({" + chr(34) + "role" + chr(34) + ": " + chr(34) + "user" + chr(34) + ", " + chr(34) + "content" + chr(34) + ": text})" in jarvis_py

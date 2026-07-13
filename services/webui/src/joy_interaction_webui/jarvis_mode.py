@@ -1059,11 +1059,16 @@ class JarvisStateMachine:
     # LLM interaction
     # ------------------------------------------------------------------
 
-    async def _send_to_llm(self, text: str, *, stream_tts: bool = True):
+    async def _send_to_llm(self, text: str, *, stream_tts: bool = True, image_b64: Optional[str] = None):
         """Send user's ASR text to the LLM (llama-server 7060) and stream TTS.
 
         Calls POST {llm_api_url}/chat/completions with system prompt + history,
         then optionally triggers _stream_tts with the response text.
+
+        v3.35: when ``image_b64`` is provided (paper-plane multimodal send)
+        the final user message is shaped as a content array of
+        ``[text, image_url]`` so llama.cpp's mmproj path can ground the
+        answer in the captured frame. Otherwise we send plain text.
         """
         # v3.24: prepend bounded conversation history so BT-7274 retains
         # short-term context across turns without persisting anything.
@@ -1072,7 +1077,17 @@ class JarvisStateMachine:
         history_snapshot = list(self._conv_history)[-self._max_history_turns * 2:]
         for role, content in history_snapshot:
             messages.append({"role": role, "content": content})
-        messages.append({"role": "user", "content": text})
+        if image_b64:
+            # Multimodal: text + image_url (OpenAI-compatible). Requires
+            # llama-server to be loaded with --mmproj (which our default
+            # install does; see install/windows/start-llama-server.ps1).
+            user_content = [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+            ]
+            messages.append({"role": "user", "content": user_content})
+        else:
+            messages.append({"role": "user", "content": text})
 
         logger.info(
             "LLM input: '%s' (history_turns=%d)",

@@ -104,5 +104,8 @@
 
 - **v3.32a verify-services.py/ps1 (2026-07-13)**: pure-Python end-to-end probe (no PowerShell parser issues), pings llama-server (7060) / webinfer (8070) / voice-clone (8985) / webui (8099). `stop-windows.ps1` / `verify-services.py` both green.
 - **v3.32b 撤回 v3.32 image chat (2026-07-13)**: 删除 paperclip 按钮 + `/api/vlm/chat` 端点 + `pendingVlmImage` state machine + webinfer multimodal `image_url` 分支 + static contract test。视觉走 v3.27 `screen capture` 路径（`getDisplayMedia` 1fps 推 frame -> VLM）。`JARVIS_KWS_THRESHOLD` 保留 v3.32 的 0.20（NVIDIA Broadcast 干净环境，识别率优先）。
+- **v3.33 / v3.33.1 Screen Capture 本地预览 (2026-07-13)**: `screen_capture.js` 暴露 `getScreenCaptureStream/getScreenCaptureVideo`,`index.html` 在 `start()` Screen 分支和 `screenStartBtn` click handler 都挂 `videoElement.srcObject` + 取消镜像。操作员能在 webui 上看到被捕获的窗口/标签,BT-7274 仍按 1fps WS 走原有视觉管线。详见 `doc/screen-capture.md` §3.5 + §11。
+- **v3.34 llama-server 上下文 4096->16384 + webinfer prompt guard (2026-07-13)**: 治本 `exceed_context_size_error` 502。详见 `doc/screen-capture.md` §11 v3.34 + `doc/specs/webinfer-prompt-guard-spec.md`(待落地)。
+- **v3.35 Paper-Plane 多模态 (2026-07-13)**: 让 BT-7274 通过"纸飞机"被问"你看到什么"时能看到当前屏幕。`index.html sendBtPrompt` 加 `captureBtFrameB64`(从 `getScreenCaptureVideo` / `<video id="videoElement">` 抓 JPEG,最大宽 800,q=0.7),`server.py llm_message` + `jarvis_mode._send_to_llm` 接受 `image_b64` 并把 user message 改成 OpenAI multimodal content 数组(需要 7060 llama-server 已启用 `--mmproj`,默认如此)。视觉管线 / 8070 webinfer / 4 进程编排 / 端口协议全部零改动。空源自动 fallback 到纯文本。详见 `doc/voice-ui.md` §3.6 + `doc/screen-capture.md` §11 v3.35。
 
 > 文档版本：v3.34 配套  |  最近更新：2026-07-13（llama-server ctx 4096→16384 + webinfer prompt guard 治本 502）  |  作者：Codex
