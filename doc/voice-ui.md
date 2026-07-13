@@ -113,6 +113,22 @@ related:
 - `setVideoWaitingForStream(waiting)` 切换 `videoCard` 的 `.waiting-for-stream` class（用于显示占位文本）
 - `.mirrored` class 仅在 Webcam 模式下手动开启（前置摄像头镜像），Screen Capture 模式启动时主动移除
 
+### 3.6 Paper-Plane 多模态发送 (v3.35)
+
+Paper-Plane 按钮（`promptSendBtn` / Cmd+Enter）原本只发纯文本 `text` 到 `/api/llm/message`，
+BT-7274 因为看不到画面只能说"全黑"/"无可见目标"。v3.35 升级为多模态：
+
+| 路径 | 行为 |
+| - | - |
+| 抓帧源 | `window.getScreenCaptureVideo()` -> `<video id="videoElement">` -> `null`。Screen Capture 模式优先,Webcam 其次,无源则 `null`。 |
+| 抓帧 | `canvas.drawImage(video, 0, 0, w, h)`,最大宽 `800px`,JPEG 质量 `0.7`,输出纯 base64 不带前缀。 |
+| POST body | `{ text, session_id, image_b64? }`,只在抓到帧时附加 `image_b64`。 |
+| 服务端 | `/api/llm/message` (server.py) 校验后调 `sm._send_to_llm(text, stream_tts=False, image_b64=...)`;baseline 3MB 拒绝以避免一次请求过大。 |
+| LLM 入参 | `_send_to_llm` (jarvis_mode.py) 在 `image_b64` 非空时把 user message content 改为 `[{text}, {image_url: data:image/jpeg;base64,...}]` 数组(OpenAI 多模态协议)。7060 llama-server 启用 `--mmproj` 才能接,详见 `install/windows/start-llama-server.ps1`。 |
+| TTS / WS 广播 | 不变。仍走 jarvis_voice / jarvis_text broadcast + `/api/tts/synthesize` 前端播放。 |
+
+**触发条件自动 fall-back**：当抓帧失败 (`videoWidth === 0` / 视频未授权 / 非媒体元素) 时,自动回到纯文本发送,前端不报错,BT-7274 仅缺画面上下文。
+
 ---
 
 ## 4. 待补章节（原 §3，章节号顺延）

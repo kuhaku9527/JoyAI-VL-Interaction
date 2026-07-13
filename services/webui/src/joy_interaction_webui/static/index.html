@@ -8713,10 +8713,38 @@ limitations under the License.
             sendBtPrompt();
         });
 
-        // BT-7274 text/voice-chain send: POST /api/llm/message WITHOUT video.
+        // BT-7274 multimodal paper-plane: text + current captured frame (if any).
         // The server replies with an llm_reply WS event; we then fetch
         // /api/tts/synthesize and play the resulting WAV via <audio>.
+        // v3.35: when a screen capture (or webcam) video source is live, we
+        // snapshot the latest frame and ship it as image_b64 so the LLM can
+        // ground its answer in what BT-7274 is supposedly looking at. If no
+        // video source is active the server falls back to text-only.
         const btTtsPlayer = document.getElementById('btTtsPlayer');
+        async function captureBtFrameB64() {
+            try {
+                const v = (typeof window.getScreenCaptureVideo === 'function'
+                            && window.getScreenCaptureVideo())
+                          || (typeof videoElement !== 'undefined' ? videoElement : null);
+                if (!v || !v.videoWidth || !v.videoHeight) return null;
+                const sw = v.videoWidth, sh = v.videoHeight;
+                const targetW = 800;
+                const scale = sw > targetW ? targetW / sw : 1;
+                const w = Math.max(1, Math.round(sw * scale));
+                const h = Math.max(1, Math.round(sh * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(v, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const commaIdx = dataUrl.indexOf(',');
+                return commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : null;
+            } catch (err) {
+                console.warn('[bt-send] captureBtFrameB64 failed:', err);
+                return null;
+            }
+        }
         async function sendBtPrompt() {
             const text = (promptText.value || '').trim();
             if (!text) {
@@ -8734,13 +8762,13 @@ limitations under the License.
             promptText.value = '';
             resetAsrTranscriptState('');
             try {
+                const image_b64 = await captureBtFrameB64();
+                const payload = { text: text, session_id: sessionId };
+                if (image_b64) payload.image_b64 = image_b64;
                 const resp = await fetch('/api/llm/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: text,
-                        session_id: sessionId,
-                    }),
+                    body: JSON.stringify(payload),
                 });
                 btLatency.sendAckAt = performance.now();
                 renderBtLatency();

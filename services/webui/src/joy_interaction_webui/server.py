@@ -415,10 +415,28 @@ async def llm_message(request):
         sm._init_asr()
     except Exception as exc:
         logger.debug("LLM-message: ASR init skipped (%s)", exc)
-    task = asyncio.create_task(sm._send_to_llm(text, stream_tts=False))
+    # v3.35: optional multimodal frame from the browser paper-plane. When
+    # present, jarvis_mode._send_to_llm shapes the user message as a
+    # content array (text + image_url) so 7060 llama.cpp (with --mmproj)
+    # can describe what is currently on the captured screen.
+    image_b64 = data.get("image_b64")
+    if isinstance(image_b64, str):
+        image_b64 = image_b64.strip() or None
+    else:
+        image_b64 = None
+    # Cap payload at ~3 MB base64 to keep a single request bounded.
+    if image_b64 and len(image_b64) > 3 * 1024 * 1024:
+        logger.warning("LLM-message: image_b64 too large (%d bytes), dropped", len(image_b64))
+        image_b64 = None
+    task = asyncio.create_task(sm._send_to_llm(text, stream_tts=False, image_b64=image_b64))
     app.setdefault("_llm_tasks", set()).add(task)
     task.add_done_callback(app["_llm_tasks"].discard)
-    return web.json_response({"session_id": session_id, "queued": True, "text_chars": len(text)})
+    return web.json_response({
+        "session_id": session_id,
+        "queued": True,
+        "text_chars": len(text),
+        "image_attached": bool(image_b64),
+    })
 def get_or_create_session(session_id):
     api_base = default_vlm_config.get("api_base", "http://127.0.0.1:8070/v1")
     model_name = default_vlm_config.get("model", "streaming-infer-adapter")
