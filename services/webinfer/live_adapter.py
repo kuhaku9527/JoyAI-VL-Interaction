@@ -1161,6 +1161,195 @@ class StreamingInferAdapter:
         })
 
 
+    async def handle_text_chat(self, request: web.Request) -> web.Response:
+        # v3.37 single-LLM-gateway: text-only chat-completion endpoint that
+        # runs the same system-prompt + memory + token-guard + decision-token
+        # parsing pipeline as the multimodal path, but rejects any image_url
+        # content so voice-dialog callers cannot smuggle frames through.
+        try:
+            payload = await _read_json(request)
+        except Exception as exc:  # noqa: BLE001
+            return _openai_error_response(f"invalid JSON body: {exc}", status=400)
+
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return _openai_error_response("messages must be a non-empty list", status=400)
+        valid_roles = {"system", "user", "assistant"}
+        for index, message in enumerate(messages):
+            if not isinstance(message, dict):
+                return _openai_error_response(
+                    f"messages[{index}] must be a dict", status=400
+                )
+            role = message.get("role")
+            if role not in valid_roles:
+                return _openai_error_response(
+                    f"messages[{index}].role must be one of {sorted(valid_roles)}, got {role!r}",
+                    status=400,
+                )
+            content = message.get("content")
+            if isinstance(content, list):
+                for part_index, part in enumerate(content):
+                    if isinstance(part, dict) and part.get("type") in {"image_url", "image"}:
+                        return _openai_error_response(
+                            "image content not allowed on /v1/text/chat; use /v1/chat/completions for multimodal",
+                            status=400,
+                        )
+            elif isinstance(content, str):
+                if "data:image/" in content and ";base64," in content:
+                    return _openai_error_response(
+                        "inline base64 image not allowed on /v1/text/chat",
+                        status=400,
+                    )
+            elif content is None:
+                return _openai_error_response(
+                    f"messages[{index}].content must not be null", status=400
+                )
+            else:
+                return _openai_error_response(
+                    f"messages[{index}].content must be str or list, got {type(content).__name__}",
+                    status=400,
+                )
+
+        session_id = _request_session_id(request, payload)
+        requested_model = payload.get("model")
+        client, model_name = self._resolve_backend(requested_model)
+        state = self.get_session(session_id)
+        async with state.lock:
+            try:
+                result = await self._handle_text_payload(
+                    state, payload, client=client, model_name=model_name
+                )
+            except web.HTTPException:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.exception("text chat completion failed")
+                return _openai_error_response(str(exc), status=502)
+        return web.json_response(result)
+
+    async def _handle_text_payload(
+        self,
+        state: SessionState,
+        payload: dict[str, Any],
+        *,
+        client: Optional[AsyncOpenAI] = None,
+        model_name: Optional[str] = None,
+    ) -> dict[str, Any]:
+        # Single-LLM-gateway text path. Composes the system prompt
+        # (character profile + [Local Wiki]), runs the v3.34 prompt
+        # token guard, forwards to the main model, parses decision
+        # tokens, and records the turn in qa_history so the next call
+        # sees the same conversation context as the video path.
+        client = client or self.main_client
+        model_name = model_name or self.config.main_model
+
+        # Slice 2: warm up memory blocks (fire-and-forget, fail-soft) so the
+        # system prompt picks up recent persisted knowledge.
+        if self.memory_store is not None and getattr(self.memory_store, "is_enabled", False):
+            try:
+                blocks = await self.memory_store.warmup(state.session_id)
+                if blocks:
+                    state._memory_block_cache = list(blocks)
+                    state._memory_warmed = True
+            except Exception:  # noqa: BLE001
+                LOGGER.debug("memory-store warmup failed for %s", state.session_id)
+
+        api_messages = list(payload.get("messages") or [])
+        composed_system = (self._build_memory_prompt(state) or "").strip()
+
+        # Resolve any caller-supplied system message into a flat list.
+        caller_messages = [
+            dict(m) for m in api_messages if m.get("role") != "system"
+        ]
+        if composed_system:
+            http_messages = (
+                [{"role": "system", "content": composed_system}] + caller_messages
+            )
+        else:
+            http_messages = caller_messages
+
+        # v3.34 prompt guard runs LAST so it sees the full assembled
+        # messages list (system + turns).
+        max_total_chars = _compute_prompt_guard_max_chars(self.config.main_ctx_tokens)
+        if max_total_chars > 0:
+            http_messages, removed = _trim_messages_to_ctx(
+                [dict(m) for m in http_messages], max_total_chars
+            )
+        else:
+            removed = 0
+
+        generation_kwargs = self._main_generation_kwargs(payload)
+        response = await client.chat.completions.create(
+            model=model_name,
+            messages=http_messages,
+            **generation_kwargs,
+        )
+        raw_text = response.choices[0].message.content if response.choices else ""
+        usage = response.usage.model_dump() if getattr(response, "usage", None) else None
+
+        decision, clean_text, delegation_question = _parse_decision_tokens(raw_text or "")
+
+        # Update qa_history so the NEXT call sees this turn as context,
+        # matching what the multimodal path does for video sessions.
+        self._update_text_qa_history(state, api_messages, clean_text, decision)
+
+        memory_chars = len(composed_system)
+        qa_history_len = len(state.memory_state.get("qa_history", []))
+        prompt_chars = _estimate_messages_chars(http_messages)
+
+        return _chat_completion_response(
+            model=self.config.adapter_model,
+            content=clean_text,
+            usage=usage,
+            raw_model=model_name,
+            raw_text=raw_text or "",
+            decision=decision,
+            delegation_question=delegation_question,
+            memory_chars=memory_chars,
+            qa_history_len=qa_history_len,
+            prompt_chars=prompt_chars,
+            trimmed_turns=removed,
+        )
+
+    def _update_text_qa_history(
+        self,
+        state: SessionState,
+        api_messages: list[dict[str, Any]],
+        clean_text: str,
+        decision: str,
+    ) -> None:
+        # Append the latest user/assistant pair to the session qa_history
+        # so subsequent calls inherit the same context. Deliberately
+        # ignores system messages and tool-style payloads; only the
+        # last user turn is recorded (matches existing helper behaviour).
+        if not self.config.keep_qa_history:
+            return
+        last_user_text = ""
+        for message in reversed(api_messages):
+            if message.get("role") == "user" and isinstance(message.get("content"), str):
+                last_user_text = message["content"]
+                break
+        if not last_user_text:
+            return
+        qa_history = state.memory_state.setdefault("qa_history", [])
+        now_iso = datetime.fromtimestamp(time.time()).isoformat(timespec="seconds")
+        existing = None
+        for entry in qa_history:
+            if entry.get("query") == last_user_text and entry.get("query_time") == now_iso:
+                existing = entry
+                break
+        if existing is None:
+            qa_history.append({
+                "query_time": now_iso,
+                "query": last_user_text,
+                "responses": [{"prediction": clean_text, "decision": decision}],
+                "archived_in_chunk": None,
+                "text_path": True,
+            })
+        else:
+            existing.setdefault("responses", []).append(
+                {"prediction": clean_text, "decision": decision}
+            )
+
     async def handle_chat_completions(self, request: web.Request) -> web.Response:
         payload = await _read_json(request)
         session_id = _request_session_id(request, payload)
@@ -2656,6 +2845,13 @@ def _chat_completion_response(
     usage: Optional[dict[str, Any]],
     raw_model: str,
     raw_text: str,
+    *,
+    decision: Optional[str] = None,
+    delegation_question: Optional[str] = None,
+    memory_chars: int = 0,
+    qa_history_len: int = 0,
+    prompt_chars: int = 0,
+    trimmed_turns: int = 0,
 ) -> dict[str, Any]:
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     response = {
@@ -2676,11 +2872,62 @@ def _chat_completion_response(
             "total_tokens": 0,
         },
     }
-    response["streamingharness"] = {
+    harness: dict[str, Any] = {
         "main_model": raw_model,
         "raw_content": raw_text,
     }
+    if decision is not None:
+        harness["decision"] = decision
+    # delegation_question is always present (None when not delegating)
+    # so callers see a stable field shape across all decisions.
+    harness["delegation_question"] = delegation_question
+    harness["memory_chars"] = int(memory_chars)
+    harness["qa_history_len"] = int(qa_history_len)
+    harness["prompt_chars"] = int(prompt_chars)
+    harness["trimmed_turns"] = int(trimmed_turns)
+    response["streamingharness"] = harness
     return response
+
+
+def _parse_decision_tokens(raw_text: str) -> tuple[str, str, Optional[str]]:
+    """Resolve a model reply into (decision, clean_text, delegation_question).
+
+    `raw_text` may carry one of three decision tokens at any position:
+
+      * `</silence>`           -> ("silence", "", None)
+      * `</response> X`        -> ("response", X, None)
+      * `</delegation> Q`      -> ("delegation", "", Q)
+
+    Anything that does not start with a known token is treated as a
+    bare response, mirroring :func:
+ormalize_model_output so both
+    paths stay in lock-step on what counts as a "reply".
+    """
+    text = (raw_text or "").strip()
+    if not text:
+        return "silence", "", None
+
+    # Walk every occurrence and pick the EARLIEST marker, mirroring
+    # normalize_model_output behaviour so callers never see two
+    # tokens interpreted differently by the two helpers.
+    earliest: Optional[tuple[int, str]] = None
+    for marker in ("</response>", "</silence>", "</delegation>"):
+        idx = text.find(marker)
+        if idx >= 0 and (earliest is None or idx < earliest[0]):
+            earliest = (idx, marker)
+
+    if earliest is None:
+        # Bare reply -> treat as response (matches normalize_model_output).
+        return "response", text, None
+
+    _, marker = earliest
+    tail = text[earliest[0] + len(marker):].strip()
+    if marker == "</silence>":
+        return "silence", "", None
+    if marker == "</delegation>":
+        return "delegation", "", tail or None
+    # </response>
+    return "response", tail, None
 
 
 def _openai_error_response(message: str, status: int) -> web.Response:
@@ -3201,6 +3448,7 @@ def create_app(config: AdapterConfig) -> web.Application:
     app.router.add_get("/health", adapter.handle_health)
     app.router.add_get("/v1/models", adapter.handle_models)
     app.router.add_post("/v1/chat/completions", adapter.handle_chat_completions)
+    app.router.add_post("/v1/text/chat", adapter.handle_text_chat)
     app.router.add_post("/v1/streaming/reset", adapter.handle_reset)
     app.router.add_get("/v1/prompts/active", adapter.handle_prompts_active)
     app.router.add_post("/v1/prompts/reload", adapter.handle_prompts_reload)

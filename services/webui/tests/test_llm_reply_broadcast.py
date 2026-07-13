@@ -173,13 +173,18 @@ def test_llm_message_schedules_async_llm_task():
             self.state = JarvisState.KWS_LISTENING
             self.sent = []
             self.stream_tts_flags = []
+            self.image_b64_flags = []
 
         def _init_asr(self):
             pass
 
-        async def _send_to_llm(self, text, *, stream_tts=True):
+        async def _send_to_llm(self, text, *, stream_tts=True, image_b64=None):
+            # v3.37: jarvis_mode._send_to_llm accepts image_b64 for the
+            # multimodal paper-plane path; the fake records it so tests
+            # that care can assert.
             self.sent.append(text)
             self.stream_tts_flags.append(stream_tts)
+            self.image_b64_flags.append(image_b64)
 
     class FakeSession:
         def __init__(self):
