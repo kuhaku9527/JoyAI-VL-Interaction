@@ -21,7 +21,7 @@ param(
     [string]$ModelPath  = "D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\joyai-vl-interaction-preview-iq4_nl-imat.gguf",
     [string]$MmprojPath = "D:\AI\models\main\mmproj\mmproj-joyai-vl-interaction-preview-f16.gguf",
     [int]$Port          = 7060,
-    [int]$CtxSize       = 4096,
+    [int]$CtxSize       = 16384,  # v3.34: 4096 -> 16384 to match MAIN_CONTEXT + webinfer prompt guard
     [int]$Ngl           = 999,
     [string]$BindHost       = "127.0.0.1",
     [switch]$NoMmproj,

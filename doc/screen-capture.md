@@ -1,6 +1,6 @@
 # 屏幕捕获方案（getDisplayMedia）
 
-> 状态：**P0 落地（v3.27 + v3.33 + v3.33.1）**。v3.27 webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复；v3.33 在此之上加本地预览（仅覆盖大 Start 按钮路径）；v3.33.1 把 v3.33 的本地预览逻辑补到 `screenStartBtn`（Video Source 面板里的小 Start 按钮）——这条路径用户实际在用，没补上时视频框一直黑屏。
+> 状态：**P0 落地（v3.27 + v3.33 + v3.33.1 + v3.34）**。v3.27 webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复；v3.33 在此之上加本地预览（仅覆盖大 Start 按钮路径）；v3.33.1 把 v3.33 的本地预览逻辑补到 `screenStartBtn`（Video Source 面板里的小 Start 按钮）——这条路径用户实际在用，没补上时视频框一直黑屏；v3.34 治本 502（`live_adapter.py` prompt guard）：视觉链路 + 三层记忆 + 多轮对话会让 prompt 暴涨到 50k+ tokens 撞 llama-server `n_ctx` 硬限爆 502，webinfer 调大 `main_ctx_tokens=16384` + 加 `max_total_chars` 裁剪。
 > 配套文档：`doc/jarvis-mode.md`（产品）+ `doc/tech-local.md §3.7`（实现）。
 
 ---
@@ -359,3 +359,4 @@ ffmpeg -f gdigrab -i title="Game Window" -r 1 -f image2pipe -vcodec mjpeg
 | 2026-07-13 | v3.27 | 落地接入：screen_capture.js 去 ES module 改全局 + ImageCapture 不可用 fallback、index.html 加 Screen Capture tab + screenControls、server.py websocket_handler 加 frame 分支（base64 → PIL → vlm_service.process_frame → get_session_callback 广播 vlm_response）；79/79 webui 测试通过 | Codex |
 | 2026-07-13 | v3.33 | Screen Capture 本地预览：screen_capture.js 暴露 `getScreenCaptureStream`/`getScreenCaptureVideo` 全局 getter;`index.html` `start()` Screen 分支挂 `videoElement.srcObject` + `classList.remove("mirrored")` + `setVideoWaitingForStream(false)`。操作员在 webui 上能直接看到被捕获的窗口/标签,同时 BT-7274 仍通过 1fps WS frame 看到同一路画面(视觉管线 / webinfer / 端口 / 协议全部零改动)。 | Codex |
 | 2026-07-13 | v3.33.1 | **真人测试 hotfix**: v3.33 漏了 `screenStartBtn`（Video Source 面板里的小 Start 按钮）路径——用户实际走的是这条,导致视频框一直黑屏。补 `screenStartBtn` + `screenStopBtn` click handler 里的 v3.33 逻辑(挂 `srcObject` + 去镜像 + `setVideoWaitingForStream` + 同步 `connectionStatus` 顶栏文案),与大 Start 按钮行为对齐。20/20 webui 静态契约测试仍过。 | Codex |
+| 2026-07-13 | v3.34 | **治本 502 exceed_context_size_error**: v3.33 真人测试时,webui 调 vlm chat 链路跑 51k tokens prompt 撞 llama-server `-c 4096` 硬限。`run-windows.env` `MAIN_CONTEXT=4096→16384` + 加 `MAIN_CTX_TOKENS=16384`;`install/windows/start-llama-server.ps1` 默认 CtxSize `4096→16384`;`live_adapter.py` 新增 `_estimate_messages_chars` / `_trim_messages_to_ctx` / `_compute_prompt_guard_max_chars` 三个 helper + `_build_main_http_messages` 接 `max_total_chars` kw,`_call_main_model` 在 dispatch 前按 `main_ctx_tokens * 3 chars * 0.85` 算总字符预算,超了从最老的 user/assistant 开始裁,保留 system + 最后 2 条 turn。新增 11 个单测 (`services/webinfer/tests/test_prompt_guard.py`)+ 27/27 旧 webinfer + 20/20 webui 静态契约全过。视觉管线 / webinfer 端口 / 4 进程编排均零改动。 | Codex |
