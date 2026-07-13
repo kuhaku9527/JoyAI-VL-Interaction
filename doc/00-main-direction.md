@@ -102,4 +102,7 @@
 
 ---
 
-> 文档版本：v3.28 配套  |  最近更新：2026-07-13（BT-7274 </delegation> 触发 hermes 闭环）  |  作者：Codex
+- **v3.32a verify-services.py/ps1 (2026-07-13)**: pure-Python end-to-end probe (no PowerShell parser issues), pings llama-server (7060) / webinfer (8070) / voice-clone (8985) / webui (8099). `stop-windows.ps1` / `verify-services.py` both green.
+- **v3.32b 撤回 v3.32 image chat (2026-07-13)**: 删除 paperclip 按钮 + `/api/vlm/chat` 端点 + `pendingVlmImage` state machine + webinfer multimodal `image_url` 分支 + static contract test。视觉走 v3.27 `screen capture` 路径（`getDisplayMedia` 1fps 推 frame -> VLM）。`JARVIS_KWS_THRESHOLD` 保留 v3.32 的 0.20（NVIDIA Broadcast 干净环境，识别率优先）。
+
+> 文档版本：v3.32b 配套  |  最近更新：2026-07-13（撤回 v3.32 image chat，保留 KWS 0.20）  |  作者：Codex
