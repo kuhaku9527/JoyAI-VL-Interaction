@@ -219,30 +219,6 @@ def test_header_status_area_wraps_instead_of_overlapping():
     assert "white-space: nowrap;" in html
 
 
-def test_vlm_image_chat_endpoints_and_button_are_wired():
-    html = _index_html()
-    server_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "server.py").read_text(encoding="utf-8")
-
-    # Server endpoint exists and is registered
-    assert "async def vlm_chat(request):" in server_py
-    assert 'app.router.add_post("/api/vlm/chat", vlm_chat)' in server_py
-    assert "image_url" in server_py  # multimodal content type wired
-
-    # Frontend UI elements
-    assert 'id="vlmImageBtn"' in html
-    assert 'id="vlmImageInput"' in html
-    assert 'id="vlmImagePreview"' in html
-    assert 'id="vlmImageClear"' in html
-
-    # JS sends to /api/vlm/chat when an image is staged
-    body = _function_body(html, "sendBtPrompt")
-    assert "'/api/vlm/chat'" in body
-    assert "image_data_url: image.dataUrl" in body
-    assert "clearPendingVlmImage" in body
-    assert "function setPendingVlmImage" in html
-    assert "function clearPendingVlmImage" in html
-
-
 def test_bt_mic_gain_change_handler_is_not_nested_in_listen_click():
     html = _index_html()
 

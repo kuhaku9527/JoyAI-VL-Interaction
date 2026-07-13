@@ -419,97 +419,6 @@ async def llm_message(request):
     app.setdefault("_llm_tasks", set()).add(task)
     task.add_done_callback(app["_llm_tasks"].discard)
     return web.json_response({"session_id": session_id, "queued": True, "text_chars": len(text)})
-
-
-async def vlm_chat(request):
-    """POST /api/vlm/chat -- image+text chat via webinfer multimodal path.
-
-    Body: {"session_id": "...", "text": "...", "image_data_url": "data:image/..."}.
-    Forwards to ``JARVIS_LLM_API_URL`` (default 8070 webinfer) as a single
-    multimodal ``chat.completions`` call. Broadcasts the reply to the WS
-    so the existing installLlmReplyHandler renders it in vlmHistory and
-    playLlmReplyAudio plays it (source ``vlm_chat`` is not skipped).
-    """
-    import httpx as _httpx
-    try:
-        data = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid json"}, status=400)
-    session_id = (data.get("session_id") or "").strip()
-    text = (data.get("text") or "").strip()
-    image_data_url = (data.get("image_data_url") or "").strip()
-    if not session_id:
-        return web.json_response({"error": "missing session_id"}, status=400)
-    if not image_data_url and not text:
-        return web.json_response({"error": "missing text or image"}, status=400)
-    # Build OpenAI-style multimodal content (image first, then text).
-    content = []
-    if image_data_url:
-        if len(image_data_url) > 8 * 1024 * 1024:
-            return web.json_response({"error": "image too large; max ~6 MB"}, status=413)
-        content.append({"type": "image_url", "image_url": {"url": image_data_url}})
-    if text:
-        content.append({"type": "text", "text": text})
-    if not content:
-        return web.json_response({"error": "empty content"}, status=400)
-    # webinfer endpoint (same as VLM frames) handles multimodal content arrays.
-    webinfer_base = default_vlm_config.get("api_base") or os.environ.get("JARVIS_LLM_API_URL", "http://127.0.0.1:8070/v1")
-    webinfer_url = webinfer_base.rstrip("/") + "/chat/completions"
-    model_name = default_vlm_config.get("model") or os.environ.get("JARVIS_LLM_MODEL", "streaming-infer-adapter")
-    payload = {
-        "model": model_name,
-        "messages": [{"role": "user", "content": content}],
-        "stream": False,
-        "max_tokens": 512,
-        "temperature": 0.6,
-    }
-    try:
-        async with _httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(webinfer_url, json=payload)
-    except Exception as exc:
-        logger.warning("vlm_chat: webinfer unreachable: %s", exc)
-        return web.json_response({"error": "webinfer unreachable", "reason": str(exc)[:120]}, status=502)
-    if resp.status_code >= 400:
-        body_text = (resp.text or "")[:300]
-        logger.warning("vlm_chat: webinfer %d: %s", resp.status_code, body_text)
-        return web.json_response({"error": "webinfer error", "status": resp.status_code, "body": body_text}, status=502)
-    try:
-        j = resp.json()
-    except Exception as exc:
-        return web.json_response({"error": "webinfer non-json", "reason": str(exc)[:120]}, status=502)
-    reply_text = ""
-    try:
-        choices = j.get("choices") or []
-        if choices:
-            message = choices[0].get("message") or {}
-            reply_text = (message.get("content") or "").strip()
-    except Exception:
-        reply_text = ""
-    if not reply_text:
-        reply_text = "(empty VLM reply)"
-    # Strip webinfer multimodal frame-state artefacts that can leak as a prefix.
-    # The streaming VLM path can inject "</response>" / frame tags before the
-    # real assistant content; we only clean the leading edge so internal
-    # Chinese punctuation / markdown inside the reply is left intact.
-    import re as _re_artifacts
-    reply_text = _re_artifacts.sub(
-        r"^(?:</?response>|</?time_range[^>]*>|<\|[^>]*\|>|<\|[^>]*>)\s*",
-        "",
-        reply_text.strip(),
-    ).strip()
-    if not reply_text:
-        reply_text = "(empty VLM reply)"
-    # Mirror into the chat pipeline so vlmHistory and TTS both pick it up.
-    handle_background_handoff_for_interaction(session_id, {"type": "vlm_chat_done", "text": reply_text})
-    notify_session_llm_reply(session_id, reply_text, source="vlm_chat")
-    metrics = {}
-    try:
-        usage = j.get("usage") or {}
-        if usage:
-            metrics = {"prompt_tokens": usage.get("prompt_tokens"), "completion_tokens": usage.get("completion_tokens"), "total_tokens": usage.get("total_tokens")}
-    except Exception:
-        pass
-    return web.json_response({"session_id": session_id, "text": reply_text, "source": "vlm_chat", "model": model_name, "usage": metrics})
 def get_or_create_session(session_id):
     api_base = default_vlm_config.get("api_base", "http://127.0.0.1:8070/v1")
     model_name = default_vlm_config.get("model", "streaming-infer-adapter")
@@ -706,7 +615,6 @@ def main():
     app.router.add_get("/api/llm/status", llm_status)
     app.router.add_get("/api/tts/health", tts_health)
     app.router.add_post("/api/llm/message", llm_message)
-    app.router.add_post("/api/vlm/chat", vlm_chat)
     app.router.add_post("/api/tts/synthesize", _tts_synthesize_handler)
     app.router.add_post("/api/rtsp/start", _rtsp_start_stub)
     app.router.add_post("/api/rtsp/stop", _rtsp_stop_stub)

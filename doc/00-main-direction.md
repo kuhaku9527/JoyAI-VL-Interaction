@@ -102,7 +102,4 @@
 
 ---
 
-- **v3.32 视觉接入（2026-07-13 / 链路必跑）**：`webui` 新增 📎 图片上传按钮 + 预览缩略图 → `POST /api/vlm/chat` 走 webinfer 多模态 `image_url` content → webui 解析 reply → WS `llm_reply` source=`vlm_chat` → 复用 `vlmHistory` 渲染 + `playLlmReplyAudio` TTS 链路. KWS 阈值 0.25→0.20（干净无噪环境，识别率优先）。详见 `doc/screen-capture.md §12`.
-- **v3.31 webui TTS source-aware 测试契约（2026-07-13）**：`test_webui_static_contract.py` 增 1 行断言，检查 `installLlmReplyHandler` 传 `source` 给 `playLlmReplyAudio`，防止 jarvis_voice 路径下重复播（v3.30 实际改动配套）.
-
-> 文档版本：v3.32 配套  |  最近更新：2026-07-13（VLM image chat + KWS 0.20）  |  作者：Codex
+> 文档版本：v3.28 配套  |  最近更新：2026-07-13（BT-7274 </delegation> 触发 hermes 闭环）  |  作者：Codex
