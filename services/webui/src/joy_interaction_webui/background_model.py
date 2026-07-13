@@ -148,6 +148,25 @@ def clean_delegation_question_for_display(question: str) -> str:
     return value.strip()
 
 
+
+def _looks_like_user_echo(question: str, user_prompt: str = "") -> bool:
+    """Heuristic: reject delegation questions that look like a verbatim echo of
+    the user prompt. Triggered on small LLMs that emit `</delegation>` followed
+    by the original utterance. The check is conservative: only short delegations
+    and high overlap with the user prompt are rejected."""
+    q = str(question or "").strip()
+    up = str(user_prompt or "").strip()
+    if not q or not up:
+        return False
+    upn = re.sub(r"\s+", "", up)
+    qn = re.sub(r"\s+", "", q)
+    if qn in upn or upn in qn:
+        return True
+    if len(qn) < 4 or len(upn) < 8:
+        return False
+    ngrams = {qn[i:i+4] for i in range(len(qn) - 3)}
+    hits = sum(1 for ng in ngrams if ng in upn)
+    return hits / len(ngrams) >= 0.7
 def _is_internal_question_marker_only(question: str) -> bool:
     value = str(question or "").strip()
     if not value:
@@ -196,7 +215,7 @@ class BackgroundFrame:
     pts: Optional[int] = None
 
 
-def parse_delegation(text: str) -> Optional[DelegationRequest]:
+def parse_delegation(text: str, user_prompt: str = "") -> Optional[DelegationRequest]:
     """Extract foreground response text and delegated question from model output."""
     if not text:
         return None
@@ -219,6 +238,13 @@ def parse_delegation(text: str) -> Optional[DelegationRequest]:
     original_foreground_text = raw_text[:tag_index].strip()
     raw_question = raw_text[tag_index + tag_size :].strip()
     question = clean_delegation_question_for_display(raw_question)
+    # Guard: small quantised LLMs sometimes emit `</delegation>` followed by
+    # the user prompt verbatim (treating the tag as a soft separator). Reject
+    # those as hallucinated delegations so chit-chat / one-token answers do not
+    # spawn spurious background calls.
+    if _looks_like_user_echo(raw_question, user_prompt):
+        return None
+
     if not question and not _is_internal_question_marker_only(raw_question):
         return None
 
@@ -611,7 +637,7 @@ class BackgroundModelService:
 
     def handle_foreground_response(self, text: str, metrics: Optional[dict] = None) -> str:
         """Start background work when a foreground response contains delegation."""
-        delegation = parse_delegation(text)
+        delegation = parse_delegation(text, user_prompt=str((metrics or {}).get("user_prompt") or ""))
         if not delegation:
             return text
         original_question = clean_delegation_question_for_display(
