@@ -4741,11 +4741,30 @@ limitations under the License.
                     connectWebSocket();
                 }
                 setStatus('Requesting capture...', 'var(--warning-color, #ff6b35)');
+                // v3.33: mirror start() Screen branch -- waiting state + reset srcObject
+                setVideoWaitingForStream(true);
+                videoElement.srcObject = null;
+                updateStatus('Selecting window...', 'processing');
                 try {
                     await window.startScreenCapture(websocket, { fps: 1 });
+                    // v3.33: mount the captured stream on <video id="videoElement"> for local preview.
+                    // Stream is null when the user cancels the picker; surface a status hint in that case.
+                    const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
+                    if (previewStream) {
+                        // Game/tab content must not be mirrored (UI text would be unreadable).
+                        videoElement.classList.remove('mirrored');
+                        videoElement.srcObject = previewStream;
+                        setVideoWaitingForStream(false);
+                        updateStatus('Screen capturing', 'connected');
+                    } else {
+                        updateStatus('Screen capture cancelled', 'disconnected');
+                        setVideoWaitingForStream(false);
+                    }
                 } catch (err) {
                     console.error('startScreenCapture failed:', err);
                     setStatus('Failed: ' + (err && err.message ? err.message : err), 'var(--warning-color, #ff6b35)');
+                    updateStatus('Capture failed: ' + (err && err.message ? err.message : err), 'error');
+                    setVideoWaitingForStream(false);
                 }
                 refresh();
             });
@@ -4753,6 +4772,10 @@ limitations under the License.
                 if (typeof window.stopScreenCapture === 'function') {
                     window.stopScreenCapture();
                 }
+                // v3.33: clear the local preview tile and sync connection status
+                videoElement.srcObject = null;
+                setVideoWaitingForStream(false);
+                updateStatus('Disconnected', 'disconnected');
                 refresh();
             });
             setInterval(refresh, 1000);
