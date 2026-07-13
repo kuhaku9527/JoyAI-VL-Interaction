@@ -1,77 +1,117 @@
-# 文档索引
+# JoyAI-VL-Interaction 文档库
 
-> 完整项目文档库。所有文档按"**主方向 → 调研 → 本地化部署（降级）→ 子系统 → 交付与历史**"组织。
-> **API 化是主方向，本地化是降级方案**。详见 [`00-main-direction.md`](00-main-direction.md)。
+> **版本**: v3.37 配套 | **最近更新**: 2026-07-13 | **状态**: ✅ 与代码同步
+>
+> **如何读这页**：新人先按 👇 入口路径走（35 分钟入门）。需要查特定子系统的设计/规格/决策时，按"分类索引"找。历史文档 `deprecated/` 不进常规阅读路径。
+>
+> **关键文档（最常被读到）**：
+> - 📌 [`specs/2026-07-13-current-state.md`](specs/2026-07-13-current-state.md) — **项目现状唯一权威**（端口、模块流程、风险表）
+> - 📌 [`specs/2026-07-13-llm-path-consolidation.md`](specs/2026-07-13-llm-path-consolidation.md) — LLM 网关单入口（B 选项实施合同，已 ✅ 实施）
+> - 📌 [`adr/0006-llm-gateway-single-entrypoint.md`](adr/0006-llm-gateway-single-entrypoint.md) — v3.37 设计决策
 
 ---
 
-## 📌 入门必读（按顺序）
+## 🎯 入口路径（新人在此起步）
 
-1. **[`00-main-direction.md`](00-main-direction.md)** — 主方向 + 阅读优先级 + v3.2 路线图（**先读这个**）
-2. **[`api-optimization.md`](api-optimization.md)** — API 化方案（主路径核心）
-3. **[`token-plan-comparison.md`](token-plan-comparison.md)** — 8 家厂商 Token Plan 调研
+1. **[`main/00-main-direction.md`](main/00-main-direction.md)** — 主方向 + v3.37 路线图（**先读这个**）
+2. **[`specs/2026-07-13-current-state.md`](specs/2026-07-13-current-state.md)** — 项目现状快照（端口、模块、风险）
+3. **[`glossary.md`](glossary.md)** — BT 语音交互栈术语表
+4. 按需要展开到子系统 / ADR / Spec —— 见下方分类索引
 
-## 🔍 调研 / 选型
+---
 
-- **[`token-plan-comparison.md`](token-plan-comparison.md)** — 8 家厂商 Token Plan 对比 + MiniMax 推荐
-- **[`lightweight-replacement.md`](lightweight-replacement.md)** — 硬件选型（GGUF / 摘要模型 / ASR / TTS）
+## 📚 分类索引
 
-## 🖥️ 本地化部署（**降级方案**）
+### 主方向（1 份）
 
-- **[`pm-local.md`](pm-local.md)** — PM 视角的本地化方案
-- **[`tech-local.md`](tech-local.md)** — 技术实现细节
-- **[`architecture-local.md`](architecture-local.md)** — 11 进程拓扑 + 显存分配
+| 文档 | 用途 |
+| --- | --- |
+| [`main/00-main-direction.md`](main/00-main-direction.md) | 项目主方向 + 路线图 |
 
-## 🔧 子系统
+### API 化主路径（2 份）
 
-- **[`jarvis-mode.md`](jarvis-mode.md)** — Jarvis 模式产品设计（状态机 + 唤醒 + 事件响应）
-- **[`asr-streaming.md`](asr-streaming.md)** — KWS + 流式 ASR 实现（sherpa-onnx）
-- **[`screen-capture.md`](screen-capture.md)** — getDisplayMedia 屏幕捕获
-- **[`hermes-integration.md`](hermes-integration.md)** — Hermes-agent 严格隔离集成
-- **[`voice-clone.md`](voice-clone.md)** — CosyVoice3 零样本克隆
-- **[`memory-architecture.md`](memory-architecture.md)** — 可插拔记忆架构（**embedding API 化见 api-optimization.md §3.5**）
+| 文档 | 用途 |
+| --- | --- |
+| [`api/api-optimization.md`](api/api-optimization.md) | API 化方案（主路径核心，~40 KB） |
+| [`api/token-plan-comparison.md`](api/token-plan-comparison.md) | 8 家厂商 Token Plan 调研（MiniMax 推荐） |
 
-## 🛠 维护工具
+### 本地化降级方案（3 份）
 
-- **[`../services/scripts/README.md`](../services/scripts/README.md)** — 改代码后必跑 [`sync-docs.py`](../services/scripts/sync-docs.py)（自动追加 DELIVERY + 路线图状态）；其他 helper 见子目录列表
-- **[`../stop-joyai.ps1`](../stop-joyai.ps1)** — 一键停全部 12 服务，替代任务管理器
-- **[`../start-joyai.ps1`](../start-joyai.ps1)** — 薄包装 run-windows.ps1
+> **降级方案**：API 路径不可用时的本地兜底。**默认走 API 路径**，看这三个时确认自己真的在本地化部署。
 
-## 📦 交付与历史
+| 文档 | 用途 |
+| --- | --- |
+| [`local/pm-local.md`](local/pm-local.md) | PM 视角的本地化方案 |
+| [`local/tech-local.md`](local/tech-local.md) | 技术实现细节 |
+| [`local/architecture-local.md`](local/architecture-local.md) | 11 进程拓扑 + 显存分配 |
 
+### 调研 / 选型（2 份）
 
-## 📐 架构决策记录（ADR）
+| 文档 | 用途 |
+| --- | --- |
+| [`research/memory-store-research.md`](research/memory-store-research.md) | 持久化层选型 |
+| [`research/lightweight-replacement.md`](research/lightweight-replacement.md) | 硬件选型（GGUF / 摘要 / ASR / TTS） |
 
-- **[`adr/0001-voice-clone-sync.md`](adr/0001-voice-clone-sync.md)** — Rapid Clone 同步路径 vs `/v1/t2a_async_v2`（结论：保持同步）
-- **[`adr/0002-kws-config-env.md`](adr/0002-kws-config-env.md)** — KWS 调参改 env 化
-- **[`adr/0003-llm-reply-panel.md`](adr/0003-llm-reply-panel.md)** — LLM 回复面板可见性
-- **[`adr/0004-service-lifecycle.md`](adr/0004-service-lifecycle.md)** — 服务停止方案
-- **[`glossary.md`](glossary.md)** — BT 语音交互栈术语表
-- **[`../DELIVERY.md`](../DELIVERY.md)** — 变更记录 + 复盘决策
-- **[`gaming-mode.md`](gaming-mode.md)** — 旧名"游戏模式"使用指南
-- **[`deprecated/`](deprecated/)** — 上游残留（已弃用，勿读）
+### 子系统设计（8 份）
 
-## 🗂️ 文档清单
+> 按模块拆分的设计文档。改某个模块前先读对应文件。
 
-| 路径 | 大小 | 类型 | 状态 |
-|---|---:|---|---|
-| `README.md` | 本文件 | 索引 | ✅ |
-| `00-main-direction.md` | ~5 KB | 主方向 | ✅ |
-| `api-optimization.md` | ~25 KB | 主路径核心 | ✅ 升级中 |
-| `token-plan-comparison.md` | ~19 KB | 调研 | ✅ |
-| `lightweight-replacement.md` | ~28 KB | 调研 | ✅ |
-| `pm-local.md` | ~36 KB | 本地化 | ⚠️ 顶部加降级说明 |
-| `tech-local.md` | ~45 KB | 本地化 | ⚠️ 顶部加降级说明 |
-| `architecture-local.md` | ~8 KB | 本地化 | ⚠️ 顶部加降级说明 |
-| `jarvis-mode.md` | ~28 KB | 子系统 | ✅ |
-| `asr-streaming.md` | ~13 KB | 子系统 | ✅ |
-| `screen-capture.md` | ~9 KB | 子系统 | ✅ |
-| `hermes-integration.md` | ~10 KB | 子系统 | ✅ |
-| `voice-clone.md` | ~9 KB | 子系统 | ⚠️ 抽出 §9 |
-| `memory-architecture.md` | ~12 KB | 子系统 | ⚠️ 抽出 §4 部分 |
-| `gaming-mode.md` | ~6 KB | 使用指南 | ✅ |
-| `../DELIVERY.md` | ~23 KB | 变更记录 | ✅ |
-| `deprecated/*` | ~30 KB | 已弃用 | ⚠️ 顶部加弃用说明 |
+| 文档 | 模块 |
+| --- | --- |
+| [`subsystems/jarvis-mode.md`](subsystems/jarvis-mode.md) | **Jarvis 模式**（状态机 + 唤醒 + 事件响应，~60 KB 最大文件） |
+| [`subsystems/asr-streaming.md`](subsystems/asr-streaming.md) | KWS + 流式 ASR（sherpa-onnx） |
+| [`subsystems/screen-capture.md`](subsystems/screen-capture.md) | getDisplayMedia 屏幕捕获 |
+| [`subsystems/hermes-integration.md`](subsystems/hermes-integration.md) | Hermes-agent 严格隔离集成 |
+| [`subsystems/voice-clone.md`](subsystems/voice-clone.md) | CosyVoice3 零样本克隆 |
+| [`subsystems/voice-ui.md`](subsystems/voice-ui.md) | 浏览器语音交互界面 |
+| [`subsystems/memory-architecture.md`](subsystems/memory-architecture.md) | 可插拔记忆架构（embedding API 化见 api/api-optimization.md §3.5） |
+| [`subsystems/gaming-mode.md`](subsystems/gaming-mode.md) | 旧名"游戏模式"使用指南 |
+
+### 专题 Spec（`specs/`）
+
+> **活跃 spec**：每次变更/上线都要新建/更新对应专题。命名规范 `YYYY-MM-DD-{topic}.md`。
+
+| Spec | 状态 | 用途 |
+| --- | --- | --- |
+| [`specs/2026-07-13-current-state.md`](specs/2026-07-13-current-state.md) | ✅ 唯一现状权威 | 端口 / 模块流程 / 风险表 |
+| [`specs/2026-07-13-llm-path-consolidation.md`](specs/2026-07-13-llm-path-consolidation.md) | ✅ 已实施 | B 选项实施合同 |
+| [`specs/hybrid-wake-confirm.md`](specs/hybrid-wake-confirm.md) | ✅ 已实施 | 混合唤醒确认窗口 |
+| [`specs/kws-recall-optimization.md`](specs/kws-recall-optimization.md) | ✅ 已实施 | KWS 召回优化 |
+| [`specs/memory-store-skeleton-spec.md`](specs/memory-store-skeleton-spec.md) | ✅ 已实施 | 持久化层骨架 |
+| [`specs/webui-asr-input-state.md`](specs/webui-asr-input-state.md) | ✅ 已实施 | WebUI ASR 状态机 |
+| [`specs/webui-kws-listening-chain.md`](specs/webui-kws-listening-chain.md) | ✅ 已实施 | WebUI KWS 监听链 |
+
+### 架构决策记录（`adr/`）
+
+> "为什么这么改"——决策历史。
+
+| ADR | 主题 |
+| --- | --- |
+| [`adr/0001-voice-clone-sync.md`](adr/0001-voice-clone-sync.md) | Rapid Clone 同步路径 vs `/v1/t2a_async_v2` |
+| [`adr/0002-kws-config-env.md`](adr/0002-kws-config-env.md) | KWS 调参改 env 化 |
+| [`adr/0003-llm-reply-panel.md`](adr/0003-llm-reply-panel.md) | LLM 回复面板可见性 |
+| [`adr/0004-service-lifecycle.md`](adr/0004-service-lifecycle.md) | 服务停止方案 |
+| [`adr/0005-memory-store-start.md`](adr/0005-memory-store-start.md) | 持久化层启动策略 |
+| [`adr/0006-llm-gateway-single-entrypoint.md`](adr/0006-llm-gateway-single-entrypoint.md) | LLM 网关单入口（v3.37） |
+
+### 工具书
+
+| 文档 | 用途 |
+| --- | --- |
+| [`glossary.md`](glossary.md) | BT 语音交互栈术语表 |
+
+### 维护工具（跨目录引用）
+
+- [`../services/scripts/README.md`](../services/scripts/README.md) — 改代码后必跑 [`sync-docs.py`](../services/scripts/sync-docs.py)
+- [`../stop-joyai.ps1`](../stop-joyai.ps1) — 一键停全部服务
+- [`../start-joyai.ps1`](../start-joyai.ps1) — 薄包装 `run-windows.ps1`
+- [`../DELIVERY.md`](../DELIVERY.md) — 变更记录 + 复盘决策
+
+### 已弃用（不进常规阅读路径）
+
+| 目录 | 说明 |
+| --- | --- |
+| [`deprecated/`](deprecated/) | 历史文档快照（详见 `deprecated/README.md` 的处置规则；不要据此实施） |
 
 ---
 
@@ -82,8 +122,8 @@ JoyAI-VL-Interaction-main/
 ├── README.md
 ├── DELIVERY.md
 ├── doc/                 # 本目录
-├── services/            # 7 个微服务（webinfer / asr / tts / voice-clone / webui / background-agent / common）
-├── install/             # 安装脚本（install-windows.ps1 / setup-*.ps1）
+├── services/            # webinfer / asr / tts / voice-clone / webui / background-agent / common
+├── install/             # 安装脚本
 ├── prompts/             # 角色 prompt 模板
 ├── voices/              # 声音档案（运行时生成）
 ├── datasets/            # 训练数据转换工具（运行时不需要）
@@ -92,4 +132,10 @@ JoyAI-VL-Interaction-main/
 
 ---
 
-> 文档版本：v3.2 配套  |  最近更新：2026-07-09  |  作者：Codex
+## 📋 文档维护规则
+
+1. **改代码 → 改 spec**：`specs/2026-07-13-current-state.md` 是基线，端口/模块变更必须同步。
+2. **新增专题 → 新建 spec**：写 `specs/YYYY-MM-DD-{topic}.md`，状态用 `✅ 已实施 / 🟡 进行中 / ⚪ 观察项 / ⚫ 弃用`。
+3. **设计决策 → 新建 ADR**：顺序编号 `adr/NNNN-{title}.md`，状态 `Accepted / Superseded / Deprecated`。
+4. **过 6 个月无引用 → 候选弃用**：先 `deprecated/`，6 个月再未引用 → 删除。
+5. **`doc/README.md`（本文件）必须反映最新分类布局**——加新文件时同步更新。
