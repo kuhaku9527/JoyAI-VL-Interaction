@@ -697,21 +697,30 @@ async def _services_status_handler(request):
     tts_cfg = _services_config.get("tts", {})
     asr_cfg = _services_config.get("asr", {})
     tts_url = tts_cfg.get("api_base") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
-    llm_raw = _probe_llm(llm_cfg.get("api_base", "http://127.0.0.1:8070/v1"))
-    tts_raw = _probe_tts(tts_url)
+    # Each probe uses sync httpx with a 2-3s timeout; running them inline
+    # would block the aiohttp event loop for up to ~9s. Dispatch them to
+    # the default executor and gather so the worst case is the slowest probe.
+    loop = asyncio.get_running_loop()
+    llm_future = loop.run_in_executor(None, _probe_llm, llm_cfg.get("api_base", "http://127.0.0.1:8070/v1"))
+    summary_future = loop.run_in_executor(None, _probe_summary, summary_cfg)
+    tts_future = loop.run_in_executor(None, _probe_tts, tts_url)
+    asr_future = loop.run_in_executor(None, _probe_asr, asr_cfg)
+    llm_raw, summary_raw, tts_raw, asr_raw = await asyncio.gather(
+        llm_future, summary_future, tts_future, asr_future
+    )
     return web.json_response({
         "llm": {
             "ok": llm_raw.get("status") == "ok",
             "reason": llm_raw.get("reason", ""),
             "endpoint": llm_cfg.get("api_base", "") + "/models",
         },
-        "summary": _probe_summary(summary_cfg),
+        "summary": summary_raw,
         "tts": {
             "ok": tts_raw.get("status") == "ok",
             "reason": tts_raw.get("reason", ""),
             "endpoint": tts_raw.get("endpoint", tts_url),
         },
-        "asr": _probe_asr(asr_cfg),
+        "asr": asr_raw,
     })
 
 def _propagate_services_to_runtime():
