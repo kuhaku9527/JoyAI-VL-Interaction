@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from PIL import Image
 import io
+from typing import Optional
 
 # ============================================================
 # Prompt Templates
@@ -350,6 +351,51 @@ class SummarizerModel:
         self._tokenizer_model_name = model_name
         self._tokenizer = None
         self._tokenizer_failed = False
+
+
+    def update_routing(
+        self,
+        api_base: Optional[str] = None,
+        model_name: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> dict:
+        """Hot-swap the summarizer's endpoint + model + key at runtime.
+
+        Used by the webui services config panel via webinfer's
+        /v1/summarizer/route endpoint. The webui never mutates the
+        summarizer directly; it asks webinfer to mutate its own state
+        (single main path principle).
+
+        Sentinel semantics:
+          - api_base:  str -> set _client.base_url;  None -> leave alone
+          - model_name: str -> set self.model_name; None -> leave alone
+          - api_key:   str -> set _client.api_key;  None -> leave alone;
+                       ""   -> clear to "EMPTY" (treated as unset)
+
+        Returns the new snapshot (api_key_set is True iff a non-EMPTY
+        api_key is currently configured).
+        """
+        if api_base is not None:
+            self._client.base_url = api_base
+        if model_name is not None:
+            self.model_name = model_name
+        if api_key is not None:
+            self._client.api_key = api_key if api_key else "EMPTY"
+        return self.snapshot_routing()
+
+    def snapshot_routing(self) -> dict:
+        """Return current routing state without leaking the api key.
+
+        The webui uses this for /api/services/status to confirm that
+        webinfer is actually using the URL the operator configured.
+        """
+        api_key = getattr(self._client, "api_key", None)
+        api_key_set = bool(api_key) and api_key != "EMPTY"
+        return {
+            "api_base": str(self._client.base_url),
+            "model_name": self.model_name,
+            "api_key_set": api_key_set,
+        }
 
     def preencode_frame(self, image_path: str) -> tuple[dict, float]:
         """Pre-encode one frame for mid-term summary use during streaming."""

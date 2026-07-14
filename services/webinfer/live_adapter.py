@@ -1161,6 +1161,38 @@ class StreamingInferAdapter:
         })
 
 
+
+    async def handle_summarizer_route(self, request: web.Request) -> web.Response:
+        """GET = snapshot current summarizer routing. POST = hot-swap.
+
+        The webui services config panel proxies to this endpoint so the
+        webui never mutates the summarizer directly. This keeps webinfer
+        the single main path: webui -> webinfer -> mutate -> webinfer -> webui.
+
+        POST body (all keys optional; omitted fields are left alone):
+          { "api_base": str, "model_name": str, "api_key": str | null }
+        """
+        if self.summarizer is None:
+            return _openai_error_response("summarizer not enabled", status=503)
+        if request.method == "GET":
+            return web.json_response(self.summarizer.snapshot_routing())
+        try:
+            payload = await _read_json(request)
+        except Exception as exc:  # noqa: BLE001
+            return _openai_error_response(f"invalid JSON body: {exc}", status=400)
+        snapshot = self.summarizer.update_routing(
+            api_base=payload.get("api_base"),
+            model_name=payload.get("model_name"),
+            api_key=payload.get("api_key"),
+        )
+        LOGGER.info(
+            "summarizer routing updated: api_base=%s model_name=%s api_key_set=%s",
+            snapshot["api_base"],
+            snapshot["model_name"],
+            snapshot["api_key_set"],
+        )
+        return web.json_response(snapshot)
+
     async def handle_text_chat(self, request: web.Request) -> web.Response:
         # v3.37 single-LLM-gateway: text-only chat-completion endpoint that
         # runs the same system-prompt + memory + token-guard + decision-token
@@ -3448,6 +3480,8 @@ def create_app(config: AdapterConfig) -> web.Application:
     app.router.add_get("/health", adapter.handle_health)
     app.router.add_get("/v1/models", adapter.handle_models)
     app.router.add_post("/v1/chat/completions", adapter.handle_chat_completions)
+    app.router.add_get("/v1/summarizer/route", adapter.handle_summarizer_route)
+    app.router.add_post("/v1/summarizer/route", adapter.handle_summarizer_route)
     app.router.add_post("/v1/text/chat", adapter.handle_text_chat)
     app.router.add_post("/v1/streaming/reset", adapter.handle_reset)
     app.router.add_get("/v1/prompts/active", adapter.handle_prompts_active)
