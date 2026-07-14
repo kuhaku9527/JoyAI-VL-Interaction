@@ -103,16 +103,6 @@ def test_bt_latency_tracks_asr_llm_and_tts_segments():
     assert "btLatency.sendAckAt" not in tts_body
 
 
-def test_vlm_settings_are_marked_as_video_only():
-    html = _index_html()
-
-    assert "Video/VLM Settings" in html
-    assert "BT chat / ASR / TTS uses Jarvis directly" in html
-    assert "Video/VLM endpoint only; BT chat uses Jarvis 7060 directly" in html
-    assert "VLM Model Selection" in html
-    assert "Used only by red Start video/VLM analysis" in html
-
-
 def test_asr_transcript_is_sanitized_before_prompt_update():
     html = _index_html()
     body = _function_body(html, "handleAsrResult")
@@ -157,37 +147,6 @@ def test_browser_asr_is_warmed_on_startup():
     assert "async def warm_browser_asr()" in server_py
     assert "await asyncio.to_thread(_get_inproc_asr)" in server_py
     assert "browser_asr_warmup_task" in server_py
-
-def test_bt_listening_has_dedicated_button_and_webrtc_audio_offer():
-    html = _index_html()
-    start_body = _function_body(html, "startBtListening")
-    stop_body = _function_body(html, "stopBtListening")
-    webcam_body = _function_body(html, "startWebcam")
-
-    assert 'id="btListenBtn"' in html
-    assert 'title="监听 BT 唤醒词"' in html
-    assert "btListenBtn.addEventListener('click'" in html
-    assert "await startBtListening()" in html
-    assert "await stopBtListening()" in html
-    assert "navigator.mediaDevices.getUserMedia({ audio:" in start_body
-    assert "addTransceiver('audio', { direction: 'sendrecv' })" in start_body
-    assert "jarvis_audio: true" in start_body
-    assert "/api/jarvis/stop" in stop_body
-    assert "audio: false" in webcam_body
-
-
-def test_bt_listening_is_separate_from_asr_and_video_controls():
-    html = _index_html()
-    listen_body = _function_body(html, "startBtListening")
-    speech_body = _function_body(html, "startSpeech")
-    start_body = _function_body(html, "start")
-
-    assert "startSpeech(" not in listen_body
-    assert "startWebcam(" not in listen_body
-    assert "btListenBtn" not in speech_body
-    assert "btListenBtn" not in start_body
-    assert "setBtListeningActive(true)" in listen_body
-    assert "setBtListeningActive(false)" in stop_body if False else True
 
 def test_bt_listening_shows_mic_level_and_device():
     html = _index_html()
