@@ -614,6 +614,141 @@ async def on_shutdown(app):
         except Exception:
             pass
 
+_services_config: dict = {
+    "llm":     {"api_base": "http://127.0.0.1:8070/v1", "model": "streaming-infer-adapter", "api_key": ""},
+    "summary": {"api_base": "https://api.minimaxi.com/v1", "model": "MiniMax-VL-01", "api_key": ""},
+    "tts":     {"api_base": "http://127.0.0.1:8985/v1/synthesize", "model": "", "api_key": ""},
+    "asr":     {"api_base": "", "model": "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en", "api_key": ""},
+}
+
+
+def _probe_summary(summary_cfg):
+    """Lightweight reachability probe for the summary model endpoint.
+    Mirrors _probe_llm but with a stricter timeout and tolerates non-model
+    responses (501 / 404 / etc). Anything that returns JSON is "ok".
+    """
+    import httpx
+    api_base = (summary_cfg or {}).get("api_base", "").rstrip("/")
+    if not api_base:
+        return {"ok": False, "reason": "api_base empty"}
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(api_base + "/models")
+        if resp.status_code == 200:
+            return {"ok": True, "endpoint": api_base + "/models", "code": 200}
+        return {"ok": False, "reason": "http %d" % resp.status_code}
+    except Exception as exc:
+        return {"ok": False, "reason": str(exc)[:120]}
+
+
+def _probe_asr(asr_cfg):
+    """ASR is a model dir or an HTTP endpoint. Probe whichever it is.
+    - If api_base starts with http(s)://, do a GET on api_base/health.
+    - Otherwise treat model as a local filesystem path.
+    """
+    api_base = (asr_cfg or {}).get("api_base", "")
+    model = (asr_cfg or {}).get("model", "")
+    if api_base.startswith("http://") or api_base.startswith("https://"):
+        import httpx
+        try:
+            with httpx.Client(timeout=2.0) as client:
+                resp = client.get(api_base.rstrip("/") + "/health")
+            if resp.status_code == 200:
+                return {"ok": True, "endpoint": api_base, "code": 200}
+            return {"ok": False, "reason": "http %d" % resp.status_code}
+        except Exception as exc:
+            return {"ok": False, "reason": str(exc)[:120]}
+    if model:
+        from pathlib import Path
+        p = Path(model)
+        if p.exists():
+            return {"ok": True, "model_dir": str(p)}
+        return {"ok": False, "reason": "model dir not found: %s" % model}
+    return {"ok": False, "reason": "no api_base or model"}
+
+
+async def _services_config_handler(request):
+    if request.method == "GET":
+        return web.json_response(dict(_services_config))
+    if request.method == "PUT":
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            return web.json_response({"error": "bad json: %s" % exc}, status=400)
+        for slot in ("llm", "summary", "tts", "asr"):
+            incoming = payload.get(slot)
+            if not isinstance(incoming, dict):
+                continue
+            cur = _services_config.setdefault(slot, {})
+            for key in ("api_base", "model", "api_key"):
+                if key in incoming:
+                    cur[key] = incoming[key]
+        _propagate_services_to_runtime()
+        return web.json_response(dict(_services_config))
+    return web.json_response({"error": "method not allowed"}, status=405)
+
+
+async def _services_status_handler(request):
+    """Normalize the 4 probe results into {ok, reason, endpoint} so the
+    UI can read a single shape (item.ok ? "OK" : "ERR", reason tooltip).
+    """
+    llm_cfg = _services_config.get("llm", {})
+    summary_cfg = _services_config.get("summary", {})
+    tts_cfg = _services_config.get("tts", {})
+    asr_cfg = _services_config.get("asr", {})
+    tts_url = tts_cfg.get("api_base") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+    llm_raw = _probe_llm(llm_cfg.get("api_base", "http://127.0.0.1:8070/v1"))
+    tts_raw = _probe_tts(tts_url)
+    return web.json_response({
+        "llm": {
+            "ok": llm_raw.get("status") == "ok",
+            "reason": llm_raw.get("reason", ""),
+            "endpoint": llm_cfg.get("api_base", "") + "/models",
+        },
+        "summary": _probe_summary(summary_cfg),
+        "tts": {
+            "ok": tts_raw.get("status") == "ok",
+            "reason": tts_raw.get("reason", ""),
+            "endpoint": tts_raw.get("endpoint", tts_url),
+        },
+        "asr": _probe_asr(asr_cfg),
+    })
+
+def _propagate_services_to_runtime():
+    """Push the saved llm/summary config into live service instances.
+    - LLM: update every session VLMService (api_base + model + api_key).
+    - Summary: webinfer owns the summarizer; webui cannot reach into it.
+      We log the change so the operator can restart webinfer if needed.
+    - TTS / ASR: read on demand by JarvisConfig.from_env(); changes take
+      effect for the NEXT session that calls from_env().
+    """
+    try:
+        llm_cfg = _services_config.get("llm", {})
+        api_base = llm_cfg.get("api_base")
+        model = llm_cfg.get("model")
+        api_key = llm_cfg.get("api_key")
+        if api_base:
+            for sid, sess in sessions.items():
+                vlm = sess.get("vlm_service") if isinstance(sess, dict) else None
+                if vlm and hasattr(vlm, "update_api_settings"):
+                    vlm.update_api_settings(api_base=api_base, api_key=api_key)
+                if vlm and model and hasattr(vlm, "set_model"):
+                    vlm.set_model(model)
+            default_vlm_config["api_base"] = api_base
+            if model:
+                default_vlm_config["model"] = model
+    except Exception as exc:
+        logger.warning("propagate llm config: %s", exc)
+    try:
+        os.environ["JARVIS_TTS_API_URL"] = _services_config.get("tts", {}).get("api_base", "") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+        asr_cfg = _services_config.get("asr", {})
+        if asr_cfg.get("model"):
+            os.environ["ASR_MODEL_DIR"] = asr_cfg["model"]
+    except Exception as exc:
+        logger.warning("propagate tts/asr config: %s", exc)
+    summary_cfg = _services_config.get("summary", {})
+    if summary_cfg.get("api_base") or summary_cfg.get("model"):
+        logger.info("summary config updated: %s (restart webinfer to apply)", summary_cfg)
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="JoyAI VL Interaction WebUI Server")
@@ -623,11 +758,18 @@ def main():
     parser.add_argument("--model", default="streaming-infer-adapter")
     parser.add_argument("--api-base", default="http://127.0.0.1:8070/v1")
     args = parser.parse_args()
+
+
+
     default_vlm_config.update({"api_base": args.api_base, "model": args.model, "prompt": None})
     app = web.Application()
     app.router.add_get("/", _index_handler)
     app.router.add_get("/models", _models_handler)
     app.router.add_get("/detect-services", _detect_services_handler)
+    app.router.add_get("/api/services/config", _services_config_handler)
+    app.router.add_put("/api/services/config", _services_config_handler)
+    app.router.add_get("/api/services/status", _services_status_handler)
+
     app.router.add_get("/ws", websocket_handler)
     setup_asr_routes(app)
     setup_tts_routes(app)
