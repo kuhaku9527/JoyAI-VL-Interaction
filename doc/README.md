@@ -1,12 +1,14 @@
 # JoyAI-VL-Interaction 文档库
 
-> **版本**: v3.37 配套 | **最近更新**: 2026-07-13 | **状态**: ✅ 与代码同步
+> **版本**: v3.37 + Phase 2A/B/C (HEAD = `021f429`) | **最近更新**: 2026-07-14 | **状态**: ✅ 与代码同步
 >
 > **如何读这页**：新人先按 👇 入口路径走（35 分钟入门）。需要查特定子系统的设计/规格/决策时，按"分类索引"找。历史文档 `deprecated/` 不进常规阅读路径。
 >
 > **关键文档（最常被读到）**：
 > - 📌 [`specs/2026-07-13-current-state.md`](specs/2026-07-13-current-state.md) — **项目现状唯一权威**（端口、模块流程、风险表）
 > - 📌 [`specs/2026-07-13-llm-path-consolidation.md`](specs/2026-07-13-llm-path-consolidation.md) — LLM 网关单入口（B 选项实施合同，已 ✅ 实施）
+> - 📌 [`specs/2026-07-14-loose-coupling-services.md`](specs/2026-07-14-loose-coupling-services.md) — 4-API config + 单 webinfer 主路 + 3 独立 capture（Phase 2A/B 实施合同，已 ✅ 实施）
+> - 📌 [`specs/2026-07-14-project-audit.md`](specs/2026-07-14-project-audit.md) — **项目审查（基于 HEAD=021f429 代码事实）**：整体 + 各模块流程图、风险表、与之前对比、用户疑问解答
 > - 📌 [`adr/0006-llm-gateway-single-entrypoint.md`](adr/0006-llm-gateway-single-entrypoint.md) — v3.37 设计决策
 
 ---
@@ -80,6 +82,8 @@
 | [`specs/memory-store-skeleton-spec.md`](specs/memory-store-skeleton-spec.md) | ✅ 已实施 | 持久化层骨架 |
 | [`specs/webui-asr-input-state.md`](specs/webui-asr-input-state.md) | ✅ 已实施 | WebUI ASR 状态机 |
 | [`specs/webui-kws-listening-chain.md`](specs/webui-kws-listening-chain.md) | ✅ 已实施 | WebUI KWS 监听链 |
+| [`specs/2026-07-14-loose-coupling-services.md`](specs/2026-07-14-loose-coupling-services.md) | ✅ 已实施 | 4-API config + 单 webinfer 主路 + 3 独立 capture 模块（Phase 2A/B 实施合同） |
+| [`specs/2026-07-14-project-audit.md`](specs/2026-07-14-project-audit.md) | ✅ 代码事实层现状 | 项目审查（HEAD=021f429）整体+模块流程图 + 风险表 + 疑问解答 |
 
 ### 架构决策记录（`adr/`）
 

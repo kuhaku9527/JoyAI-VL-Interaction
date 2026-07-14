@@ -1,7 +1,10 @@
 # 项目现状架构图（2026-07-14 代码事实层）
 
-> 本文基于 HEAD = `616b6eb`（v3.37 + 事件循环修复）逐文件核对，
+> 本文基于 HEAD = `021f429`（v3.37 + Phase 2A/B/C）逐文件核对，
 > 不引用 `specs/*.md`。所有图均为可执行的 mermaid。
+>
+> **Phase 2A/B/C 新增**：4-API services config + 单 webinfer 主路 + 3 独立 capture 模块 + summarizer hot-swap。
+> 详细审查见 [`../specs/2026-07-14-project-audit.md`](../specs/2026-07-14-project-audit.md)。
 
 ---
 
@@ -187,8 +190,26 @@ sequenceDiagram
 
 ---
 
-## 7. 当前 HEAD
+## 7. 当前 HEAD 与 Phase 2 变更
 
-- `616b6eb` fix(webui): unblock event loop on sync `_probe_tts/_probe_kws`
-- `ff79b3b` feat(llm-gateway): v3.37 single-entry point (Option B)
-- 工作树 clean，1 ahead of origin/main
+**HEAD = `021f429`**（v3.37 + Phase 2A/B/C，4 个新 commit）：
+
+```
+021f429 test(webui): delete dead Phase 1 contract tests; add capture modules contract
+1e28f47 feat(webui+webinfer): hot-swap summarizer routing via /v1/summarizer/route
+e4a0666 fix(webui): services status handler must not block event loop
+fb279e9 feat(webui): 4-API services config + 3 independent capture modules
+c6a1486 fix(webinfer): handle None archived_in_chunk in qa_history filter (regression: 502)
+0c37c3b fix(webui): delete duplicate screen capture impl on screenStart/screenStop
+7c2ba1c docs(architecture): v3.37+eventloop fix 代码事实层现状图 (本文上一版)
+616b6eb fix(webui): unblock event loop on sync _probe_tts/_probe_kws
+ff79b3b feat(llm-gateway): v3.37 single-entry point (Option B)
+```
+
+**Phase 2A (`fb279e9`)** — 删红 Start 按钮 + Video/VLM Settings 面板；3 capture 模块独立（`screen_capture.js` / `capture_webcam.js` / `capture_rtsp.js`）；4-API config storage（`_services_config` + `GET/PUT /api/services/config` + `GET /api/services/status`）。
+
+**Phase 2B (`e4a0666` + `1e28f47`)** — `services_status_handler` 不阻塞 event loop（4 probe 用 `run_in_executor` + `gather`）；summarizer routing 通过 `/v1/summarizer/route` 热切 webinfer 自己的 `SummarizerModel._client`，webui 只 fire-and-forget POST。
+
+**Phase 2C (`021f429`)** — 删 Phase 1 死的 contract test，加 capture modules contract test。
+
+测试统计：webui **107 passed** + webinfer **66 passed** = 173 green。工作树 clean（除 `services/.pids/` untracked），4 ahead of origin/main。
