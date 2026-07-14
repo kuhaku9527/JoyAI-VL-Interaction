@@ -529,7 +529,7 @@ def build_dynamic_system_content(
     if include_qa_history and memory_state is not None and memory_state.get("qa_history"):
         qa_entries = [
             entry for entry in memory_state["qa_history"]
-            if entry.get("archived_in_chunk", 0) < current_chunk_index
+            if (entry.get("archived_in_chunk") or 0) < current_chunk_index
         ]
         if qa_entries:
             qa_lines: list[str] = []
