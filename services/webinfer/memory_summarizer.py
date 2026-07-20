@@ -1,14 +1,13 @@
-# -*- coding: utf-8 -*-
 import base64
+import io
 import os
 import re
 import time
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
+
 from openai import OpenAI
 from PIL import Image
-import io
-from typing import Optional
 
 # ============================================================
 # Prompt Templates
@@ -779,7 +778,6 @@ class SummarizerModel:
         mid_term_summaries: list of dicts with keys 'frame_range', 'summary_text', etc.
         Returns (merged_text, token_count, compressed_new_text, debug_input_or_None).
         """
-
         if not mid_term_summaries:
             token_count = self.estimate_tokens(existing_longterm)
             return existing_longterm, token_count, "", None

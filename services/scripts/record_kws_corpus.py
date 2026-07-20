@@ -137,7 +137,7 @@ def main() -> int:
             if args.dry_run:
                 audio = np.zeros(int(args.sr * 1.0), dtype=np.int16)
                 write_wav(wav_path, audio, args.sr)
-                print(f"  [dry-run] 写了 1s 静音")
+                print("  [dry-run] 写了 1s 静音")
                 continue
 
             input("  按 Enter 开始录音 > ")

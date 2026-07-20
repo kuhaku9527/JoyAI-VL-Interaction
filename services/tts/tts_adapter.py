@@ -9,9 +9,10 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Protocol
+from typing import Any, Callable, Protocol
 
 import uvicorn
 import websockets
@@ -121,7 +122,6 @@ def resolve_voice_id(
     in the adapter environment. When neither is set the adapter keeps
     using the original vLLM-Omni Qwen3-TTS upstream.
     """
-
     candidate = (config_voice_id or "").strip()
     if candidate:
         return candidate
@@ -130,7 +130,6 @@ def resolve_voice_id(
 
 def clone_websocket_url(clone_api_url: str) -> str:
     """Translate the HTTP ``clone_api_url`` to a ws:// endpoint."""
-
     base = (clone_api_url or "").rstrip("/")
     if base.startswith("https://"):
         return "wss://" + base[len("https://"):] + "/v1/synthesize/ws"
@@ -326,7 +325,6 @@ async def run_tts_clone_request(
     vLLM-Omni path produces so the browser does not need to care which
     backend served the request.
     """
-
     ws_url = clone_websocket_url(clone_api_url)
     upstream: websockets.WebSocketClientProtocol | None = None
     try:

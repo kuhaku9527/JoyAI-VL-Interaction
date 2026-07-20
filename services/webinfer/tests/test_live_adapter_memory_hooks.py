@@ -1,8 +1,8 @@
 """Unit tests for live_adapter memory-store hooks (v0.2)."""
 
-import asyncio
-import sys
 import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import pytest
@@ -10,9 +10,7 @@ import pytest
 # These tests exercise the adapter methods directly with a stubbed
 # MemoryStoreClient, so we do NOT need a real openai / aiohttp setup.
 # We construct a tiny StreamingInferAdapter with minimal config.
-
 from live_adapter import StreamingInferAdapter
-from memory_store_client import MemoryStoreClient
 
 
 class _StubMemoryClient:

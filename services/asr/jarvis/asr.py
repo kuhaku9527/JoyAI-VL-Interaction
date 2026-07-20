@@ -62,7 +62,8 @@ class JarvisASR:
         Args:
             pcm: raw int16 little-endian PCM bytes (16kHz mono)
 
-        Returns:
+        Returns
+        -------
             Latest partial transcription (may be empty string).
         """
         if self.stream is None:

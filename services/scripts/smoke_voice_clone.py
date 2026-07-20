@@ -15,7 +15,6 @@ from pathlib import Path
 
 import httpx
 
-
 PROBE_URL = os.environ.get("SMOKE_TTS_URL", "http://127.0.0.1:8985/v1/synthesize")
 VOICE_ID = os.environ.get("TTS_DEFAULT_VOICE_ID", "minimax_man_33333")
 TEXT = os.environ.get("SMOKE_TTS_TEXT", "铁御，BT-7274 就绪，准备展开作业二一七。")

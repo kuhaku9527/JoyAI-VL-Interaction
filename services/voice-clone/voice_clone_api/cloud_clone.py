@@ -37,8 +37,9 @@ import logging
 import os
 import re
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import Optional
 
 import httpx
 
@@ -281,7 +282,8 @@ class MiniMaxClient:
             need_volume_normalization: normalise loudness.
             aigc_watermark: embed an AIGC watermark in clone preview.
 
-        Returns:
+        Returns
+        -------
             {"voice_id", "file_id", "model", "prompt_file_id" (or None)}.
         """
         if model not in SUPPORTED_MODELS:
@@ -377,7 +379,8 @@ class MiniMaxClient:
                 Added as a backward-compatible kwarg with default
                 "Chinese"; pre-existing callers are unaffected.
 
-        Yields:
+        Yields
+        ------
             Audio bytes (WAV when ``audio_setting.format`` is ``wav``).
         """
         if len(text) > 10000:
@@ -478,7 +481,8 @@ class MiniMaxClient:
             max_wait_s: max seconds to wait for task completion.
             poll_interval_s: sleep between poll requests.
 
-        Returns:
+        Returns
+        -------
             Raw audio bytes (container = ``format``).
         """
         if model not in SUPPORTED_MODELS:

@@ -1,0 +1,14 @@
+# ---------------------------------------------------------------------------
+# Pre-commit hooks — keep low-level quality issues out of code review.
+# Install:  pip install pre-commit && pre-commit install
+# Run all:  pre-commit run --all-files
+# ---------------------------------------------------------------------------
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in lock-step with the ruff version used in CI (see
+    # .github/workflows/quality.yml). Bump both together.
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

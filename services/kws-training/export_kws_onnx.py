@@ -41,7 +41,7 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).parent))
-from model import KwsModel, ENCODER_DIMS, NUM_LAYERS, DOWNSAMPLING, NUM_HEADS
+from model import DOWNSAMPLING, ENCODER_DIMS, NUM_HEADS, NUM_LAYERS, KwsModel
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,6 +72,7 @@ class OnnxEncoder(nn.Module):
     forward 输入: x, x_lens, *states
     forward 输出: encoder_out, x_lens (回传, sherpa-onnx 不用), *new_states
     """
+
     def __init__(self, model: KwsModel, chunk_size: int, left_context: int):
         super().__init__()
         self.input_proj = model.input_proj
@@ -134,6 +135,7 @@ class OnnxDecoder(nn.Module):
       - decoder_dim = max(ENCODER_DIMS) = 512 (= encoder_out_dim), 跟 KwsModel.decoder_dim 对齐
       - 与 sherpa-onnx 参考 decoder_out 维度匹配 (rank-2 单帧接口)
     """
+
     def __init__(self, model: KwsModel):
         super().__init__()
         self.decoder_dim = model.decoder_dim
@@ -166,6 +168,7 @@ class OnnxJoiner(nn.Module):
       - encoder_dim == decoder_dim == max(ENCODER_DIMS) == 512
       - 与 sherpa-onnx 参考 joiner 输入维度匹配 (rank-2 单帧接口)
     """
+
     def __init__(self, model: KwsModel):
         super().__init__()
         self.encoder_dim = max(ENCODER_DIMS)
@@ -205,24 +208,24 @@ def compute_state_shapes(model: KwsModel, chunk_size: int, left_context: int):
     names: List[str] = []
     shapes: List[List[int]] = []
     inits: List[torch.Tensor] = []
-    
+
     init_states = enc.get_init_states(batch_size=1)
     for i, s in enumerate(init_states):
         names.append(f"state_{i}")
         shapes.append(list(s.shape))
         inits.append(s.detach().clone())
-    
+
     # embed_states: (1, 128, 3, 19) - sherpa-onnx 硬编码
     embed_shape = [1, EMBED_STATES_FIXED_DIM2, 3, 19]
     names.append("embed_states")
     shapes.append(embed_shape)
     inits.append(torch.zeros(embed_shape))
-    
+
     # processed_lens: (1,) int64
     names.append("processed_lens")
     shapes.append([1])
     inits.append(torch.zeros([1], dtype=torch.long))
-    
+
     return names, shapes, inits
 
 
@@ -280,7 +283,7 @@ def main():
     # ===== 1) encoder (流式) =====
     logger.info("[1/3] 导出 encoder (流式)...")
     enc_wrapper = OnnxEncoder(model, args.chunk_size, args.left_context)
-    
+
     # 状态名/形状
     state_names, state_shapes, state_inits = compute_state_shapes(model, args.chunk_size, args.left_context)
     logger.info(f"  状态数 = {len(state_names)} (cached={total_cached} + embed_states + processed_lens)")
@@ -345,7 +348,7 @@ def main():
         else:
             dynamic_axes[sn] = {0: "N"}
             dynamic_axes[f"new_state_{i}"] = {0: "N"}
-    
+
     encoder_path = args.out_dir / "encoder.onnx"
     logger.info(f"  → {encoder_path.name}")
     torch.onnx.export(
@@ -437,10 +440,10 @@ def main():
     src_keywords = args.ckpt.parent.parent / "manifests" / "keywords.txt"
     if src_tokens.exists():
         shutil.copy(src_tokens, args.out_dir / "tokens.txt")
-        logger.info(f"  → tokens.txt")
+        logger.info("  → tokens.txt")
     if src_keywords.exists():
         shutil.copy(src_keywords, args.out_dir / "keywords.txt")
-        logger.info(f"  → keywords.txt")
+        logger.info("  → keywords.txt")
 
     # ===== 5) 验证 ONNX =====
     try:

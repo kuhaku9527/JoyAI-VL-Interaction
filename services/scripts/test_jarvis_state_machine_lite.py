@@ -25,7 +25,10 @@ sys.path.insert(0, str(REPO / "services" / "asr"))
 sys.path.insert(0, str(REPO))
 
 from joy_interaction_webui.jarvis_mode import (
-    JarvisConfig, JarvisState, JarvisStateMachine, EXIT_WORDS,
+    EXIT_WORDS,
+    JarvisConfig,
+    JarvisState,
+    JarvisStateMachine,
 )
 
 assert "bt" in ("bt",), "doc-test: only 'bt' wake word now (post 2026-07-10)"

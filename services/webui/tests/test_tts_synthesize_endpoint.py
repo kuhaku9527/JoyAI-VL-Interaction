@@ -18,7 +18,6 @@ import base64
 import sys
 from pathlib import Path
 
-import httpx
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "services" / "webui" / "src"

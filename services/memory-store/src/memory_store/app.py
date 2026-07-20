@@ -6,7 +6,6 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from typing import List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -14,10 +13,8 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .backends import get_backend
 from .models import (
-    MemoryBlock,
     PushRequest,
     PushResponse,
-    RecallFilter,
     RecallRequest,
     RecallResponse,
 )

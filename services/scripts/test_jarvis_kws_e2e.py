@@ -69,7 +69,7 @@ def eval_dir(kws, wav_dir, label):
     print(f"  命中数分布: {dict(sorted(cnt.items()))}")
     top = sorted([(n, h) for n, h in hits_per_wav if h > 0], key=lambda x: -x[1])[:5]
     if top:
-        print(f"  触发 top5:")
+        print("  触发 top5:")
         for name, h in top:
             print(f"    {h:3d} hits : {name}")
 
@@ -106,7 +106,7 @@ def main():
         print(f"  共 {n} 次命中 ({n/114.05:.2f} 次/秒, 期望 ~5-10 命中)")
 
     if POS_DIR.exists():
-        print(f"\n[3/3] 批量评估")
+        print("\n[3/3] 批量评估")
         eval_dir(kws, POS_DIR, f"正样本 (recall) — {POS_DIR.name}")
     if NEG_DIR.exists():
         eval_dir(kws, NEG_DIR, f"负样本 (FAR) — {NEG_DIR.name}")
