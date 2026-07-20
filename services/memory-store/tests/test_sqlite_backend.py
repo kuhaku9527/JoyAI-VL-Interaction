@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-import pytest
-
 from memory_store.backends import get_backend
 from memory_store.models import MemoryBlock, RecallFilter
 

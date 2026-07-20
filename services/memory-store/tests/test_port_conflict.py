@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import socket as _socket
 
-import pytest
-
 from memory_store import app as app_module
 
 

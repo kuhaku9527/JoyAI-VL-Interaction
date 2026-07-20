@@ -39,7 +39,7 @@ import wave
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, AsyncIterator
+from typing import Annotated, Any
 
 import aiofiles
 import httpx
@@ -50,10 +50,8 @@ from fastapi import (
     Form,
     HTTPException,
     UploadFile,
-    WebSocket,
-    WebSocketDisconnect,
 )
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from .models import SynthesizeRequest, SynthesizeResponse, VoiceInfo
 
@@ -161,7 +159,7 @@ class VoiceStore:
         meta_path = self._dir(voice_id) / "meta.json"
         if not meta_path.is_file():
             return None
-        async with aiofiles.open(meta_path, "r", encoding="utf-8") as fh:
+        async with aiofiles.open(meta_path, encoding="utf-8") as fh:
             return json.loads(await fh.read())
 
     async def _write_meta(self, voice_id: str, payload: dict[str, Any]) -> None:
@@ -222,7 +220,6 @@ class VoiceStore:
         (see cloud_clone.upload_reference). For non-MiniMax providers
         they are stored verbatim in ``meta.json`` for later inspection.
         """
-
         voice_id = f"vc_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         profile_dir = self._dir(voice_id)
         profile_dir.mkdir(parents=True, exist_ok=False)
@@ -269,7 +266,6 @@ def _ensure_mono_pcm16(
     For ``.wav`` uploads we use the stdlib ``wave`` decoder. For
     ``.mp3`` and friends we hand the bytes back unchanged for MiniMax upload.
     """
-
     if ext.lower() != ".wav":
         return audio_bytes, fallback_rate
     with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
@@ -297,7 +293,6 @@ def _ensure_mono_pcm16(
 
 def _strip_wav_header(wav_bytes: bytes) -> tuple[bytes, int, int]:
     """Return ``(pcm_bytes, sample_rate, sample_width)`` from a wav blob."""
-
     with wave.open(io.BytesIO(wav_bytes), "rb") as wav_file:
         return (
             wav_file.readframes(wav_file.getnframes()),
@@ -316,7 +311,7 @@ def _strip_wav_header(wav_bytes: bytes) -> tuple[bytes, int, int]:
 
 def create_app(
     settings: Settings | None = None,
-    minimax: "MiniMaxClient | None" = None,
+    minimax: MiniMaxClient | None = None,
 ) -> FastAPI:
     """Build the FastAPI app. ``TTS_PROVIDER=minimax`` is the only supported
     provider as of 2026-07-12; the MiniMax client is constructed lazily from
@@ -334,7 +329,7 @@ def create_app(
     store = VoiceStore(settings.voices_dir)
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):  # noqa: ARG001 -- FastAPI signature
+    async def lifespan(app: FastAPI):
         settings.voices_dir.mkdir(parents=True, exist_ok=True)
         logger.info(
             "voice-clone ready on %s:%d (provider=%s, voices=%s)",
@@ -602,7 +597,6 @@ def create_app(
 
 def _sse(payload: dict[str, Any]) -> str:
     """Format ``payload`` as a single Server-Sent Event data line."""
-
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 

@@ -103,7 +103,8 @@ class JarvisKWS:
         Args:
             pcm: raw int16 little-endian PCM bytes
 
-        Returns:
+        Returns
+        -------
             True if wake word detected in this chunk, False otherwise.
         """
         if self.stream is None:

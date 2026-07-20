@@ -92,7 +92,7 @@ def append_main(args) -> bool:
     # 在 §4.0 末尾追加一项（用 version + date 作锚）
     anchor = "### §4.1 优先级说明"
     if anchor not in src:
-        print(f"[skip] 00-main-direction.md §4.1 anchor not found", file=sys.stderr)
+        print("[skip] 00-main-direction.md §4.1 anchor not found", file=sys.stderr)
         return False
     if args.version in src:
         print(f"[skip] 00-main-direction.md already mentions {args.version}")
@@ -124,7 +124,7 @@ def print_affected_reminder(args) -> None:
     print("建议：编辑每个 doc 的相关章节，然后:")
     print(f"  1. 在 doc/adr/*.md 里加 '## 实施现状（{args.date}）' 节（如适用）")
     print(f"  2. 在 doc/<system>.md §15 变更记录加 {args.version} 行")
-    print(f"  3. README.md 顶部 'How to stop everything' / 'How to start everything' 如有变动")
+    print("  3. README.md 顶部 'How to stop everything' / 'How to start everything' 如有变动")
 
 
 def main() -> int:

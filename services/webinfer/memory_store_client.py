@@ -30,11 +30,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from collections.abc import Iterable
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any
 
 import httpx
-
 
 LOGGER = logging.getLogger("streaming_infer_adapter.memory_client")
 
@@ -50,7 +50,8 @@ def _now_iso() -> str:
 def _normalize_block(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Trim/validate an upstream memory-store block to the keys live_adapter
     actually consumes. Return ``None`` if the row is unusable so callers
-    can skip it without crashing."""
+    can skip it without crashing.
+    """
     if not isinstance(raw, dict):
         return None
     content = raw.get("content")
@@ -118,7 +119,8 @@ class MemoryStoreClient:
 
     async def ping(self) -> bool:
         """Probe /health. Caches the result once a success has been seen so
-        the live adapter does not log a warning every chunk."""
+        the live adapter does not log a warning every chunk.
+        """
         if not self.enabled:
             return False
         try:
@@ -218,7 +220,8 @@ class MemoryStoreClient:
         blocks: Iterable[dict[str, Any]],
     ) -> int:
         """Push a batch of blocks. Returns count actually accepted; 0 on
-        failure (never raises)."""
+        failure (never raises).
+        """
         if not self.enabled or not session_id:
             return 0
         cleaned: list[dict[str, Any]] = []

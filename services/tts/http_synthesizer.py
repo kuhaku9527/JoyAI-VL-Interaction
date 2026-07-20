@@ -16,8 +16,9 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional
+from typing import Optional
 
 import httpx
 
@@ -81,7 +82,8 @@ class MiniMaxTTSSynthesizer:
             speed: override speed (0.5-2.0).
             vol: override volume (0.1-2.0).
 
-        Yields:
+        Yields
+        ------
             Raw WAV audio chunks (concatenable into a complete WAV file).
         """
         vid = voice_id or self.config.voice_id

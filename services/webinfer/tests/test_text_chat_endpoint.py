@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -44,7 +44,7 @@ if str(ROOT) not in sys.path:
 
 @dataclass
 class _StubChoice:
-    message: "_StubMessage"
+    message: _StubMessage
 
 
 @dataclass
@@ -117,7 +117,6 @@ def _make_adapter(scripted: list[str]) -> tuple[Any, _StubAsyncOpenAI]:
     """
     from live_adapter import (
         AdapterConfig,
-        SessionState,
         StreamingInferAdapter,
     )
 

@@ -1,11 +1,12 @@
 """Unit tests for MemoryStoreClient (memory-store v0.2 client)."""
 
-import sys
 import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-import pytest
 import httpx
+import pytest
 from memory_store_client import MemoryStoreClient
 
 

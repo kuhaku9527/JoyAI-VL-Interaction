@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 OpenAI-compatible live adapter for StreamingHarness inference.
 
@@ -33,18 +32,16 @@ from pathlib import Path
 from typing import Any, Optional
 
 from aiohttp import web
+from memory_store_client import MemoryStoreClient
+from memory_summarizer import SummarizerModel
 from openai import AsyncOpenAI
 from PIL import Image
-
-from memory_summarizer import SummarizerModel
-from memory_store_client import MemoryStoreClient
 from system_prompts import (
     compose_system_prompt,
     compose_system_prompt_with_memory,
     load_character_prompts,
     resolve_prompt_paths,
 )
-
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 USER_QUERY_HEADER_EN = "[User Query (IMPORTANT — follow this instruction)]"
@@ -791,7 +788,7 @@ class StreamingInferAdapter:
             return []
         try:
             return load_character_prompts(self.config.character_prompt_paths)
-        except Exception as exc:  # noqa: BLE001 — logged, never raised
+        except Exception as exc:
             LOGGER.warning("failed to load character prompts: %s", exc)
             return []
 
@@ -813,7 +810,7 @@ class StreamingInferAdapter:
         """
         try:
             paths = resolve_prompt_paths(self.config.character_prompt_paths)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.warning("failed to resolve prompt paths: %s", exc)
             return 0.0
         latest = 0.0
@@ -867,7 +864,7 @@ class StreamingInferAdapter:
         self._system_prompt_cache[key] = composed
         return composed
 
-    def _build_memory_prompt(self, session_state: Optional["SessionState"]) -> str:
+    def _build_memory_prompt(self, session_state: Optional[SessionState]) -> str:
         """Return system prompt with optional memory blocks appended.
 
         Fast path: when the session has no memory blocks cached, this
@@ -980,7 +977,7 @@ class StreamingInferAdapter:
         state._memory_warmed = True
         try:
             blocks = await self.memory_store.warmup(state.session_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.warning("memory warmup failed for %s: %s", state.session_id, exc)
             return
         if blocks:
@@ -1032,7 +1029,7 @@ class StreamingInferAdapter:
             return 0
         try:
             pushed = await self.memory_store.push(state.session_id, blocks)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.warning("memory push failed for %s: %s", state.session_id, exc)
             return 0
         if pushed:
@@ -1054,7 +1051,7 @@ class StreamingInferAdapter:
             self._cleanup_task.cancel()
             try:
                 await self._cleanup_task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            except (asyncio.CancelledError, Exception):
                 pass
             self._cleanup_task = None
         # Cancel any in-flight per-session warmup tasks.
@@ -1065,7 +1062,7 @@ class StreamingInferAdapter:
         # Best-effort close of the memory-store httpx pool.
         try:
             await self.memory_store.aclose()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.warning("memory_store aclose raised: %s", exc)
 
     def _init_session_dirs(self, state: SessionState) -> None:
@@ -1150,7 +1147,7 @@ class StreamingInferAdapter:
         del request
         try:
             profiles = self.reload_character_prompts()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.exception("character prompt reload failed")
             return _openai_error_response(f"reload failed: {exc}", status=500)
         return web.json_response({
@@ -1178,7 +1175,7 @@ class StreamingInferAdapter:
             return web.json_response(self.summarizer.snapshot_routing())
         try:
             payload = await _read_json(request)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return _openai_error_response(f"invalid JSON body: {exc}", status=400)
         snapshot = self.summarizer.update_routing(
             api_base=payload.get("api_base"),
@@ -1200,7 +1197,7 @@ class StreamingInferAdapter:
         # content so voice-dialog callers cannot smuggle frames through.
         try:
             payload = await _read_json(request)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return _openai_error_response(f"invalid JSON body: {exc}", status=400)
 
         messages = payload.get("messages")
@@ -1253,7 +1250,7 @@ class StreamingInferAdapter:
                 )
             except web.HTTPException:
                 raise
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 LOGGER.exception("text chat completion failed")
                 return _openai_error_response(str(exc), status=502)
         return web.json_response(result)
@@ -1282,7 +1279,7 @@ class StreamingInferAdapter:
                 if blocks:
                     state._memory_block_cache = list(blocks)
                     state._memory_warmed = True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 LOGGER.debug("memory-store warmup failed for %s", state.session_id)
 
         api_messages = list(payload.get("messages") or [])
@@ -2024,7 +2021,7 @@ class StreamingInferAdapter:
     def _resolve_frame_ref(
         self,
         image_ref: dict[str, str],
-        state: "SessionState",
+        state: SessionState,
     ) -> str:
         if image_ref.get("kind") == "path":
             return str(self._validate_local_image_path(image_ref.get("value", "")))
@@ -2032,7 +2029,7 @@ class StreamingInferAdapter:
             return self._save_base64_frame(image_ref.get("value", ""), state)
         raise web.HTTPBadRequest(text="unsupported image reference kind")
 
-    def _save_base64_frame(self, data_url: str, state: "SessionState") -> str:
+    def _save_base64_frame(self, data_url: str, state: SessionState) -> str:
         match = re.match(r"data:image/\w+;base64,(.+)", data_url)
         if not match:
             raise web.HTTPBadRequest(text="invalid data URL format")
@@ -2199,7 +2196,7 @@ class StreamingInferAdapter:
         self,
         api_messages: list[dict[str, Any]],
         *,
-        session_state: Optional["SessionState"] = None,
+        session_state: Optional[SessionState] = None,
         max_total_chars: int = 0,
     ) -> list[dict[str, Any]]:
         """Build the OpenAI chat-completions payload for the main model.
@@ -2241,7 +2238,7 @@ class StreamingInferAdapter:
         *,
         client: Optional[AsyncOpenAI] = None,
         model_name: Optional[str] = None,
-        session_state: Optional["SessionState"] = None,
+        session_state: Optional[SessionState] = None,
         generation_kwargs: Optional[dict[str, Any]] = None,
         http_messages: Optional[list[dict[str, Any]]] = None,
     ) -> tuple[str, Optional[dict[str, Any]]]:
@@ -2932,7 +2929,7 @@ def _parse_decision_tokens(raw_text: str) -> tuple[str, str, Optional[str]]:
 
     Anything that does not start with a known token is treated as a
     bare response, mirroring :func:
-ormalize_model_output so both
+    ormalize_model_output so both
     paths stay in lock-step on what counts as a "reply".
     """
     text = (raw_text or "").strip()
@@ -3355,10 +3352,7 @@ def parse_args() -> AdapterConfig:
     if explicit_out_dir or explicit_light_out_dir or explicit_debug_input_dir:
         per_session_dirs = False
 
-    if no_live_save:
-        out_dir = None
-        light_out_dir = None
-    elif per_session_dirs:
+    if no_live_save or per_session_dirs:
         out_dir = None
         light_out_dir = None
     else:
@@ -3372,9 +3366,7 @@ def parse_args() -> AdapterConfig:
         if light_out_dir is None:
             light_out_dir = derive_light_out_dir(out_dir)
 
-    if no_debug_inputs:
-        debug_input_dir = None
-    elif per_session_dirs:
+    if no_debug_inputs or per_session_dirs:
         debug_input_dir = None
     else:
         debug_input_dir = explicit_debug_input_dir
@@ -3470,7 +3462,7 @@ def create_app(config: AdapterConfig) -> web.Application:
                     "memory-store not reachable at %s; warmup/push will degrade to no-op",
                     adapter.memory_store.base_url,
                 )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.warning("memory-store startup ping raised: %s", exc)
     app.on_startup.append(_on_startup)
 

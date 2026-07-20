@@ -28,7 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).parent / "icefall_src"))
-from zipformer import Zipformer2  # noqa: E402
+from zipformer import Zipformer2
 
 logger = logging.getLogger(__name__)
 

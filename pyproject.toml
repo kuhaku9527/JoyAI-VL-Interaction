@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# JoyAI-VL-Interaction — repo-wide tooling config
+# ---------------------------------------------------------------------------
+# This single config governs `ruff` (lint + format + import sort) across the
+# whole monorepo. Individual services keep their own pyproject.toml for build
+# metadata; those without a [tool.ruff] table inherit this one by walking up.
+#
+# Install:  pip install ruff
+# Run:      ruff check .            # lint
+#           ruff check . --fix      # lint + safe auto-fix
+#           ruff format .           # format
+#           ruff format --check .   # CI gate (no writes)
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+# Lowest common denominator runtime in this repo. Bump once all services move
+# to >=3.10.
+target-version = "py39"
+line-length = 100
+# archive/ holds intentionally frozen one-off scripts; never lint them.
+# icefall_src/ is vendored third-party code (icefall) — not owned by the team,
+# so it is excluded from lint to keep the backlog signal clean.
+extend-exclude = [
+    "archive",
+    ".git",
+    "__pycache__",
+    ".ruff_cache",
+    "node_modules",
+    "services/kws-training/icefall_src",
+]
+
+[tool.ruff.lint]
+# E/F = pycodestyle + pyflakes (the baseline). The rest raise real quality
+# signals senior reviewers care about.
+select = [
+    "E",   # style errors
+    "F",   # pyflakes (unused imports, undefined names, etc.)
+    "W",   # warnings
+    "I",   # isort (import ordering / unused imports)
+    "UP",  # pyupgrade (modern syntax)
+    "B",   # bugbear (likely bugs / bad patterns)
+    "C4",  # comprehensions
+    "SIM", # simplify
+    "N",   # pep8-naming
+    "RUF", # ruff-specific
+    "D",   # pydocstyle (docstring presence — see per-file-ignores)
+]
+ignore = [
+    "D203", # no-blank-line-before-docstring (conflicts with D211)
+    "D213", # multi-line-summary-second-line (conflicts with D212)
+    "E501", # line-too-long — handled by the formatter, not the linter
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and generated code are not held to the public docstring / naming bar.
+# (WebRTC test helpers mirror JS API names like `addTrack`, so N is relaxed.)
+"**/tests/*" = ["D", "N"]
+"**/test_*.py" = ["D", "N"]
+"**/conftest.py" = ["D", "N"]
+
+[tool.ruff.lint.pydocstyle]
+# Use the NumPy/SciPy docstring convention (most readable for a mixed team).
+convention = "numpy"
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+docstring-code-line-length = 100

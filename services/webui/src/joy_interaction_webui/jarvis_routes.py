@@ -19,7 +19,6 @@ The actual mic <-> speaker WebRTC bridging is done in
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import time
 import logging

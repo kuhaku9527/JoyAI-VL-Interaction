@@ -11,7 +11,6 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 from aiohttp.test_utils import make_mocked_request
@@ -36,7 +35,6 @@ def _make_adapter(scripted, *, character_enabled=False, memory_blocks=None):
     :class:`MemoryStoreClient` returns them from warmup/recall.
     """
     from live_adapter import AdapterConfig, StreamingInferAdapter
-    from memory_store_client import MemoryStoreClient
 
     cfg = AdapterConfig()
     cfg.enable_summarizer = False

@@ -146,7 +146,7 @@ def main():
     print(f"  扫完 ({time.time()-t0:.2f}s)")
 
     if n_detected == 0:
-        print(f"  [result] 没检测到 BT")
+        print("  [result] 没检测到 BT")
         return 2
     print(f"  [result] 共 {n_detected} 次命中")
     return 0
@@ -171,12 +171,12 @@ def batch_main(args, spotter):
     # 命中分布直方图
     from collections import Counter
     cnt = Counter(h for _, h in hits_per_wav)
-    print(f"  [batch] 命中数分布:")
+    print("  [batch] 命中数分布:")
     for k in sorted(cnt.keys()):
         print(f"     {k:3d} hits : {cnt[k]:3d} wavs")
     # 触发最多的前 5 个 wav
     top5 = sorted(hits_per_wav, key=lambda x: -x[1])[:5]
-    print(f"  [batch] 触发 top5:")
+    print("  [batch] 触发 top5:")
     for name, h in top5:
         if h > 0:
             print(f"     {h:3d} hits : {name}")

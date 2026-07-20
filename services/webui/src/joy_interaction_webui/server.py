@@ -5,7 +5,15 @@ WebRTC Joy VL Interaction Server
 Main server that handles WebRTC connections and serves the web interface
 """
 
-import asyncio, base64, io, json, logging, os, signal, socket, subprocess, sys, time, uuid
+import asyncio
+import base64
+import io
+import json
+import logging
+import os
+import sys
+import time
+import uuid
 
 # Fix double-module-load bug: when run via `python -m joy_interaction_webui.server`,
 # Python executes this file as __main__ and *also* registers a separate module
@@ -22,12 +30,10 @@ from collections import defaultdict
 
 import aiohttp
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration
 from aiortc.contrib.media import MediaRelay
 
 from .vlm_service import VLMService
-from .video_processor import VideoProcessorTrack
-from .rtsp_track import RTSPVideoTrack
 from .audio_processor import MicAudioTrack
 from .asr import setup_asr_routes
 from .tts import setup_tts_routes
@@ -573,7 +579,9 @@ async def offer(request):
     return web.Response(content_type="application/json", text=json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "session_id": session_id}))
 
 async def on_startup(app):
-    import asyncio, os, sys
+    import asyncio
+    import os
+    import sys
     here = os.path.dirname(__file__)
     repo_root = os.path.abspath(os.path.join(here, "..", "..", "..", ".."))
     if repo_root not in sys.path:

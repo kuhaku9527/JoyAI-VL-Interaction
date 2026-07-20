@@ -17,10 +17,8 @@ These tests pin the composition:
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -84,7 +82,6 @@ async def test_propagate_summary_calls_webinfer(monkeypatch):
     server._propagate_services_to_runtime()
     # The create_task is fire-and-forget; give the scheduler a chance
     # to run the proxy before we assert.
-    import asyncio
     await asyncio.sleep(0)
     assert captured["payload"] == {
         "api_base": "https://api.minimaxi.com/v1",
@@ -125,5 +122,4 @@ async def test_propagate_unreachable_webinfer_logs_warning(monkeypatch):
     }
     # Must not raise.
     server._propagate_services_to_runtime()
-    import asyncio
     await asyncio.sleep(0)

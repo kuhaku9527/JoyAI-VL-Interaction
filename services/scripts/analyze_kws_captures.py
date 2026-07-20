@@ -15,15 +15,14 @@ import sys
 import wave
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "services" / "webui" / "src"))
 
 from joy_interaction_webui.jarvis_mode import JarvisConfig
+
 from services.asr.jarvis.asr import JarvisASR
 from services.asr.jarvis.kws import JarvisKWS
-
 
 DEFAULT_CAPTURE_DIR = Path("D:/AI/data/kws/mic_captures")
 

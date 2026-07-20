@@ -16,17 +16,16 @@ from __future__ import annotations
 
 import asyncio
 import os
-import json
 import logging
 import math
 import time
 import wave
 from array import array
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import AsyncIterator, Callable, NoReturn, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger("joyai.jarvis")
 

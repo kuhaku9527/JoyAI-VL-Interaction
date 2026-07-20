@@ -16,7 +16,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Voice profile CRUD
 # ---------------------------------------------------------------------------
@@ -141,5 +140,4 @@ class SynthesizeResponse(BaseModel):
 
 def encode_pcm16(pcm: bytes) -> str:
     """Helper: return a base64 string for raw pcm16 bytes."""
-
     return base64.b64encode(pcm).decode("ascii")
