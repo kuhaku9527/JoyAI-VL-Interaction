@@ -12,7 +12,7 @@
 
 | Metric | Value |
 |---|---|
-| Violations remaining (baseline) | **759** across **34** rules |
+| Violations remaining (baseline) | **758** across **33** rules |
 | Auto-fixes applied at setup | **258** (unused imports, import sorting, `super()` calls, docstring blank-lines, etc.) |
 | Blocked by `py39` target (auto-fixable once runtime ≥ 3.10) | **129** (`UP007` + `UP006`, see §3) |
 | Deferred vendored noise (excluded) | 282 (mostly `N802`/`N806` in `icefall_src`) |
@@ -59,7 +59,6 @@
 |   1 | `I001`  | | unsorted-imports |
 |   1 | `N812`  | | lowercase-imported-as-non-lowercase |
 |   1 | `W293`  | ✅ | blank-line-with-whitespace |
-|   1 | `F821`  | | **undefined-name** |
 
 \* Auto-fixable only once `target-version` is raised to `py310+` (see §3).
 
@@ -88,7 +87,7 @@ maintainability landmines, not style nits.
 
 | Severity | Code | Location | Action |
 |---|---|---|---|
-| 🔴 Bug | `F821` | `services/voice-clone/voice_clone_api/main.py:314` — `MiniMaxClient` undefined | Add the missing import / update the class name. **Fails at runtime if that branch is hit.** |
+| 🔴 Bug | `F821` | `services/voice-clone/voice_clone_api/main.py:314` — `MiniMaxClient` undefined | **Resolved 2026-07-20:** added top-level `from .cloud_clone import MiniMaxClient` (commit `fix: resolve F821 MiniMaxClient ...`). Remaining count dropped 759 → 758. |
 | 🟠 Correctness | `B904` | `services/memory-store/src/memory_store/app.py:85,95` — `raise` without `from` inside `except` | Use `raise ... from err` (or `from None`) to preserve the causal chain. |
 | 🟠 Correctness | `B019` | 3× cached-instance-method (see `ruff check --select B019`) | `@functools.cached_property` on instances is fine, but `@lru_cache` on methods leaks memory across instances — convert to a module/static cache. |
 | 🟠 Robustness | `B007` | 2× unused loop control variable | Likely a typo in a `for`/`while`; confirm intent. |

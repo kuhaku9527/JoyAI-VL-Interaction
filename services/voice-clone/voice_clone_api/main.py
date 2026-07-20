@@ -53,6 +53,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 
+from .cloud_clone import MiniMaxClient
 from .models import SynthesizeRequest, SynthesizeResponse, VoiceInfo
 
 logger = logging.getLogger("joyvl_voice_clone")
@@ -319,7 +320,6 @@ def create_app(
     """
     settings = settings or Settings()
     if minimax is None and settings.tts_provider == "minimax":
-        from .cloud_clone import MiniMaxClient
         minimax = MiniMaxClient(
             api_key=settings.minimax_api_key,
             group_id=settings.minimax_group_id,
