@@ -1,0 +1,71 @@
+Forwarding to: D:\AI\workspace\JoyAI-VL-Interaction-main\services\scripts\run-windows.ps1 -Mode default
+Loading env: D:\AI\workspace\JoyAI-VL-Interaction-main\services\scripts\run-windows.env
+
+================================================================
+ run-windows.ps1 :: default mode
+================================================================
+ Service                Enabled Port    Source
+ llama-main             Y       7060    llama.cpp (D:\AI\bin\llama.cpp\llama-server.exe)
+ voice-clone            Y       8985    uvicorn voice_clone_api
+ webinfer               Y       8070    live_adapter.py
+ webui                  Y       8099    joy_interaction_webui.server
+
+
+== llama-server main  (port 7060) ==
+  Starting llama-main ...
+  [..]     exe    : D:\AI\bin\llama.cpp\llama-server.exe
+  [..]     args   : -m D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\joyai-vl-interaction-preview-iq4_nl-imat.gguf --mmproj D:\AI\models\main\mmproj\mmproj-joyai-vl-interaction-preview-f16.gguf --host 127.0.0.1 --port 7060 -c 16384 -ngl 999 --parallel 1 -fit off --jinja
+  [..]     cwd    : D:\AI\bin\llama.cpp
+  [..]     log    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\.logs\llama-main.log
+  [..]     final  : -m D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\joyai-vl-interaction-preview-iq4_nl-imat.gguf --mmproj D:\AI\models\main\mmproj\mmproj-joyai-vl-interaction-preview-f16.gguf --host 127.0.0.1 --port 7060 -c 16384 -ngl 999 --parallel 1 -fit off --jinja
+True
+  Waiting for llama-main at http://127.0.0.1:7060/v1/models ...
+  [OK]   llama-main is up (HTTP 200)
+
+== voice-clone API  (port 8985) ==
+  Starting voice-clone ...
+  [..]     exe    : D:\AI\envs\joyai-main\python.exe
+  [..]     args   : -m uvicorn voice_clone_api.main:app --host 127.0.0.1 --port 8985
+  [..]     cwd    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\voice-clone
+  [..]     log    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\.logs\voice-clone.log
+  [..]     final  : -m uvicorn voice_clone_api.main:app --host 127.0.0.1 --port 8985
+True
+  Waiting for voice-clone at http://127.0.0.1:8985/health ...
+  [OK]   voice-clone is up (HTTP 200)
+
+== webinfer live adapter  (port 8070) ==
+  Starting webinfer ...
+  [..]     exe    : D:\AI\envs\joyai-main\python.exe
+  [..]     args   : live_adapter.py --host 127.0.0.1 --port 8070 --adapter-model streaming-infer-adapter --main-api-base http://127.0.0.1:7060/v1 --main-model joyai-vl-interaction-preview --summarizer-api-base http://127.0.0.1:7060/v1 --summarizer-model joyai-vl-interaction-preview --longterm-api-base http://127.0.0.1:7060/v1 --longterm-model joyai-vl-interaction-preview --frame-save-dir C:\AI\frames
+  [..]     cwd    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\webinfer
+  [..]     log    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\.logs\webinfer.log
+  [..]     final  : live_adapter.py --host 127.0.0.1 --port 8070 --adapter-model streaming-infer-adapter --main-api-base http://127.0.0.1:7060/v1 --main-model joyai-vl-interaction-preview --summarizer-api-base http://127.0.0.1:7060/v1 --summarizer-model joyai-vl-interaction-preview --longterm-api-base http://127.0.0.1:7060/v1 --longterm-model joyai-vl-interaction-preview --frame-save-dir C:\AI\frames
+True
+  Waiting for webinfer at http://127.0.0.1:8070/health ...
+  [OK]   webinfer is up (HTTP 200)
+
+== webui  (port 8099) ==
+  Starting webui ...
+  [..]     exe    : D:\AI\envs\joyai-main\python.exe
+  [..]     args   : -m joy_interaction_webui.server --no-ssl --host 127.0.0.1 --port 8099 --model streaming-infer-adapter --api-base http://127.0.0.1:8070/v1
+  [..]     cwd    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\webui
+  [..]     log    : D:\AI\workspace\JoyAI-VL-Interaction-main\services\.logs\webui.log
+  [..]     final  : -m joy_interaction_webui.server --no-ssl --host 127.0.0.1 --port 8099 --model streaming-infer-adapter --api-base http://127.0.0.1:8070/v1
+True
+  Waiting for webui at http://127.0.0.1:8099/ ...
+  [OK]   webui is up (HTTP 200)
+
+================================================================
+ All services ready. WebUI is running in the foreground.
+ Open http://127.0.0.1:8099/  in your browser.
+ Press Ctrl+C to stop everything.
+================================================================
+
+  [WARN] WebUI exited; tearing down backends.
+
+Stopping services...
+  [..]   Stopping llama-main (PID 7060)
+  [..]   Stopping voice-clone (PID 10840)
+  [..]   Stopping webinfer (PID 12880)
+  [..]   Stopping webui (PID 22136)
+  [OK]   All services stopped.

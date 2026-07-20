@@ -104,24 +104,10 @@ coverage.xml
 # locally; keep transcripts and meta.json. Re-run cloning to regenerate.
 services/voice-clone/voices/**/*.wav
 
-# Top-level one-off debug / refactor scripts left from development.
-# Kept on disk for traceability but excluded from VCS to avoid noise.
-/check.py
-/css.py
-/fix.py
-/hooks.py
-/hooks2.py
-/hooks3.py
-/init_sync.py
-/peek.py
-/peek2.py
-/restructure.py
-/run_hooks.py
-/fix.out.txt
-/out.txt
-/peek.txt
-/peek2.txt
-/snippet.txt
+# Intentionally archived one-off scripts / debug artifacts (moved from repo root
+# into archive/ on 2026-07-20 for root-dir cleanup). Kept in VCS for traceability.
+!archive/**
+!/archive
 
 # Top-level historical PDF / zip review artefacts.
 /*.pdf
