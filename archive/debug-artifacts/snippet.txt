@@ -1,0 +1,9 @@
+resultTextContent">
+                        <div class="vlm-history-empty-state" id="vlmHistoryEmpty">
+                            <div class="empty-emoji" aria-hidden="true">🎙️</div>
+                            <div class="empty-title">等待 Pilot 输入</div>
+                            <div class="empty-hint">在下方对话框输入文字，或喊一声 &quot;BT&quot;，即可开始与 BT-7274 对话。</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="responsePayloadDebug" class="deb
