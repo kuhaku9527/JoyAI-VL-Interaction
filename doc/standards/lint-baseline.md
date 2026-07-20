@@ -12,10 +12,19 @@
 
 | Metric | Value |
 |---|---|
-| Violations remaining (baseline) | **758** across **33** rules |
+| Violations remaining (setup baseline, 2026-07-20) | **758** across **33** rules |
+| Violations remaining (post `live_adapter.py` split, 2026-07-20) | **790** across **33** rules |
 | Auto-fixes applied at setup | **258** (unused imports, import sorting, `super()` calls, docstring blank-lines, etc.) |
+| Auto-fixes applied during split (webinfer only) | **250** (`F401` ×237 + `I001` ×13) |
 | Blocked by `py39` target (auto-fixable once runtime ≥ 3.10) | **129** (`UP007` + `UP006`, see §3) |
 | Deferred vendored noise (excluded) | 282 (mostly `N802`/`N806` in `icefall_src`) |
+
+> **Split impact (+32):** the `live_adapter.py` (3531-line monolith) was split into 9
+> focused modules behind a `live_adapter.py` facade (see `doc/adr/0007-split-live-adapter.md`).
+> The +32 is **relocated style debt** (`UP007`/`RUF001`/`D102`/`D103`) that lived inside the
+> former monolith and is now counted under the new module paths — it is **not** new logic.
+> New modules had `D100` (module docstrings) and `E402` (import ordering) fixed, and carry
+> **zero** `F401`/`F811`/`F821`. No net regression in defect-class rules.
 
 > The 759 is a *starting line*, not a blocker. All high-value items are listed
 > in §4 with file:line so they can be fixed as standalone PRs.
