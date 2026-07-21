@@ -72,7 +72,7 @@ async def test_warmup_populates_cache():
     a = _make_adapter(stub)
     state = _make_state()
     await a._memory_warmup(state)
-    assert state._memory_warmed is True
+    assert state._memory_warmed.is_set()
     assert state._memory_block_cache == [{"block_id": "x", "content": "hello"}]
 
 
@@ -202,7 +202,7 @@ async def test_memory_warmup_concurrent_with_recall():
     # Double-checked locking must collapse concurrent warmups into a
     # single memory-store pull.
     assert stub._warmup_calls == 1
-    assert state._memory_warmed is True
+    assert state._memory_warmed.is_set()
     # The cache must be a single, consistent assignment (no torn/duplicate
     # write from the interleaved coroutines).
     assert state._memory_block_cache == blocks
