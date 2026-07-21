@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    participant T as /v1/text/chat (_handle_text_payload)
+    participant V as /v1/chat/completions (_chat_payload_finalize / _forward_text_only)
+    participant RF as response_format
+    participant CC as _chat_completion_response
+
+    Note over T,V: #2 统一解析入口：两路径都调 parse_model_decision
+    T->>RF: parse_model_decision(raw_text)  (经 _parse_decision_tokens 别名)
+    RF-->>T: (decision, clean_text, delegation_question)
+    T->>CC: _chat_completion_response(content=clean_text, decision, delegation_question)
+    CC-->>T: streamingharness.decision 恒有值
+
+    V->>RF: normalize_model_output(raw_text)  仅产出 content（行为不变）
+    V->>RF: parse_model_decision(ctx.raw_text)
+    RF-->>V: (decision, _, delegation_question)
+    V->>CC: _chat_completion_response(content=generated_text, decision, delegation_question)
+    CC-->>V: streamingharness.decision 现在也有值（#2 修复点）
+
+    Note over T,V: #4 加锁后：warmup 后台写 与 请求读 共用 state.lock
+    participant G as session.get_session
+    participant W as _memory_warmup (后台任务)
+    participant S as SessionState.lock
+
+    G->>W: asyncio.ensure_future(_memory_warmup(state))  (get_session 不持锁)
+    V->>S: 请求 async with state.lock 读 _memory_block_cache
+    S-->>V: 读取（与 warmup 串行化）
+    W->>S: async with state.lock 获锁（请求释放后）
+    W->>W: 写 _memory_warmed=True / _memory_block_cache=blocks
+    W->>S: 释放锁

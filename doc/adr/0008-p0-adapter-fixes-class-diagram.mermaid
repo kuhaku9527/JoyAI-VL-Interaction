@@ -1,0 +1,56 @@
+classDiagram
+    class prompt_constants {
+        <<module: leaf, only import re>>
+        +USER_QUERY_HEADER_EN: str
+        +USER_QUERY_HEADER_ZH: str
+        +VIDEO_HISTORY_HEADER_EN: str
+        +VIDEO_HISTORY_HEADER_ZH: str
+        +QA_HISTORY_HEADER_EN: str
+        +QA_HISTORY_HEADER_ZH: str
+        +QA_QUERY_LABEL_EN: str
+        +QA_QUERY_LABEL_ZH: str
+        +QA_RESPONSE_LABEL_EN: str
+        +QA_RESPONSE_LABEL_ZH: str
+        +_CHARS_PER_TOKEN_BUDGET: float
+        +_CTX_SAFETY_FACTOR: float
+        +_PROMPT_GUARD_MIN_RECENT: int
+        +DEFAULT_SAVE_ROOT: str
+        +TIME_RANGE_RE: Pattern
+        +TIME_RANGE_VALUE_RE: Pattern
+        +TIME_VALUE_RE: Pattern
+        +DEFAULT_SYSTEM_PROMPT_EN: str
+        +DEFAULT_SYSTEM_PROMPT: str
+    }
+
+    class response_format {
+        +parse_model_decision(raw_text: str) tuple~str,str,Optional[str]~
+        +_parse_decision_tokens = parse_model_decision
+        +normalize_model_output(text: str) str
+        +extract_response_payload(text: str) Optional[str]
+        +_chat_completion_response(...) dict
+    }
+
+    class InferLoopMixin {
+        +_handle_text_payload(state, payload, ...) dict
+        +_chat_payload_finalize(state, model_name, ctx) dict
+        +_forward_text_only(payload, ...) dict
+    }
+
+    class MemoryIOMixin {
+        +_memory_warmup(state)
+        +_memory_recall(state, question)
+    }
+
+    class SessionState {
+        +lock: asyncio.Lock
+        +_memory_block_cache: list
+        +_memory_warmed: bool
+        +_memory_warmup_task: Optional~asyncio.Task~
+    }
+
+    InferLoopMixin ..> response_format : parse_model_decision
+    InferLoopMixin ..> response_format : normalize_model_output
+    MemoryIOMixin ..> SessionState : async with state.lock 保护 _memory_block_cache/_memory_warmed
+    response_format ..> prompt_constants : (无直接依赖；常量由各业务模块导入)
+    note for prompt_constants "新增叶子模块：8 个业务模块改为 from prompt_constants import <用到的名>"
+    note for SessionState "state.lock 复用自 ADR0007；#4 仅把 warmup 写路径纳入同一把锁"
