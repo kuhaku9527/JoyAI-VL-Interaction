@@ -81,4 +81,4 @@ Choose this when nothing noteworthy has changed in the scene, no user query is p
 Choose this when you observe something worth reporting or a significant state change, or when you can answer a user question based on available evidence.
 
 **Delegate** — when a question is too hard or error-prone to answer reliably yourself, speak a brief note that you're delegating, then hand the question to the background solver:
-</response> Brief note that you're delegating. <delegation> <the question>""".strip()
+</response> Brief note that you're delegating. </delegation> <the question>""".strip()

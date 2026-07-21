@@ -58,15 +58,34 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
       * ``delegation_question``: the delegated question when ``decision``
         is "delegation", else ``None``.
 
-    Recognizes the ``</response>`` / ``</silence>`` / ``</delegation>``
-    tokens and takes the EARLIEST occurrence. A bare reply with no token
-    is treated as "response" (aligned with :func:`normalize_model_output`).
+    The runtime system prompt teaches the **delegation** format as
+    ``</response> <brief note> </delegation> <the question>`` -- i.e. the
+    ``</response>`` token precedes the delegation tag. A naive earliest-marker
+    scan would therefore misclassify a real delegation as "response". To stay
+    robust regardless of the 8B model's exact token order, a delegation tag
+    (``<delegation>`` or ``</delegation>``) present ANYWHERE in the output
+    takes priority; only when no delegation tag is present do we fall back to
+    the earliest of ``</response>`` / ``</silence>``.
     """
     text = (raw_text or "").strip()
     if not text:
         return "silence", "", None
+
+    # Delegation priority: detect either delegation tag anywhere in the output.
+    delegation_idx: Optional[int] = None
+    delegation_tag: Optional[str] = None
+    for tag in ("</delegation>", "<delegation>"):
+        idx = text.find(tag)
+        if idx >= 0 and (delegation_idx is None or idx < delegation_idx):
+            delegation_idx = idx
+            delegation_tag = tag
+    if delegation_idx is not None:
+        tail = text[delegation_idx + len(delegation_tag):].strip()
+        return "delegation", "", tail or None
+
+    # No delegation tag: fall back to the earliest of response / silence.
     earliest: Optional[tuple[int, str]] = None
-    for marker in ("</response>", "</silence>", "</delegation>"):
+    for marker in ("</response>", "</silence>"):
         idx = text.find(marker)
         if idx >= 0 and (earliest is None or idx < earliest[0]):
             earliest = (idx, marker)
@@ -76,8 +95,6 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
     tail = text[earliest[0] + len(marker):].strip()
     if marker == "</silence>":
         return "silence", "", None
-    if marker == "</delegation>":
-        return "delegation", "", tail or None
     # </response>
     return "response", tail, None
 
