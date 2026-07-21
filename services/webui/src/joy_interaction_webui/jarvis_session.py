@@ -15,10 +15,9 @@ Usage in server.py:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Optional
 
 from .jarvis_mode import (
     AsrPartial,

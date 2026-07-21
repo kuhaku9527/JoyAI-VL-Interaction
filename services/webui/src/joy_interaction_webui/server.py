@@ -5,7 +5,15 @@ WebRTC Joy VL Interaction Server
 Main server that handles WebRTC connections and serves the web interface
 """
 
-import asyncio, base64, io, json, logging, os, signal, socket, subprocess, sys, time, uuid
+import asyncio
+import base64
+import io
+import json
+import logging
+import os
+import sys
+import time
+import uuid
 
 # Fix double-module-load bug: when run via `python -m joy_interaction_webui.server`,
 # Python executes this file as __main__ and *also* registers a separate module
@@ -22,12 +30,10 @@ from collections import defaultdict
 
 import aiohttp
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
+from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration
 from aiortc.contrib.media import MediaRelay
 
 from .vlm_service import VLMService
-from .video_processor import VideoProcessorTrack
-from .rtsp_track import RTSPVideoTrack
 from .audio_processor import MicAudioTrack
 from .asr import setup_asr_routes
 from .tts import setup_tts_routes
@@ -282,8 +288,13 @@ async def llm_status(request):
         llm_payload = _probe_llm(llm_url)
         cached["payload"] = llm_payload
         cached["ts"] = now
-    tts_payload = _probe_tts(tts_url)
-    kws_payload = _probe_kws(kws_dir) if kws_dir else {"status": "missing", "reason": "kws_model_dir not configured"}
+    loop = asyncio.get_running_loop()
+    tts_future = loop.run_in_executor(None, _probe_tts, tts_url)
+    kws_future = loop.run_in_executor(None, _probe_kws, kws_dir) if kws_dir else None
+    tts_payload, kws_payload = await asyncio.gather(
+        tts_future,
+        kws_future if kws_future is not None else asyncio.sleep(0, result={"status": "missing", "reason": "kws_model_dir not configured"}),
+    )
     overall = "ok"
     for p in (llm_payload, tts_payload, kws_payload):
         if p.get("status") in ("error", "missing"):
@@ -295,7 +306,7 @@ async def llm_status(request):
 
 async def tts_health(request):
     _llm_url, tts_url = _resolve_service_targets(request.app)
-    payload = _probe_tts(tts_url)
+    payload = await asyncio.get_running_loop().run_in_executor(None, _probe_tts, tts_url)
     return web.json_response({"ts": _now(), "url": tts_url, **payload})
 
 
@@ -568,7 +579,9 @@ async def offer(request):
     return web.Response(content_type="application/json", text=json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "session_id": session_id}))
 
 async def on_startup(app):
-    import asyncio, os, sys
+    import asyncio
+    import os
+    import sys
     here = os.path.dirname(__file__)
     repo_root = os.path.abspath(os.path.join(here, "..", "..", "..", ".."))
     if repo_root not in sys.path:
@@ -609,6 +622,236 @@ async def on_shutdown(app):
         except Exception:
             pass
 
+_services_config: dict = {
+    "llm":     {"api_base": "http://127.0.0.1:8070/v1", "model": "streaming-infer-adapter", "api_key": ""},
+    "summary": {"api_base": "https://api.minimaxi.com/v1", "model": "MiniMax-VL-01", "api_key": ""},
+    "tts":     {"api_base": "http://127.0.0.1:8985/v1/synthesize", "model": "", "api_key": ""},
+    "asr":     {"api_base": "", "model": "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en", "api_key": ""},
+}
+
+
+def _probe_summary(summary_cfg):
+    """Lightweight reachability probe for the summary model endpoint.
+    Mirrors _probe_llm but with a stricter timeout and tolerates non-model
+    responses (501 / 404 / etc). Anything that returns JSON is "ok".
+    """
+    import httpx
+    api_base = (summary_cfg or {}).get("api_base", "").rstrip("/")
+    if not api_base:
+        return {"ok": False, "reason": "api_base empty"}
+    try:
+        with httpx.Client(timeout=2.0) as client:
+            resp = client.get(api_base + "/models")
+        if resp.status_code == 200:
+            return {"ok": True, "endpoint": api_base + "/models", "code": 200}
+        return {"ok": False, "reason": "http %d" % resp.status_code}
+    except Exception as exc:
+        return {"ok": False, "reason": str(exc)[:120]}
+
+
+def _probe_asr(asr_cfg):
+    """ASR is a model dir or an HTTP endpoint. Probe whichever it is.
+    - If api_base starts with http(s)://, do a GET on api_base/health.
+    - Otherwise treat model as a local filesystem path.
+    """
+    api_base = (asr_cfg or {}).get("api_base", "")
+    model = (asr_cfg or {}).get("model", "")
+    if api_base.startswith("http://") or api_base.startswith("https://"):
+        import httpx
+        try:
+            with httpx.Client(timeout=2.0) as client:
+                resp = client.get(api_base.rstrip("/") + "/health")
+            if resp.status_code == 200:
+                return {"ok": True, "endpoint": api_base, "code": 200}
+            return {"ok": False, "reason": "http %d" % resp.status_code}
+        except Exception as exc:
+            return {"ok": False, "reason": str(exc)[:120]}
+    if model:
+        from pathlib import Path
+        p = Path(model)
+        if p.exists():
+            return {"ok": True, "model_dir": str(p)}
+        return {"ok": False, "reason": "model dir not found: %s" % model}
+    return {"ok": False, "reason": "no api_base or model"}
+
+
+async def _services_config_handler(request):
+    if request.method == "GET":
+        return web.json_response(dict(_services_config))
+    if request.method == "PUT":
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            return web.json_response({"error": "bad json: %s" % exc}, status=400)
+        for slot in ("llm", "summary", "tts", "asr"):
+            incoming = payload.get(slot)
+            if not isinstance(incoming, dict):
+                continue
+            cur = _services_config.setdefault(slot, {})
+            for key in ("api_base", "model", "api_key"):
+                if key in incoming:
+                    cur[key] = incoming[key]
+        _propagate_services_to_runtime()
+        return web.json_response(dict(_services_config))
+    return web.json_response({"error": "method not allowed"}, status=405)
+
+
+async def _services_status_handler(request):
+    """Normalize the 4 probe results into {ok, reason, endpoint} so the
+    UI can read a single shape (item.ok ? "OK" : "ERR", reason tooltip).
+    """
+    llm_cfg = _services_config.get("llm", {})
+    summary_cfg = _services_config.get("summary", {})
+    tts_cfg = _services_config.get("tts", {})
+    asr_cfg = _services_config.get("asr", {})
+    tts_url = tts_cfg.get("api_base") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+    # Each probe uses sync httpx with a 2-3s timeout; running them inline
+    # would block the aiohttp event loop for up to ~9s. Dispatch them to
+    # the default executor and gather so the worst case is the slowest probe.
+    loop = asyncio.get_running_loop()
+    llm_future = loop.run_in_executor(None, _probe_llm, llm_cfg.get("api_base", "http://127.0.0.1:8070/v1"))
+    summary_future = loop.run_in_executor(None, _probe_summary, summary_cfg)
+    tts_future = loop.run_in_executor(None, _probe_tts, tts_url)
+    asr_future = loop.run_in_executor(None, _probe_asr, asr_cfg)
+    llm_raw, summary_raw, tts_raw, asr_raw = await asyncio.gather(
+        llm_future, summary_future, tts_future, asr_future
+    )
+    return web.json_response({
+        "llm": {
+            "ok": llm_raw.get("status") == "ok",
+            "reason": llm_raw.get("reason", ""),
+            "endpoint": llm_cfg.get("api_base", "") + "/models",
+        },
+        "summary": summary_raw,
+        "tts": {
+            "ok": tts_raw.get("status") == "ok",
+            "reason": tts_raw.get("reason", ""),
+            "endpoint": tts_raw.get("endpoint", tts_url),
+        },
+        "asr": asr_raw,
+    })
+
+def _propagate_services_to_runtime():
+    """Push the saved llm/summary config into live service instances.
+    - LLM: update every session VLMService (api_base + model + api_key).
+    - Summary: webinfer owns the summarizer; webui cannot reach into it.
+      We log the change so the operator can restart webinfer if needed.
+    - TTS / ASR: read on demand by JarvisConfig.from_env(); changes take
+      effect for the NEXT session that calls from_env().
+    """
+    try:
+        llm_cfg = _services_config.get("llm", {})
+        api_base = llm_cfg.get("api_base")
+        model = llm_cfg.get("model")
+        api_key = llm_cfg.get("api_key")
+        if api_base:
+            for sid, sess in sessions.items():
+                vlm = sess.get("vlm_service") if isinstance(sess, dict) else None
+                if vlm and hasattr(vlm, "update_api_settings"):
+                    vlm.update_api_settings(api_base=api_base, api_key=api_key)
+                if vlm and model and hasattr(vlm, "set_model"):
+                    vlm.set_model(model)
+            default_vlm_config["api_base"] = api_base
+            if model:
+                default_vlm_config["model"] = model
+    except Exception as exc:
+        logger.warning("propagate llm config: %s", exc)
+    try:
+        os.environ["JARVIS_TTS_API_URL"] = _services_config.get("tts", {}).get("api_base", "") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+        asr_cfg = _services_config.get("asr", {})
+        if asr_cfg.get("model"):
+            os.environ["ASR_MODEL_DIR"] = asr_cfg["model"]
+    except Exception as exc:
+        logger.warning("propagate tts/asr config: %s", exc)
+    summary_cfg = _services_config.get("summary", {})
+    if summary_cfg.get("api_base") or summary_cfg.get("model") or summary_cfg.get("api_key"):
+        # Fire-and-forget; the PUT /api/services/config caller does not
+        # need to wait for webinfer. If webinfer is down, the warning
+        # is logged in the proxy and the saved config is still applied.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop is not None and loop.is_running():
+            loop.create_task(_webinfer_proxy_summarizer_routing(summary_cfg))
+        # else: no live event loop here (e.g. unit test sync invocation);
+        # the next PUT will retry the propagation.
+
+
+def _webinfer_base_url() -> str:
+    """webinfer base URL for the /v1/summarizer/route proxy.
+
+    Defaults to http://127.0.0.1:8070. Override with WEBINFER_URL env
+    var. The webui's own LLM api_base can also point to webinfer (the
+    two share the same OpenAI-compatible gateway).
+    """
+    env = os.environ.get("WEBINFER_URL")
+    if env:
+        return env.rstrip("/")
+    llm_cfg = _services_config.get("llm", {})
+    llm_base = llm_cfg.get("api_base", "http://127.0.0.1:8070/v1").rstrip("/")
+    if llm_base.endswith("/v1"):
+        llm_base = llm_base[:-3]
+    return llm_base
+
+
+async def _webinfer_proxy_summarizer_routing(summary_cfg: dict) -> dict:
+    """Push summary config into the running webinfer process.
+
+    The webui never mutates the summarizer directly. It tells webinfer
+    to mutate its own state via /v1/summarizer/route, then webinfer
+    ships the snapshot back. This is the single-webinfer-main-path
+    principle: branches only happen inside webinfer.
+    """
+    base = _webinfer_base_url()
+    payload = {
+        "api_base": summary_cfg.get("api_base"),
+        "model_name": summary_cfg.get("model"),
+        "api_key": summary_cfg.get("api_key"),
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as session:
+            async with session.post(base + "/v1/summarizer/route", json=payload) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    logger.warning("webinfer /v1/summarizer/route returned %d: %s", resp.status, body[:200])
+                    return {"ok": False, "status": resp.status, "body": body[:200]}
+                return await resp.json()
+    except Exception as exc:
+        logger.warning("webinfer /v1/summarizer/route unreachable: %s", exc)
+        return {"ok": False, "reason": str(exc)[:200]}
+
+
+async def _webinfer_summarizer_route_handler(request):
+    """GET / POST /api/webinfer/summarizer/route.
+
+    Proxies directly to webinfer. Saves the round-trip through
+    /api/services/config -> _propagate_services_to_runtime when the
+    UI just wants to read or push the current snapshot synchronously.
+    """
+    base = _webinfer_base_url()
+    method = "POST" if request.method == "POST" else "GET"
+    body = None
+    if method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid json"}, status=400)
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as session:
+            if method == "GET":
+                async with session.get(base + "/v1/summarizer/route") as resp:
+                    payload = await resp.json(content_type=None)
+                    return web.json_response(payload, status=resp.status)
+            else:
+                async with session.post(base + "/v1/summarizer/route", json=body) as resp:
+                    payload = await resp.json(content_type=None)
+                    return web.json_response(payload, status=resp.status)
+    except Exception as exc:
+        logger.warning("webinfer summarizer route proxy failed: %s", exc)
+        return web.json_response({"error": "webinfer unreachable", "reason": str(exc)[:200]}, status=502)
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="JoyAI VL Interaction WebUI Server")
@@ -618,11 +861,47 @@ def main():
     parser.add_argument("--model", default="streaming-infer-adapter")
     parser.add_argument("--api-base", default="http://127.0.0.1:8070/v1")
     args = parser.parse_args()
+
+
+
     default_vlm_config.update({"api_base": args.api_base, "model": args.model, "prompt": None})
-    app = web.Application()
+
+    @web.middleware
+    async def security_headers_middleware(request, handler):
+        # Apply defensive HTTP headers to every response (static pages, JSON API,
+        # WebSocket upgrade). SRI on the CDN <script>/<link> tags plus this CSP
+        # is the primary supply-chain / XSS defense-in-depth for the SPA.
+        try:
+            response = await handler(request)
+        except Exception:
+            raise
+        if response is not None and getattr(response, "headers", None) is not None:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: blob:; "
+                "font-src 'self' data: https://cdn.jsdelivr.net; "
+                "media-src 'self' blob: data:; "
+                "connect-src 'self' ws: wss: http://127.0.0.1:* https://127.0.0.1:*; "
+                "object-src 'none'; "
+                "base-uri 'self'; "
+                "frame-ancestors 'none'"
+            )
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    app = web.Application(middlewares=[security_headers_middleware])
     app.router.add_get("/", _index_handler)
     app.router.add_get("/models", _models_handler)
     app.router.add_get("/detect-services", _detect_services_handler)
+    app.router.add_get("/api/services/config", _services_config_handler)
+    app.router.add_put("/api/services/config", _services_config_handler)
+    app.router.add_get("/api/services/status", _services_status_handler)
+    app.router.add_get("/api/webinfer/summarizer/route", _webinfer_summarizer_route_handler)
+    app.router.add_post("/api/webinfer/summarizer/route", _webinfer_summarizer_route_handler)
+
     app.router.add_get("/ws", websocket_handler)
     setup_asr_routes(app)
     setup_tts_routes(app)

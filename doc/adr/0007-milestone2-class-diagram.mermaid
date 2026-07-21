@@ -1,0 +1,76 @@
+classDiagram
+    class SessionMixin {
+        +get_session(session_id: str) SessionState
+        +_cleanup_expired_sessions() list~SessionState~
+        +_session_cleanup_loop()
+        +start_background_tasks()
+        +stop_background_tasks()
+        +_init_session_dirs(state: SessionState)
+        +handle_models(request) web.Response
+        +handle_health(request) web.Response
+        +handle_reset(request) web.Response
+        +handle_prompts_active(request) web.Response
+        +handle_prompts_reload(request) web.Response
+        +_session_output_path(state, light: bool) Path
+        +_flush_session_outputs(state: SessionState)
+        +_write_session_outputs(state: SessionState)
+        +_save_live_debug_input(state, record, stem) str
+        +_maybe_save_chunk_start_model_input(state, ...) str
+        +_save_summarizer_debug_input(state, ...) str
+    }
+    class PromptAssemblyMixin {
+        +_build_system_prompt(language: str) str
+        +_build_memory_prompt(state: SessionState) str
+        +_build_internal_user_message(...) dict
+        +_build_main_internal_messages(state) tuple
+        +_build_cached_api_messages(state, internal) list
+        +_build_main_http_messages(api_messages, session_state) list
+        +_main_generation_kwargs(payload) dict
+        +reload_character_prompts() list
+        +_load_character_profiles() list
+        +_system_prompt_cache_key(language) tuple
+        +_refresh_character_prompt_mtime() float
+        +_invalidate_system_prompt_cache()
+        +active_character_prompt_paths() list
+    }
+    class MemoryIOMixin {
+        +_memory_warmup(state)
+        +_memory_recall(state, question) list
+        +_memory_push(state) int
+        +_update_text_qa_history(state, api_messages, clean_text, decision)
+        +_execute_pending_qa_archive(state)
+    }
+    class SummarizerRoutingMixin {
+        +handle_summarizer_route(request) web.Response
+        +_flush_chunk(state, use_async_summary)
+        +_build_mid_term_summary_entry(state, chunk, ...) tuple
+        +_compress_mid_terms(state)
+        +_async_summary_enabled() bool
+        +_async_first_summary_turns() int
+        +_append_async_summary_user_message(state, ...)
+        +_submit_async_summary_if_needed(state)
+        +_commit_required_async_summaries(state, ...) 
+    }
+    class InferLoopMixin {
+        +_resolve_backend(model_name) tuple
+        +handle_text_chat(request) web.Response
+        +_handle_text_payload(state, payload, ...) dict
+        +handle_chat_completions(request) web.Response
+        +_handle_chat_payload(state, payload, request, ...) dict
+        +_forward_text_only(payload, ...) dict
+        +_call_main_model(inbound_payload, api_messages, ...) tuple
+        +_update_query_state(state, prompt_text, time_range) str
+        +_time_range_for_frame(frame_index) str
+        +_resolve_frame_ref(image_ref, state) str
+        +_save_base64_frame(data_url, state) str
+        +_validate_local_image_path(raw_path) Path
+    }
+    class StreamingInferAdapter {
+        +__init__(config: AdapterConfig)
+    }
+    StreamingInferAdapter --|> SessionMixin
+    StreamingInferAdapter --|> InferLoopMixin
+    StreamingInferAdapter --|> SummarizerRoutingMixin
+    StreamingInferAdapter --|> MemoryIOMixin
+    StreamingInferAdapter --|> PromptAssemblyMixin
+    note for StreamingInferAdapter "定义在 adapter_core.py(coordinator)。MRO: Session→InferLoop→Summarizer→MemoryIO→PromptAssembly。__init__ 所在模块须 import AdapterConfig, SessionState 以满足测试 __globals__ 断言。"

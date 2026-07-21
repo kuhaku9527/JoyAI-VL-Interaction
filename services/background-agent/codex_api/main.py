@@ -18,7 +18,6 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-
 DEFAULT_HOST = os.environ.get("CODEX_API_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("CODEX_API_PORT", "8079"))
 DEFAULT_MAX_SUBAGENTS = int(os.environ.get("CODEX_API_MAX_SUBAGENTS", "6"))

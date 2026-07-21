@@ -8,9 +8,7 @@ Usage: python services/scripts/kws_param_sweep.py [--quick]
 """
 import argparse
 import sys
-import time
 import wave
-from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]

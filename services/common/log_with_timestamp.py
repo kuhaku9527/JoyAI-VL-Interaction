@@ -28,7 +28,8 @@ def setup_timestamped_logger(
         log_dir: base directory for log files
         level: log level override (default: env LOG_LEVEL or INFO)
 
-    Returns:
+    Returns
+    -------
         Configured logger instance.
     """
     Path(log_dir).mkdir(parents=True, exist_ok=True)

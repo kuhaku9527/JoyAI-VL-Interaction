@@ -55,7 +55,30 @@ dev = [
 joyvl-webinfer-adapter = "live_adapter:main"
 
 [tool.setuptools]
-py-modules = ["live_adapter", "memory_summarizer", "system_prompts"]
+# All 18 top-level modules shipped by this adapter package.
+# Keep this list in sync with the *.py files at the package root
+# (excluding the tests/ subpackage, which is not a top-level module).
+# See the package-smoke CI job for a regression gate.
+py-modules = [
+    "adapter_core",
+    "adapter_types",
+    "app",
+    "config",
+    "infer_loop",
+    "io_utils",
+    "live_adapter",
+    "memory_io",
+    "memory_store_client",
+    "memory_summarizer",
+    "prompt_assembly",
+    "prompt_building",
+    "request_parsing",
+    "response_format",
+    "session",
+    "summarizer_routing",
+    "system_prompts",
+    "time_ranges",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

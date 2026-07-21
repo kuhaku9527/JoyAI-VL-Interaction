@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from typing import List
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -14,10 +14,8 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .backends import get_backend
 from .models import (
-    MemoryBlock,
     PushRequest,
     PushResponse,
-    RecallFilter,
     RecallRequest,
     RecallResponse,
 )
@@ -82,6 +80,14 @@ async def list_backends() -> dict:
 @app.post("/v1/blocks/push", response_model=PushResponse)
 async def push_blocks(req: PushRequest) -> PushResponse:
     backend = app.state.backend
+    # Backfill per-block fields that legacy clients (e.g. webinfer) omit.
+    # The storage layer requires non-null session_id / created_at, and recall
+    # path compares naive datetimes, so created_at must be a naive UTC value.
+    for block in req.blocks:
+        if block.session_id is None:
+            block.session_id = req.session_id
+        if block.created_at is None:
+            block.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
         pushed = await backend.push(req.session_id, req.blocks)
     except NotImplementedError as exc:

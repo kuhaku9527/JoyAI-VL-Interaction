@@ -11,7 +11,6 @@ Both URLs share the same base (``llm_api_url``); only the suffix differs.
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch

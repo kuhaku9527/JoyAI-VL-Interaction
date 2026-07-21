@@ -17,7 +17,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[2]
 VC_SRC = REPO / "services" / "voice-clone" / "src"
 for _p in (str(REPO), str(VC_SRC)):

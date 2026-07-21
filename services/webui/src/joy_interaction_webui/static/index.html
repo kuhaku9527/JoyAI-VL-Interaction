@@ -393,6 +393,14 @@ limitations under the License.
 
         /* Sidebar */
         .sidebar {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            flex-direction: row;
+            transition: width 0.25s ease, flex-basis 0.25s ease, padding 0.25s ease;
+        }
+
+        .sidebar-panels {
             width: 350px;
             flex: 0 0 350px;
             background: var(--bg-secondary);
@@ -400,12 +408,17 @@ limitations under the License.
             overflow-y: auto;
             overflow-x: hidden;
             padding: 20px;
-            transition: width 0.25s ease, flex-basis 0.25s ease, padding 0.25s ease;
+            height: 100%;
+            box-sizing: border-box;
         }
 
         .sidebar.docked {
+            flex-basis: auto;
+        }
+
+        .sidebar.docked .sidebar-panels {
             width: 64px;
-            flex-basis: 64px;
+            flex: 0 0 64px;
             padding: 12px 8px;
         }
 
@@ -3092,7 +3105,7 @@ limitations under the License.
         */
 
         /* Responsive Layout - Side by Side on Wide Screens */
-        @media (min-width: 1400px) {
+        @media (min-width: 1280px) {
             .main-content {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -3148,10 +3161,6 @@ limitations under the License.
 
         /* Responsive adjustments for smaller screens */
         @media (max-width: 1024px) {
-            .sidebar {
-                width: 280px;
-            }
-
             .header-title {
                 font-size: 18px;
             }
@@ -3505,25 +3514,8 @@ limitations under the License.
                 left: -8px;
             }
 
-            .sidebar {
-                order: 2;
-                width: 100%;
-                flex: 0 0 auto;
-                padding: 10px;
-                border-right: none;
-                border-top: 1px solid var(--border-color);
-                overflow: visible;
-            }
-
-            .sidebar.docked {
-                width: 100%;
-                flex-basis: auto;
-                padding: 8px 10px;
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 8px;
-            }
-
+            /* Settings panels are now an off-canvas drawer (see ≤1023 block);
+               only the touch-friendly panel tweaks remain here. */
             .sidebar .panel {
                 margin-bottom: 10px;
             }
@@ -3603,6 +3595,139 @@ limitations under the License.
             }
         }
 
+        /* ===== Responsive System v2 & Interaction Layer (additive) ===== */
+
+        /* Sidebar drawer toggle button (hidden on desktop, shown ≤1023px) */
+        .sidebar-toggle-btn {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+        .sidebar-toggle-btn:hover { background: rgba(255, 255, 255, 0.08); }
+        .sidebar-toggle-btn svg { width: 22px; height: 22px; }
+
+        /* Scrim behind the off-canvas sidebar.
+           Uses visibility (not display) so the opacity transition can run;
+           display:none -> block would make the dimming pop instead of fade. */
+        .sidebar-scrim {
+            visibility: hidden;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9990;
+            opacity: 0;
+            transition: opacity 0.28s ease, visibility 0.28s ease;
+        }
+        body.sidebar-open .sidebar-scrim {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Tablet / small-laptop: settings panels become an off-canvas drawer.
+           Only `.sidebar-panels` slides; `.main-content` stays in flow.
+           Selector intentionally omits `.docked` so it works regardless of
+           whether the desktop default is docked(64px) or expanded(350px). */
+        @media (max-width: 1023px) {
+            .sidebar-toggle-btn { display: inline-flex; }
+
+            .sidebar-panels {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100dvh;
+                width: min(320px, 82vw);
+                transform: translateX(-100%);
+                transition: transform 0.28s ease;
+                z-index: 9991;
+                box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+                border-right: 1px solid var(--border-color);
+                overflow-y: auto;
+                flex: none;
+            }
+            body.sidebar-open .sidebar-panels {
+                transform: translateX(0);
+            }
+            .main-content { width: 100%; }
+        }
+
+        /* Re-assert drawer on phones (keeps panels off-canvas; main content
+           remains full-width in flow, so it never disappears when closed) */
+        @media (max-width: 768px) {
+            .sidebar-panels {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100dvh;
+                width: min(320px, 82vw);
+                transform: translateX(-100%);
+                border-top: none;
+                display: block;
+                order: 0;
+                flex: none;
+                z-index: 9991;
+            }
+            body.sidebar-open .sidebar-panels {
+                transform: translateX(0);
+            }
+        }
+
+        /* ---- Interaction & Accessibility Layer ---- */
+        :focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        .icon-btn:focus-visible,
+        .settings-btn:focus-visible,
+        .theme-toggle:focus-visible,
+        .chat-prompt-action:focus-visible,
+        .big-start-btn:focus-visible,
+        .sidebar-toggle-btn:focus-visible,
+        .video-control-btn:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
+        button, .icon-btn, .settings-btn, .theme-toggle, .chat-prompt-action,
+        .big-start-btn, .panel-header, .video-control-btn, .quick-camera-btn {
+            transition: background-color 0.2s ease, border-color 0.2s ease,
+                        box-shadow 0.2s ease, transform 0.15s ease, color 0.2s ease;
+        }
+        .icon-btn:hover, .settings-btn:hover, .theme-toggle:hover,
+        .chat-prompt-action:hover, .big-start-btn:hover, .video-control-btn:hover {
+            transform: translateY(-1px);
+        }
+        .icon-btn:active, .chat-prompt-action:active, .big-start-btn:active {
+            transform: translateY(0) scale(0.97);
+        }
+
+        /* Subtle pulse on the connection badge while processing */
+        .status-badge.processing {
+            animation: statusPulse 1.4s ease-in-out infinite;
+        }
+        @keyframes statusPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
+
+        /* Respect users who prefer reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 
     <!-- SVG Gradient Definitions (for gradient strokes) -->
@@ -3640,14 +3765,31 @@ limitations under the License.
         </defs>
     </svg>
 
-    <!-- Lucide Icons - Load before body scripts -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Lucide Icons - pinned to a fixed version + SRI (was @latest, floating) -->
+    <script src="https://unpkg.com/lucide@1.25.0/dist/umd/lucide.min.js"
+            integrity="sha384-UoXAhqcCCjwD94x4CCSExEHvtO49AfNiY7g/IxDgrPtx4U6o6tvy1cScx9v/RrS9"
+            crossorigin="anonymous"></script>
     <!-- Markdown rendering libraries -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css"
+          integrity="sha384-wcIxkf4k558AjM3Yz3BBFQUbk/zgIYC2R0QpeeYb+TwlBVMrlgLqwRjRtGZiK7ww"
+          crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js"
+            integrity="sha384-hIoBPJpTUs74ddyc4bFZSM1TVlQDA60VBbJS0oA934VSz82sBx1X7kSx2ATBDIyd"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"
+            integrity="sha384-NNQgBjjuhtXzPmmy4gurS5X7P4uTt1DThyevz4Ua0IVK5+kazYQI1W27JHjbbxQz"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"
+            integrity="sha384-vdScihEZCfbPnBQf+lc7LgXUdJVYyhC3yWHUW5C5P5GpHRqVnaM6HJELJxT6IqwM"
+            crossorigin="anonymous"></script>
     <script src="./screen_capture.js"></script>
+    <script src="./capture_webcam.js"></script>
+    <script src="./capture_rtsp.js"></script>
+    <script src="./render_markdown.js"></script>
+    <script src="./sanitize_static_html.js"></script>
+    <script src="./config_services.js"></script>
+    <script src="./joy_ws.js"></script>
     <script>
         document.title = 'JoyAI VL Live';
 
@@ -3663,6 +3805,9 @@ limitations under the License.
     <!-- Header -->
     <div class="header">
         <div class="header-left">
+            <button class="sidebar-toggle-btn" id="sidebarToggle" type="button" aria-label="Toggle settings sidebar" aria-controls="sidebarPanels" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <div class="logo" id="jdLogo" role="button" tabindex="0" aria-label="Refresh page">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-hidden="true">
                     <rect width="128" height="128" rx="28" fill="#c81e2a"/>
@@ -3675,7 +3820,7 @@ limitations under the License.
             </div>
         </div>
         <div class="header-right">
-            <span class="status-badge disconnected" id="connectionStatus">Disconnected</span>
+            <span class="status-badge disconnected" id="connectionStatus" role="status" aria-live="polite">Disconnected</span>
             <span class="status-badge llm-unknown" id="llmServiceStatus" title="LLM (llama-server) reachability -- polled every 3s">LLM ?</span>
             <span class="status-badge llm-unknown" id="ttsServiceStatus" title="TTS (voice_clone_api) reachability -- polled every 3s">TTS ?</span>
             <span class="status-badge llm-unknown" id="kwsServiceStatus" title="KWS (sherpa-onnx wake-word) model presence -- polled every 3s">KWS ?</span>
@@ -3894,204 +4039,114 @@ limitations under the License.
 
     <div class="container">
         <!-- Left Sidebar -->
-        <div class="sidebar docked" id="sidebar">
-            <!-- VLM API Configuration -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-panels" id="sidebarPanels">
+            <!-- Video Source: 3 independent capture modules (v3.38). -->
             <div class="panel">
-                <div class="panel-header" onclick="togglePanel('vlmConfig')">
+                <div class="panel-header" onclick="togglePanel('videoSourceConfig')">
                     <div class="panel-title">
-                        <span class="panel-icon">
-                            <i data-lucide="globe"></i>
-                        </span>
-                        <span class="panel-title-text">Video/VLM Settings</span>
-                    </div>
-                    <span class="panel-toggle collapsed" id="vlmConfigToggle">▼</span>
-                </div>
-                <div class="panel-content collapsed" id="vlmConfig">
-                    <div class="vlm-scope-note">BT chat / ASR / TTS uses Jarvis directly. This section only affects red Start video/VLM analysis.</div>
-                    <div class="form-group">
-                        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 8px;">
-                            <label style="margin-bottom: 0; flex: 1;">VLM API Base URL</label>
-                            <div style="display: none; position: relative;">
-                                <button class="icon-btn" id="apiPresetsBtn" title="Select preset API endpoint">
-                                    <i data-lucide="clipboard"></i>
-                                </button>
-                                <div id="apiPresetsMenu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 4px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); min-width: 280px; z-index: 9999;">
-                                    <div style="padding: 8px 0;">
-                                        <div class="api-preset-item" data-url="http://localhost:11434/v1">
-                                            <strong>Ollama</strong><br>
-                                            <span style="font-size: 11px; color: var(--text-muted);">http://localhost:11434/v1</span>
-                                        </div>
-                                        <div class="api-preset-item" data-url="http://localhost:8000/v1">
-                                            <strong>vLLM</strong><br>
-                                            <span style="font-size: 11px; color: var(--text-muted);">http://localhost:8000/v1</span>
-                                        </div>
-                                        <div class="api-preset-item" data-url="http://localhost:30000/v1">
-                                            <strong>SGLang</strong><br>
-                                            <span style="font-size: 11px; color: var(--text-muted);">http://localhost:30000/v1</span>
-                                        </div>
-                                        <div style="border-top: 1px solid var(--border-color); margin: 4px 0;"></div>
-                                        <div class="api-preset-item" data-url="https://api.openai.com/v1">
-                                            <strong>OpenAI</strong><br>
-                                            <span style="font-size: 11px; color: var(--text-muted);">https://api.openai.com/v1</span>
-                                        </div>
-                                        <div class="api-preset-item" data-url="https://integrate.api.nvidia.com/v1">
-                                            <strong>NVIDIA API Catalog</strong><br>
-                                            <span style="font-size: 11px; color: var(--text-muted);">https://integrate.api.nvidia.com/v1</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <input type="text" id="apiBaseUrl" value="http://127.0.0.1:8070/v1" placeholder="http://localhost:8000/v1">
-                        <div class="input-hint" id="apiBaseHint">Video/VLM endpoint only; BT chat uses Jarvis 7060 directly</div>
-                    </div>
-                    <div class="form-group" id="apiKeyGroup">
-                        <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" onclick="toggleApiKeyField()">
-                            <label style="margin-bottom: 0; flex: 1;">API Key (Optional)</label>
-                            <span id="apiKeyToggle" style="font-size: 12px; color: var(--text-secondary);">▼</span>
-                        </div>
-                        <div id="apiKeyField">
-                            <input type="text" id="apiKey" placeholder="sk-..." autocomplete="off">
-                            <div class="input-hint">Required for OpenAI and NVIDIA API Catalog, etc.</div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <label style="margin-bottom: 0;">VLM Model Selection</label>
-                            <div style="display: flex; gap: 6px;">
-                                <button class="icon-btn" id="refreshModelsBtn" title="Refresh available models">
-                                    <i data-lucide="refresh-cw"></i>
-                                </button>
-                                <button class="icon-btn" id="downloadModelBtn" title="Download new model (coming soon)" disabled style="opacity: 0.5;">
-                                    <i data-lucide="plus"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <select id="modelSelect">
-                            <option value="">Loading models...</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Video Source -->
-            <div class="panel">
-                <div class="panel-header" onclick="togglePanel('cameraConfig')">
-                    <div class="panel-title">
-                        <span class="panel-icon">
-                            <i data-lucide="video"></i>
-                        </span>
+                        <span class="panel-icon"><i data-lucide="video"></i></span>
                         <span class="panel-title-text">Video Source</span>
                     </div>
-                    <span class="panel-toggle collapsed" id="cameraConfigToggle">▼</span>
+                    <span class="panel-toggle collapsed" id="videoSourceConfigToggle">▼</span>
                 </div>
-                <div class="panel-content collapsed" id="cameraConfig">
-                    <!-- Input Source Tabs -->
-                    <div class="input-source-tabs">
-                        <button class="input-source-tab active" data-source="webcam">
-                            <i data-lucide="video" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-                            Webcam
-                        </button>
-                        <button class="input-source-tab" data-source="rtsp" title="RTSP IP Camera (Beta - Tested with Reolink RLC-811A)">
-                            <i data-lucide="cast" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-                            RTSP Stream
-                            <span class="beta-badge">BETA</span>
-                        </button>
-                        <button class="input-source-tab" data-source="screen" title="Screen Capture (browser-native getDisplayMedia, 1 fps JPEG frames)">
-                            <i data-lucide="monitor" style="width: 14px; height: 14px; margin-right: 4px;"></i>
-                            Screen Capture
-                        </button>
-                    </div>
-
-                    <!-- Webcam Controls -->
-                    <div id="webcamControls">
+                <div class="panel-content collapsed" id="videoSourceConfig">
+                    <!-- Webcam capture -->
+                    <div class="capture-block">
+                        <div class="capture-block-header"><i data-lucide="video"></i> Webcam Capture</div>
                         <div class="form-group">
                             <label>Camera Selection</label>
-                            <select id="cameraSelect">
-                                <option value="">Detecting cameras...</option>
-                            </select>
-                            <div class="input-hint" style="margin-bottom: 11px;">Used only by red Start video/VLM analysis</div>
+                            <select id="cameraSelect"><option value="">Detecting cameras...</option></select>
+                        </div>
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button class="icon-btn" id="webcamStartBtn" title="Start webcam capture" type="button"><i data-lucide="play"></i></button>
+                                <button class="icon-btn" id="webcamStopBtn" title="Stop webcam capture" type="button" disabled><i data-lucide="square"></i></button>
+                                <span id="webcamStatus" class="input-hint" style="margin: 0;">Idle</span>
+                            </div>
+                            <div class="input-hint" style="margin-top: 8px;">Local preview + WebRTC to backend. VLM runs automatically while streaming.</div>
                         </div>
                     </div>
 
-                    <!-- RTSP Controls -->
-                    <div id="rtspControls" style="display: none;">
+                    <!-- RTSP capture -->
+                    <div class="capture-block">
+                        <div class="capture-block-header"><i data-lucide="cast"></i> RTSP Stream <span class="beta-badge">BETA</span></div>
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 8px;">
-                                <div class="tooltip-wrapper" style="margin-bottom: 0; flex: 1;">
-                                    <label style="margin-bottom: 0;">RTSP Stream URL</label>
-                                    <span class="tooltip-icon">ℹ</span>
-                                    <div class="tooltip-text">
-                                        <strong>Format:</strong> rtsp://[user:pass@]ip:port/path<br><br>
-                                        <strong>Examples:</strong><br>
-                                        • rtsp://192.168.1.100:554/stream<br>
-                                        • rtsp://admin:password@192.168.1.100:554/h264Preview_01_main
-                                    </div>
-                                </div>
-                                <button class="icon-btn" id="testRtspBtn" title="Test Connection">
-                                    <i data-lucide="test-tube-diagonal"></i>
-                                </button>
+                                <label style="margin-bottom: 0; flex: 1;">RTSP Stream URL</label>
+                                <button class="icon-btn" id="testRtspBtn" title="Test Connection"><i data-lucide="test-tube-diagonal"></i></button>
                             </div>
-                            <input type="text" id="rtspUrl" placeholder="rtsp://192.168.1.100:554/stream" style="margin-bottom: 16px;">
-                            <div id="rtspStatus" class="input-hint" style="margin-top: -8px; margin-bottom: 12px; display: none;"></div>
+                            <input type="text" id="rtspUrl" placeholder="rtsp://192.168.1.100:554/stream">
+                            <div id="rtspStatus" class="input-hint" style="margin-top: -4px; margin-bottom: 8px; display: none;"></div>
+                        </div>
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button class="icon-btn" id="rtspStartBtn" title="Start RTSP capture" type="button"><i data-lucide="play"></i></button>
+                                <button class="icon-btn" id="rtspStopBtn" title="Stop RTSP capture" type="button" disabled><i data-lucide="square"></i></button>
+                                <span id="rtspCaptureStatus" class="input-hint" style="margin: 0;">Idle</span>
+                            </div>
+                            <div id="rtspBetaWarning" class="input-hint" style="margin-top: 8px; color: var(--warning-color);"><strong>Beta:</strong> Tested with Reolink RLC-811A.</div>
                         </div>
                     </div>
 
-                    <!-- Screen Capture Controls -->
-                    <div id="screenControls" style="display: none;">
+                    <!-- Screen capture -->
+                    <div class="capture-block">
+                        <div class="capture-block-header"><i data-lucide="monitor"></i> Screen Capture</div>
                         <div class="form-group">
-                            <label>Capture Target</label>
-                            <div class="input-hint" style="margin-bottom: 8px;">A browser picker will ask you to pick a window/tab. Picks stay on this machine -- nothing is uploaded until you press Start.</div>
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button">
-                                    <i data-lucide="play"></i>
-                                </button>
-                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled>
-                                    <i data-lucide="square"></i>
-                                </button>
+                            <div class="input-hint" style="margin-bottom: 8px;">Browser-native getDisplayMedia, 1 fps JPEG frames.</div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button"><i data-lucide="play"></i></button>
+                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled><i data-lucide="square"></i></button>
                                 <span id="screenStatus" class="input-hint" style="margin: 0;">Idle</span>
                             </div>
-                            <div id="screenFpsHint" class="input-hint" style="margin-top: 0;">Default 1 fps JPEG (~200 KB/s) -- matches VLM cadence.</div>
                         </div>
-                    </div>
-
-                    <div class="form-group">
-                        <!-- RTSP Beta Warning (shown only when RTSP tab is active) -->
-                        <div id="rtspBetaWarning" class="input-hint" style="margin-top: 12px; color: var(--warning-color); display: none; align-items: center; gap: 4px;">
-                            <span><strong>Beta:</strong> Tested with Reolink RLC-811A. Other cameras may work. <a href="https://github.com/NVIDIA-AI-IOT/live-vlm-webui/blob/main/docs/usage/rtsp-ip-cameras.md" target="_blank" style="color: var(--warning-color); text-decoration: underline;">Learn more</a></span>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Processing Interval</label>
-                        <input type="number" id="processEvery" value="1" min="0.1" max="60" step="0.1">
-                        <div class="input-hint">Seconds between each VLM inference (default: 1s)</div>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label>Frames per Batch</label>
-                        <input type="number" id="framesPerBatch" value="1" min="1" max="30" step="1">
-                        <div class="input-hint">Number of frames batched per inference (default: 1)</div>
                     </div>
                 </div>
             </div>
 
-        </div>
+            <!-- Services (4 API selectors, v3.38) -->
+            <div class="panel">
+                <div class="panel-header" onclick="togglePanel('servicesConfig')">
+                    <div class="panel-title">
+                        <span class="panel-icon"><i data-lucide="plug"></i></span>
+                        <span class="panel-title-text">Services</span>
+                    </div>
+                    <span class="panel-toggle collapsed" id="servicesConfigToggle">▼</span>
+                </div>
+                <div class="panel-content collapsed" id="servicesConfig">
+                    <div class="input-hint" style="margin-bottom: 12px;">Four pluggable backends. Save applies at runtime; no service restart.</div>
+                    <div class="service-row" data-service="llm">
+                        <div class="service-row-header"><i data-lucide="brain"></i><span>LLM</span><span class="service-badge" id="badge-llm">--</span></div>
+                        <div class="form-group"><label>API Base URL</label><input type="text" id="svc-llm-api-base" placeholder="http://127.0.0.1:8070/v1"></div>
+                        <div class="form-group"><label>Model</label><input type="text" id="svc-llm-model" placeholder="joyai-vl-interaction-preview"></div>
+                        <div class="form-group"><label>API Key</label><input type="password" id="svc-llm-api-key" placeholder="optional"></div>
+                    </div>
+                    <div class="service-row" data-service="summary">
+                        <div class="service-row-header"><i data-lucide="file-text"></i><span>Summary</span><span class="service-badge" id="badge-summary">--</span></div>
+                        <div class="form-group"><label>API Base URL</label><input type="text" id="svc-summary-api-base" placeholder="http://127.0.0.1:7060/v1"></div>
+                        <div class="form-group"><label>Model</label><input type="text" id="svc-summary-model" placeholder="joyai-vl-interaction-preview"></div>
+                    </div>
+                    <div class="service-row" data-service="tts">
+                        <div class="service-row-header"><i data-lucide="volume-2"></i><span>TTS</span><span class="service-badge" id="badge-tts">--</span></div>
+                        <div class="form-group"><label>API URL</label><input type="text" id="svc-tts-api-base" placeholder="http://127.0.0.1:8985/v1/synthesize"></div>
+                    </div>
+                    <div class="service-row" data-service="asr">
+                        <div class="service-row-header"><i data-lucide="mic"></i><span>ASR</span><span class="service-badge" id="badge-asr">--</span></div>
+                        <div class="form-group"><label>API URL</label><input type="text" id="svc-asr-api-base" placeholder="http://127.0.0.1:8993/v1/transcribe"></div>
+                        <div class="form-group"><label>Model</label><input type="text" id="svc-asr-model" placeholder="ggml-large-v3-turbo"></div>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                        <button class="icon-btn" id="svcSaveBtn" title="Save all service configs and probe"><i data-lucide="save"></i> Save</button>
+                        <button class="icon-btn" id="svcProbeBtn" title="Re-probe all services"><i data-lucide="activity"></i> Probe</button>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /.sidebar-panels -->
 
         <!-- Main Content -->
         <div class="main-content">
             <!-- Video Feed -->
             <div class="video-card" id="videoCard">
-                <!-- Big Start Button (centered overlay) -->
-                <button id="bigStartBtn" class="big-start-btn" onclick="start()">
-                    <i data-lucide="play"></i>
-                    Start
-                </button>
-
-                <!-- Small Stop Button (top-left corner when streaming) -->
-                <button id="smallStopBtn" class="small-stop-btn" onclick="stop({ clearConversation: true })">
-                    <i data-lucide="square"></i>
-                </button>
-
                 <!-- Fullscreen Button (top-right corner) -->
                 <button class="fullscreen-btn" onclick="toggleFullscreen()" title="Toggle fullscreen">
                     <i data-lucide="maximize" id="fullscreenIcon"></i>
@@ -4578,51 +4633,27 @@ limitations under the License.
             }
         }
 
-        // Handle camera selection change
+        // Handle camera selection change (v3.38: use webcam module API)
         document.getElementById('cameraSelect').addEventListener('change', async (e) => {
             selectedCameraId = e.target.value;
             syncQuickCameraButton();
             console.log('Selected camera:', selectedCameraId);
-
-            // If already running, switch camera
-            if (isAnalysisRunning && localStream) {
+            if (window.isWebcamCapturing && window.isWebcamCapturing()) {
                 try {
-                    // Reset session for fresh inference
-                    //resetSession();
-
-                    // Stop current stream
-                    localStream.getTracks().forEach(track => track.stop());
-
-                    // Get new stream with selected camera
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                            deviceId: { exact: selectedCameraId },
+                    window.stopWebcamCapture();
+                    const constraints = {
+                        deviceId: { exact: selectedCameraId },
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
-                        }
+                    };
+                    await window.startWebcamCapture(window.websocket, {
+                        constraints,
+                        sessionId: window.sessionId,
                     });
-
-                    showProcessedVideoStream(localStream, streamStartToken);
-
-                    // Replace track in peer connection
-                    const videoTrack = localStream.getVideoTracks()[0];
-                    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        await sender.replaceTrack(videoTrack);
-                        console.log('Camera switched successfully');
-                    }
                 } catch (err) {
                     console.error('Error switching camera:', err);
-                    alert('Failed to switch camera: ' + err.message);
                 }
             }
-
-            // Trigger flash animation
-            const cameraSelect = document.getElementById('cameraSelect');
-            cameraSelect.classList.add('applied');
-            setTimeout(() => {
-                cameraSelect.classList.remove('applied');
-            }, 600);
         });
 
         // Also trigger flash on blur (when dropdown closes)
@@ -4716,70 +4747,139 @@ limitations under the License.
             });
         });
 
-        // Screen Capture inline controls
+        // Per-source capture handlers (v3.38). Each video source has its own
+        // start/stop button pair wired to its module. No global dispatcher.
         (function () {
-            const startBtn = document.getElementById('screenStartBtn');
-            const stopBtn = document.getElementById('screenStopBtn');
-            const status = document.getElementById('screenStatus');
-            function setStatus(text, color) {
-                if (!status) return;
-                status.textContent = text;
-                if (color) status.style.color = color; else status.style.color = '';
+            function setStatus(elem, text, color) {
+                if (!elem) return;
+                elem.textContent = text;
+                if (color) elem.style.color = color; else elem.style.color = "";
             }
-            function refresh() {
-                const running = !!(window.isScreenCapturing && window.isScreenCapturing());
-                if (startBtn) startBtn.disabled = running;
-                if (stopBtn) stopBtn.disabled = !running;
-                setStatus(running ? 'Capturing (1 fps)' : 'Idle', running ? 'var(--success-color, #4caf50)' : '');
-            }
-            if (startBtn) startBtn.addEventListener('click', async () => {
-                if (typeof window.startScreenCapture !== 'function') {
-                    setStatus('screen_capture.js missing', 'var(--warning-color, #ff6b35)');
-                    return;
+
+            // Webcam
+            (function () {
+                const startBtn = document.getElementById("webcamStartBtn");
+                const stopBtn = document.getElementById("webcamStopBtn");
+                const status = document.getElementById("webcamStatus");
+                function refresh() {
+                    const running = !!(window.isWebcamCapturing && window.isWebcamCapturing());
+                    if (startBtn) startBtn.disabled = running;
+                    if (stopBtn) stopBtn.disabled = !running;
+                    setStatus(status, running ? "Streaming" : "Idle", running ? "var(--success-color, #4caf50)" : "");
                 }
-                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-                    connectWebSocket();
-                }
-                setStatus('Requesting capture...', 'var(--warning-color, #ff6b35)');
-                // v3.33: mirror start() Screen branch -- waiting state + reset srcObject
-                setVideoWaitingForStream(true);
-                videoElement.srcObject = null;
-                updateStatus('Selecting window...', 'processing');
-                try {
-                    await window.startScreenCapture(websocket, { fps: 1 });
-                    // v3.33: mount the captured stream on <video id="videoElement"> for local preview.
-                    // Stream is null when the user cancels the picker; surface a status hint in that case.
-                    const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
-                    if (previewStream) {
-                        // Game/tab content must not be mirrored (UI text would be unreadable).
-                        videoElement.classList.remove('mirrored');
-                        videoElement.srcObject = previewStream;
-                        setVideoWaitingForStream(false);
-                        updateStatus('Screen capturing', 'connected');
-                    } else {
-                        updateStatus('Screen capture cancelled', 'disconnected');
-                        setVideoWaitingForStream(false);
+                if (startBtn) startBtn.addEventListener("click", async () => {
+                    try {
+                        const constraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+                        const sel = document.getElementById("cameraSelect");
+                        if (sel && sel.value) constraints.deviceId = { exact: sel.value };
+                        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+                            if (typeof connectWebSocket === "function") connectWebSocket();
+                        }
+                        await window.startWebcamCapture(window.websocket, {
+                            constraints: constraints,
+                            sessionId: window.sessionId,
+                        });
+                        setStatus(status, "Streaming", "var(--success-color, #4caf50)");
+                    } catch (err) {
+                        console.error("startWebcamCapture:", err);
+                        setStatus(status, "Error: " + (err && err.message ? err.message : err), "var(--error-color, #f44336)");
                     }
-                } catch (err) {
-                    console.error('startScreenCapture failed:', err);
-                    setStatus('Failed: ' + (err && err.message ? err.message : err), 'var(--warning-color, #ff6b35)');
-                    updateStatus('Capture failed: ' + (err && err.message ? err.message : err), 'error');
-                    setVideoWaitingForStream(false);
-                }
+                });
+                if (stopBtn) stopBtn.addEventListener("click", () => {
+                    window.stopWebcamCapture();
+                    setStatus(status, "Idle");
+                    refresh();
+                });
+                setInterval(refresh, 1000);
                 refresh();
-            });
-            if (stopBtn) stopBtn.addEventListener('click', () => {
-                if (typeof window.stopScreenCapture === 'function') {
+            })();
+
+            // RTSP
+            (function () {
+                const startBtn = document.getElementById("rtspStartBtn");
+                const stopBtn = document.getElementById("rtspStopBtn");
+                const status = document.getElementById("rtspCaptureStatus");
+                const urlInput = document.getElementById("rtspUrl");
+                function refresh() {
+                    const running = !!(window.isRtspCapturing && window.isRtspCapturing());
+                    if (startBtn) startBtn.disabled = running;
+                    if (stopBtn) stopBtn.disabled = !running;
+                    if (urlInput) urlInput.disabled = running;
+                    setStatus(status, running ? "Streaming" : "Idle", running ? "var(--success-color, #4caf50)" : "");
+                }
+                if (startBtn) startBtn.addEventListener("click", async () => {
+                    const url = urlInput ? urlInput.value.trim() : "";
+                    if (!url) { alert("Please enter an RTSP URL"); return; }
+                    try {
+                        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+                            if (typeof connectWebSocket === "function") connectWebSocket();
+                        }
+                        await window.startRtspCapture(window.websocket, {
+                            rtspUrl: url,
+                            sessionId: window.sessionId,
+                        });
+                        setStatus(status, "Streaming", "var(--success-color, #4caf50)");
+                    } catch (err) {
+                        console.error("startRtspCapture:", err);
+                        setStatus(status, "Error: " + (err && err.message ? err.message : err), "var(--error-color, #f44336)");
+                    }
+                });
+                if (stopBtn) stopBtn.addEventListener("click", () => {
+                    window.stopRtspCapture();
+                    setStatus(status, "Idle");
+                    refresh();
+                });
+                setInterval(refresh, 1000);
+                refresh();
+            })();
+
+            // Screen Capture
+            (function () {
+                const startBtn = document.getElementById("screenStartBtn");
+                const stopBtn = document.getElementById("screenStopBtn");
+                const status = document.getElementById("screenStatus");
+                function refresh() {
+                    const running = !!(window.isScreenCapturing && window.isScreenCapturing());
+                    if (startBtn) startBtn.disabled = running;
+                    if (stopBtn) stopBtn.disabled = !running;
+                    setStatus(status, running ? "Capturing (1 fps)" : "Idle", running ? "var(--success-color, #4caf50)" : "");
+                }
+                if (startBtn) startBtn.addEventListener("click", async () => {
+                    try {
+                        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+                            if (typeof connectWebSocket === "function") connectWebSocket();
+                        }
+                        await window.startScreenCapture(window.websocket, { fps: 1 });
+                        const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
+                        if (previewStream && typeof videoElement !== "undefined" && videoElement) {
+                            videoElement.classList.remove("mirrored");
+                            videoElement.srcObject = previewStream;
+                        }
+                        setStatus(status, "Capturing (1 fps)", "var(--success-color, #4caf50)");
+                    } catch (err) {
+                        console.error("startScreenCapture:", err);
+                        setStatus(status, "Error: " + (err && err.message ? err.message : err), "var(--error-color, #f44336)");
+                    }
+                });
+                if (stopBtn) stopBtn.addEventListener("click", () => {
                     window.stopScreenCapture();
-                }
-                // v3.33: clear the local preview tile and sync connection status
-                videoElement.srcObject = null;
-                setVideoWaitingForStream(false);
-                updateStatus('Disconnected', 'disconnected');
+                    setStatus(status, "Idle");
+                    refresh();
+                });
+                setInterval(refresh, 1000);
                 refresh();
-            });
-            setInterval(refresh, 1000);
-            refresh();
+            })();
+        })();
+
+        // Services panel (v3.38): load / save / probe 4 API slots (LLM / Summary / TTS / ASR)
+        // (function bodies extracted to config_services.js → window.JoyConfig)
+        (function () {
+            const { readForm, writeForm, load, probe, save } = window.JoyConfig;
+            const saveBtn = document.getElementById("svcSaveBtn");
+            const probeBtn = document.getElementById("svcProbeBtn");
+            if (saveBtn) saveBtn.addEventListener("click", save);
+            if (probeBtn) probeBtn.addEventListener("click", probe);
+            load();
         })();
 
         // Clear RTSP status message when user types
@@ -4914,126 +5014,18 @@ limitations under the License.
             return rawText.replace(/<\/response>/gi, '').trim();
         }
 
-        function escapeHtml(text) {
-            const element = document.createElement('div');
-            element.textContent = String(text || '');
-            return element.innerHTML;
-        }
-
-        function decodeHtmlEntities(text) {
-            const element = document.createElement('textarea');
-            element.innerHTML = String(text || '');
-            return element.value;
-        }
-
-        function protectMarkdownCodeSpans(text) {
-            const placeholders = [];
-            const store = (value) => {
-                const token = `@@LIVE_VLM_CODE_${placeholders.length}@@`;
-                placeholders.push({ token, value });
-                return token;
-            };
-            const protectedText = String(text || '')
-                .replace(/```[\s\S]*?(?:```|$)/g, store)
-                .replace(/`[^`\n]+`/g, store);
-            return { text: protectedText, placeholders };
-        }
-
-        function restoreMarkdownCodeSpans(text, placeholders) {
-            let restored = String(text || '');
-            placeholders.forEach(({ token, value }) => {
-                restored = restored.split(token).join(value);
-            });
-            return restored;
-        }
-
-        function renderMathToHtml(math, displayMode) {
-            const source = String(math || '').trim();
-            if (!source) return '';
-            if (typeof katex === 'undefined' || typeof katex.renderToString !== 'function') {
-                return displayMode
-                    ? `<div class="markdown-math-fallback">$${escapeHtml(source)}$</div>`
-                    : `<span class="markdown-math-fallback">$${escapeHtml(source)}$</span>`;
-            }
-            try {
-                return katex.renderToString(source, {
-                    displayMode,
-                    throwOnError: false,
-                    strict: 'ignore',
-                    trust: false,
-                    output: 'html'
-                });
-            } catch (error) {
-                console.warn('Error rendering LaTeX:', error);
-                return displayMode
-                    ? `<div class="markdown-math-fallback">$${escapeHtml(source)}$</div>`
-                    : `<span class="markdown-math-fallback">$${escapeHtml(source)}$</span>`;
-            }
-        }
-
-        function renderMarkdownMath(text) {
-            const protectedParts = protectMarkdownCodeSpans(text);
-            let source = protectedParts.text;
-
-            source = source.replace(/\$\$([\s\S]+?)\$\$/g, (_match, math) => {
-                return renderMathToHtml(math, true);
-            });
-            source = source.replace(/\\\[([\s\S]+?)\\\]/g, (_match, math) => {
-                return renderMathToHtml(math, true);
-            });
-            source = source.replace(/\\\(([\s\S]+?)\\\)/g, (_match, math) => {
-                return renderMathToHtml(math, false);
-            });
-            source = source.replace(/(^|[^\w\\])\$([^\n$]+?)\$(?!\w)/g, (match, prefix, math) => {
-                const trimmed = String(math || '').trim();
-                if (!trimmed) return match;
-                return `${prefix}${renderMathToHtml(trimmed, false)}`;
-            });
-
-            return restoreMarkdownCodeSpans(source, protectedParts.placeholders);
-        }
-
-        // Markdown rendering function
-        function renderMarkdown(text) {
-            if (!text) return '';
-            const rawText = String(text);
-            // Check if libraries are loaded
-            if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
-                console.warn('Markdown libraries not loaded, falling back to plain text');
-                return escapeHtml(rawText);
-            }
-            try {
-                // Preserve special VLM tokens (e.g. </silence>, </response>) by escaping angle brackets
-                text = rawText.replace(/<\/(silence|response)>/g, '&lt;/$1&gt;');
-                text = text.replace(/<(silence|response)>/g, '&lt;$1&gt;');
-                text = renderMarkdownMath(text);
-                // Configure marked options
-                marked.setOptions({
-                    breaks: true,  // Convert line breaks to <br>
-                    gfm: true,     // GitHub Flavored Markdown
-                });
-                // Parse markdown and sanitize HTML
-                const html = marked.parse(text);
-                const sanitized = DOMPurify.sanitize(html, {
-                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'a', 'span', 'div', 'math', 'semantics', 'annotation', 'mrow', 'mi', 'mn', 'mo', 'msup', 'msub', 'msubsup', 'mfrac', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext'],
-                    ALLOWED_ATTR: ['href', 'title', 'class', 'style', 'aria-hidden', 'xmlns', 'encoding', 'target', 'rel'],
-                });
-                return openLinksInNewTabs(sanitized);
-            } catch (e) {
-                console.error('Error rendering markdown:', e);
-                return escapeHtml(rawText); // Fallback to escaped plain text on error
-            }
-        }
-
-        function openLinksInNewTabs(html) {
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = String(html || '');
-            wrapper.querySelectorAll('a[href]').forEach((link) => {
-                link.setAttribute('target', '_blank');
-                link.setAttribute('rel', 'noopener noreferrer');
-            });
-            return wrapper.innerHTML;
-        }
+        // Markdown rendering helpers moved to render_markdown.js (window.JoyRender).
+        // Local aliases keep existing call sites (renderMarkdown, escapeHtml, ...) working.
+        const {
+            escapeHtml,
+            decodeHtmlEntities,
+            protectMarkdownCodeSpans,
+            restoreMarkdownCodeSpans,
+            renderMathToHtml,
+            renderMarkdownMath,
+            renderMarkdown,
+            openLinksInNewTabs,
+        } = window.JoyRender;
 
         // Update markdown toggle UI
         function updateMarkdownToggleUI() {
@@ -5460,171 +5452,18 @@ limitations under the License.
             );
         }
 
-        function completeStaticHtmlDocument(value) {
-            let html = String(value || '').trim();
-            if (!html) return '';
+        // Static-HTML sanitizers moved to sanitize_static_html.js (window.JoySanitize).
+        // Local aliases keep existing call sites (completeStaticHtmlDocument, sanitizeStaticHtml, ...) working.
+        const {
+            completeStaticHtmlDocument,
+            sanitizeStaticHtml,
+            normalizeStaticHtmlDocument,
+            sanitizeStaticHtmlFallback,
+            makeStaticHtmlNodeCleaner,
+            isSafeStaticUrl,
+            sanitizeStaticCss,
+        } = window.JoySanitize;
 
-            if (/<style\b[^>]*>/i.test(html) && !/<\/style\s*>/i.test(html)) {
-                html += '\n</style>';
-            }
-            if (/<head\b[^>]*>/i.test(html) && !/<\/head\s*>/i.test(html)) {
-                html += '\n</head>';
-            }
-            if (!/<body\b/i.test(html)) {
-                html += '\n<body><main style="min-height:100vh;display:grid;place-items:center;font-family:sans-serif;color:#333;background:#f7f7f7;">HTML 内容可能被截断，只有样式片段可预览。</main>';
-            }
-            if (/<body\b[^>]*>/i.test(html) && !/<\/body\s*>/i.test(html)) {
-                html += '\n</body>';
-            }
-            if (/<html\b[^>]*>/i.test(html) && !/<\/html\s*>/i.test(html)) {
-                html += '\n</html>';
-            }
-            if (!/<html\b/i.test(html)) {
-                html = `<!doctype html>\n<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`;
-            }
-            return html;
-        }
-
-        function sanitizeStaticHtml(html) {
-            if (!html) return '';
-            const rawHtml = String(html);
-            const allowedTags = [
-                'html', 'head', 'body', 'title', 'style',
-                'main', 'header', 'footer', 'nav', 'section', 'article', 'aside',
-                'div', 'span', 'p', 'br', 'strong', 'em', 'b', 'i', 'u', 'small',
-                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-                'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
-                'pre', 'code', 'blockquote', 'hr',
-                'a', 'img', 'figure', 'figcaption', 'button'
-            ];
-            const allowedAttrs = [
-                'class', 'id', 'style', 'title', 'role', 'aria-label',
-                'href', 'src', 'alt', 'width', 'height', 'colspan', 'rowspan'
-            ];
-
-            if (typeof DOMPurify !== 'undefined') {
-                const cleaned = DOMPurify.sanitize(rawHtml, {
-                    WHOLE_DOCUMENT: true,
-                    ALLOWED_TAGS: allowedTags,
-                    ALLOWED_ATTR: allowedAttrs,
-                    ALLOW_DATA_ATTR: false,
-                    ALLOW_ARIA_ATTR: true,
-                    ALLOWED_URI_REGEXP: /^(?:#|data:image\/(?:png|jpe?g|gif|webp);base64,)/i,
-                    FORBID_TAGS: ['script', 'form', 'input', 'textarea', 'select', 'option', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'svg', 'math']
-                });
-                return normalizeStaticHtmlDocument(cleaned, allowedTags, allowedAttrs);
-            }
-
-            return sanitizeStaticHtmlFallback(rawHtml, allowedTags, allowedAttrs);
-        }
-
-        function normalizeStaticHtmlDocument(html, allowedTags, allowedAttrs) {
-            if (typeof DOMParser === 'undefined') {
-                return escapeHtml(html);
-            }
-            const parser = new DOMParser();
-            const source = parser.parseFromString(String(html || ''), 'text/html');
-            const cleanDoc = document.implementation.createHTMLDocument('');
-            const cleanNode = makeStaticHtmlNodeCleaner(cleanDoc, allowedTags, allowedAttrs);
-
-            Array.from(source.head.childNodes).forEach((child) => {
-                const cleaned = cleanNode(child);
-                if (cleaned) cleanDoc.head.appendChild(cleaned);
-            });
-            Array.from(source.body.childNodes).forEach((child) => {
-                const cleaned = cleanNode(child);
-                if (cleaned) cleanDoc.body.appendChild(cleaned);
-            });
-
-            return '<!doctype html>\n' + cleanDoc.documentElement.outerHTML;
-        }
-
-        function sanitizeStaticHtmlFallback(html, allowedTags, allowedAttrs) {
-            if (typeof DOMParser === 'undefined') {
-                return escapeHtml(html);
-            }
-            return normalizeStaticHtmlDocument(html, allowedTags, allowedAttrs);
-        }
-
-        function makeStaticHtmlNodeCleaner(cleanDoc, allowedTags, allowedAttrs) {
-            const tagSet = new Set(allowedTags);
-            const attrSet = new Set(allowedAttrs);
-            const dropTags = new Set(['script', 'form', 'input', 'textarea', 'select', 'option', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'svg', 'math']);
-
-            const cleanNode = (node) => {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    return cleanDoc.createTextNode(node.textContent || '');
-                }
-                if (node.nodeType !== Node.ELEMENT_NODE) {
-                    return null;
-                }
-
-                const tagName = node.tagName.toLowerCase();
-                if (dropTags.has(tagName)) {
-                    return null;
-                }
-                if (!tagSet.has(tagName)) {
-                    const fragment = cleanDoc.createDocumentFragment();
-                    Array.from(node.childNodes).forEach((child) => {
-                        const cleanedChild = cleanNode(child);
-                        if (cleanedChild) fragment.appendChild(cleanedChild);
-                    });
-                    return fragment;
-                }
-
-                const element = cleanDoc.createElement(tagName);
-                Array.from(node.attributes || []).forEach((attr) => {
-                    const attrName = attr.name.toLowerCase();
-                    if (!attrSet.has(attrName) || attrName.startsWith('on')) {
-                        return;
-                    }
-                    if (tagName === 'a' && attrName === 'href') {
-                        return;
-                    }
-                    if (attrName === 'src' && !isSafeStaticUrl(attr.value)) {
-                        return;
-                    }
-                    if (attrName === 'style') {
-                        element.setAttribute(attrName, sanitizeStaticCss(attr.value));
-                        return;
-                    }
-                    element.setAttribute(attrName, attr.value);
-                });
-
-                Array.from(node.childNodes).forEach((child) => {
-                    const cleanedChild = cleanNode(child);
-                    if (cleanedChild) element.appendChild(cleanedChild);
-                });
-
-                if (tagName === 'style') {
-                    element.textContent = sanitizeStaticCss(node.textContent || '');
-                }
-                if (tagName === 'a') {
-                    element.setAttribute('data-static-link', 'true');
-                    element.setAttribute('tabindex', '-1');
-                }
-                if (tagName === 'button') {
-                    element.setAttribute('type', 'button');
-                }
-                return element;
-            };
-
-            return cleanNode;
-        }
-
-        function isSafeStaticUrl(url) {
-            const value = String(url || '').trim();
-            return !value || value.startsWith('#') || /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(value);
-        }
-
-        function sanitizeStaticCss(css) {
-            return String(css || '')
-                .replace(/@import\b[^;]+;?/gi, '')
-                .replace(/javascript:/gi, '')
-                .replace(/expression\s*\(/gi, '')
-                .replace(/url\s*\(\s*(['"]?)(?!data:image\/(?:png|jpe?g|gif|webp);base64,)[^)]+\)/gi, 'none');
-        }
 
         function drawBackgroundBarChart(canvas, chart) {
             const dpr = window.devicePixelRatio || 1;
@@ -7591,10 +7430,7 @@ limitations under the License.
         }
 
         function resetVideoButtons() {
-            const bigBtn = document.getElementById('bigStartBtn');
-            const smallStopBtn = document.getElementById('smallStopBtn');
-            bigBtn.classList.remove('animating', 'streaming');
-            smallStopBtn.classList.remove('show');
+            // v3.38: red Start / small Stop removed. Each capture source refreshes its own button.
         }
 
         function cancelRevealVideoFallback() {
@@ -7688,7 +7524,7 @@ limitations under the License.
 
         async function fetchModels() {
             try {
-                modelSelect.innerHTML = '<option value="">Loading models...</option>';
+                modelSelect.innerHTML = '<option value=">Loading models...</option>';
 
                 // Get current API settings from UI
                 const currentApiBase = apiBaseUrl.value.trim();
@@ -7740,11 +7576,11 @@ limitations under the License.
                         document.getElementById('modelName').textContent = currentModel;
                     }
                 } else {
-                    modelSelect.innerHTML = '<option value="">No models available</option>';
+                    modelSelect.innerHTML = '<option value=">No models available</option>';
                 }
             } catch (error) {
                 console.error('Error fetching models:', error);
-                modelSelect.innerHTML = '<option value="">Error loading models</option>';
+                modelSelect.innerHTML = '<option value=">Error loading models</option>';
             }
         }
 
@@ -8844,39 +8680,17 @@ limitations under the License.
 
         refreshModelsBtn.addEventListener('click', fetchModels);
 
-        // Helper function to apply API settings to server
-        function applyApiSettings(options = {}) {
-            const currentApiBase = apiBaseUrl.value.trim();
-            const currentApiKey = apiKey.value.trim();
-            const currentModel = modelSelect.value;
-
-            if (!currentApiBase) {
-                return; // Silently skip if no API base
-            }
-
-            if (!isValidModelName(currentModel)) {
-                return; // Silently skip if no model selected yet
-            }
-
-            // Send update to server
-            if (websocket && websocket.readyState === WebSocket.OPEN) {
-                websocket.send(JSON.stringify({
-                    type: 'update_model',
-                    model: currentModel,
-                    api_base: currentApiBase,
-                    api_key: currentApiKey
-                }));
-
-                if (options.showFeedback) {
-                    updateStatus('API settings updated', 'connected');
-                }
-
-                // Refresh models from new endpoint if requested
-                if (options.refreshModels) {
-                    fetchModels();
-                }
-            }
-        }
+        // Block 4: applyApiSettings + cleanupServerSession extracted to joy_ws.js (window.JoyWs)
+        const { applyApiSettings, cleanupServerSession } = window.JoyWs;
+        window.JoyWs.register({
+            apiBaseUrl,
+            apiKey,
+            modelSelect,
+            isValidModelName,
+            updateStatus,
+            fetchModels,
+            getWebSocket: () => websocket
+        });
 
         // Auto-apply API settings when API Base URL changes
         apiBaseUrl.addEventListener('blur', (e) => {
@@ -9342,27 +9156,10 @@ limitations under the License.
             };
         }
 
-        async function cleanupServerSession(sessionIdToCleanup) {
-            if (!sessionIdToCleanup) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/session/cleanup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sessionIdToCleanup,
-                        reset_adapter: true
-                    })
-                });
-                if (!response.ok) {
-                    console.warn('Session cleanup failed:', response.status);
-                }
-            } catch (error) {
-                console.warn('Session cleanup request failed:', error);
-            }
-        }
+        // cleanupServerSession moved to joy_ws.js (window.JoyWs) — see Block 4.
+        // The alias `const { cleanupServerSession } = window.JoyWs;` declared at the
+        // old applyApiSettings location keeps resetSession's await cleanupServerSession(...)
+        // working unchanged.
 
         async function resetSession({ clearConversation = false, cleanupServer = true } = {}) {
             const oldSessionId = sessionId;
@@ -9409,339 +9206,12 @@ limitations under the License.
         }
 
         // Start - dispatch to webcam or RTSP based on active tab
-        async function start() {
-            streamStartToken += 1;
-            const token = streamStartToken;
-            isAnalysisRunning = false;
-            revealVideoAfterMetricsToken = null;
-            cancelRevealVideoFallback();
-            updatePromptAvailability();
-            metricsInline.style.display = 'flex';
-            latencyValue.textContent = '--';
-            avgLatencyValue.textContent = '--';
-            countValue.textContent = '--';
-            setVideoWaitingForStream(true);
-            videoElement.srcObject = null;
-            if (settings.ttsEnabled) {
-                try {
-                    ensureTtsAudioContext();
-                } catch (error) {
-                    console.warn('Unable to initialize TTS audio context:', error);
-                }
-            }
-
-            // Animate big button
-            const bigBtn = document.getElementById('bigStartBtn');
-            bigBtn.classList.add('animating');
-            setTimeout(() => {
-                bigBtn.classList.remove('animating');
-                bigBtn.classList.add('streaming');
-            }, 500);
-
-            // Show small stop button
-            document.getElementById('smallStopBtn').classList.add('show');
-
-            const activeTab = document.querySelector('.input-source-tab.active');
-            const inputSource = activeTab ? activeTab.getAttribute('data-source') : 'webcam';
-
-            if (inputSource === 'webcam') {
-                revealVideoAfterMetricsToken = token;
-                await startWebcam(token);
-            } else if (inputSource === 'rtsp') {
-                await startRTSP(token);
-            } else if (inputSource === 'screen') {
-                // v3.33: Screen capture path -- WS JPEG frames for BT + local <video> preview
-                // for the operator. The captured MediaStream is mounted on videoElement
-                // so the user can see the captured window/tab while BT-7274 receives
-                // the same frames over the existing type:'frame' WS pipeline.
-                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-                    connectWebSocket();
-                }
-                if (typeof window.startScreenCapture !== 'function') {
-                    updateStatus('screen_capture.js missing', 'error');
-                    return;
-                }
-                setVideoWaitingForStream(true);
-                updateStatus('Selecting window...', 'processing');
-                try {
-                    await window.startScreenCapture(websocket, { fps: 1 });
-                    // Stream is null when the user cancels the picker; keep the
-                    // waiting state in that case and surface a status hint.
-                    const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
-                    if (previewStream) {
-                        // Game/tab content must not be mirrored (UI text would be unreadable).
-                        videoElement.classList.remove('mirrored');
-                        videoElement.srcObject = previewStream;
-                        setVideoWaitingForStream(false);
-                        updateStatus('Screen capturing', 'connected');
-                    } else {
-                        updateStatus('Screen capture cancelled', 'disconnected');
-                        setVideoWaitingForStream(false);
-                    }
-                } catch (err) {
-                    console.error('startScreenCapture failed:', err);
-                    updateStatus('Capture failed: ' + (err && err.message ? err.message : err), 'error');
-                    setVideoWaitingForStream(false);
-                }
-            }
-
-        }
 
         // Start WebRTC (Webcam mode)
-        async function startWebcam(token) {
-            try {
-                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-                    connectWebSocket();
-                }
-
-                updateStatus('Requesting camera...', 'processing');
-
-                // Use selected camera or default
-                const videoConstraints = {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                };
-
-                if (selectedCameraId) {
-                    videoConstraints.deviceId = { exact: selectedCameraId };
-                }
-
-                localStream = await navigator.mediaDevices.getUserMedia({
-                    video: videoConstraints,
-                    audio: false
-                });
-
-                updateStatus('Connecting...', 'processing');
-                showProcessedVideoStream(localStream, token);
-
-                peerConnection = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
-
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                });
-
-                peerConnection.ontrack = (event) => {
-                    console.log('Received remote track');
-                };
-
-                peerConnection.oniceconnectionstatechange = () => {
-                    console.log('ICE connection state:', peerConnection.iceConnectionState);
-                    switch (peerConnection.iceConnectionState) {
-                        case 'connected':
-                            if (isAnalysisRunning) {
-                                updateStatus('Streaming', 'connected');
-                            }
-                            break;
-                        case 'disconnected':
-                        case 'failed':
-                        case 'closed':
-                            updateStatus('Disconnected', 'disconnected');
-                            stop();
-                            break;
-                    }
-                };
-
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-
-                const response = await fetch('/offer', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        sdp: peerConnection.localDescription.sdp,
-                        type: peerConnection.localDescription.type,
-                        session_id: sessionId,
-                    }),
-                });
-
-                const answer = await response.json();
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-
-            } catch (error) {
-                console.error('Error starting webcam:', error);
-                updateStatus(`Error: ${error.message}`, 'disconnected');
-                setVideoWaitingForStream(false);
-                stop();
-            }
-        }
 
         // Start RTSP mode
-        async function startRTSP(token) {
-            try {
-                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
-                    connectWebSocket();
-                }
-
-                const rtspUrl = document.getElementById('rtspUrl').value.trim();
-
-                if (!rtspUrl) {
-                    alert('Please enter an RTSP URL');
-                    setVideoWaitingForStream(false);
-                    resetVideoButtons();
-                    return;
-                }
-
-                updateStatus('Connecting to RTSP stream...', 'processing');
-
-                // Create WebRTC peer connection (no local stream needed for RTSP)
-                peerConnection = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
-
-                // Receive processed video from server
-                peerConnection.ontrack = (event) => {
-                    console.log('Received RTSP stream from server');
-                    if (event.track.kind === 'video') {
-                        showProcessedVideoStream(event.streams[0], token);
-                    }
-                };
-
-                peerConnection.oniceconnectionstatechange = () => {
-                    console.log('ICE connection state:', peerConnection.iceConnectionState);
-                    switch (peerConnection.iceConnectionState) {
-                        case 'connected':
-                            if (isAnalysisRunning) {
-                                updateStatus('Streaming', 'connected');
-                            }
-                            break;
-                        case 'disconnected':
-                        case 'failed':
-                        case 'closed':
-                            updateStatus('Disconnected', 'disconnected');
-                            stop();
-                            break;
-                    }
-                };
-
-                // Create offer (recvonly - we're only receiving video from server)
-                peerConnection.addTransceiver('video', { direction: 'recvonly' });
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-
-                // Wait for ICE gathering to complete before sending offer (with timeout)
-                // This ensures all ICE candidates are embedded in the SDP
-                console.log('Waiting for ICE gathering to complete...');
-                await new Promise((resolve) => {
-                    if (peerConnection.iceGatheringState === 'complete') {
-                        resolve();
-                    } else {
-                        const checkState = () => {
-                            if (peerConnection.iceGatheringState === 'complete') {
-                                peerConnection.removeEventListener('icegatheringstatechange', checkState);
-                                resolve();
-                            }
-                        };
-                        peerConnection.addEventListener('icegatheringstatechange', checkState);
-
-                        // Timeout after 5 seconds - proceed anyway to avoid hanging
-                        setTimeout(() => {
-                            peerConnection.removeEventListener('icegatheringstatechange', checkState);
-                            console.warn('ICE gathering timeout - proceeding anyway');
-                            resolve();
-                        }, 5000);
-                    }
-                });
-                console.log('ICE gathering state:', peerConnection.iceGatheringState, '- sending offer');
-
-                // Send offer with RTSP URL and session to server
-                const response = await fetch('/offer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sdp: peerConnection.localDescription.sdp,
-                        type: peerConnection.localDescription.type,
-                        rtsp_url: rtspUrl,
-                        session_id: sessionId,
-                    })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to connect to RTSP stream');
-                }
-
-                const answer = await response.json();
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-
-                // Disable RTSP URL field and Test button while streaming
-                rtspUrlInput.disabled = true;
-                document.getElementById('testRtspBtn').disabled = true;
-
-            } catch (error) {
-                console.error('Error starting RTSP:', error);
-                updateStatus(`Error: ${error.message}`, 'disconnected');
-                alert('Failed to connect to RTSP stream: ' + error.message);
-                setVideoWaitingForStream(false);
-                resetVideoButtons();
-                if (peerConnection) {
-                    peerConnection.close();
-                    peerConnection = null;
-                }
-            }
-        }
 
         // Stop (handles both webcam and RTSP)
-        async function stop({ clearConversation = false } = {}) {
-            streamStartToken += 1;
-            isAnalysisRunning = false;
-            revealVideoAfterMetricsToken = null;
-            cancelRevealVideoFallback();
-            mobileVoiceMode = false;
-            closeTtsWebSocket();
-            restorePromptEditorHome();
-            updatePromptAvailability();
-            if (asrRecording || asrStream || asrAudioContext) {
-                await stopSpeech({ sendEnd: false, sendPrompt: false });
-            }
-
-            // Reset overlay buttons
-            resetVideoButtons();
-
-            if (fadeTimeout) {
-                clearTimeout(fadeTimeout);
-                fadeTimeout = null;
-            }
-
-            // Stop webcam (if in webcam mode)
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
-            }
-
-            // Close WebRTC peer connection (used by both webcam and RTSP)
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
-
-            // Stop screen capture (if active)
-            if (typeof window.stopScreenCapture === 'function') {
-                try { window.stopScreenCapture(); } catch (err) { console.warn('stopScreenCapture:', err); }
-            }
-
-            videoElement.srcObject = null;
-            setVideoWaitingForStream(false);
-
-            // Reset session after local tracks are stopped so the backend can cancel
-            // any in-flight VLM call and remove old session state.
-            await resetSession({ clearConversation, cleanupServer: true });
-
-            updateStatus('Connected', 'connected');
-
-            // Re-enable RTSP URL field and Test button
-            const rtspUrlInput = document.getElementById('rtspUrl');
-            if (rtspUrlInput) {
-                rtspUrlInput.disabled = false;
-            }
-            const testRtspBtn = document.getElementById('testRtspBtn');
-            if (testRtspBtn) {
-                testRtspBtn.disabled = false;
-            }
-        }
 
         // Sidebar start/stop buttons removed - using overlay buttons instead
         // startBtn.addEventListener('click', start);
@@ -9938,6 +9408,31 @@ limitations under the License.
         })();
 
     </script>
+
+        <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+        <script>
+        (function () {
+            var body = document.body;
+            var toggle = document.getElementById('sidebarToggle');
+            var scrim = document.getElementById('sidebarScrim');
+            if (!toggle || !scrim) return;
+            function setOpen(open) {
+                body.classList.toggle('sidebar-open', open);
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+            toggle.addEventListener('click', function () {
+                setOpen(!body.classList.contains('sidebar-open'));
+            });
+            scrim.addEventListener('click', function () { setOpen(false); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') setOpen(false);
+            });
+            window.addEventListener('resize', function () {
+                if (window.innerWidth >= 1024) setOpen(false);
+            });
+        })();
+        </script>
 </body>
 </html>
 

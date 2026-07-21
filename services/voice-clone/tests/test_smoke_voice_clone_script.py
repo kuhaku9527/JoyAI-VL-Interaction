@@ -4,7 +4,6 @@ import base64
 import importlib.util
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "smoke_voice_clone.py"
 
 

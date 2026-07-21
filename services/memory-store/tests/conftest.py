@@ -2,7 +2,6 @@
 """Shared pytest fixtures for memory-store v0.1."""
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -29,9 +28,10 @@ def _isolate_env(monkeypatch, tmp_path):
 
     # Reimport the backends module so get_backend() reads fresh env, then
     # rebind app.state.backend to the freshly constructed backend.
+    import importlib
+
     from memory_store import app as app_module
     from memory_store import backends
-    import importlib
     importlib.reload(backends)
     app_module._reset_backend_for_tests()
     yield

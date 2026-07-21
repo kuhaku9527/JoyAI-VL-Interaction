@@ -77,7 +77,7 @@ class KwsAsrDataModule:
         if not self.manifests_dir.exists():
             raise FileNotFoundError(f"manifests_dir 不存在: {self.manifests_dir}")
 
-    @lru_cache()
+    @lru_cache
     def train_cuts(self) -> CutSet:
         logger.info("About to get train cuts (positive + negative)")
         pos = _jsonl_gz_to_cuts(self.manifests_dir / "positive_train.jsonl.gz")
@@ -86,12 +86,12 @@ class KwsAsrDataModule:
         logger.info(f"  pos_train={len(pos)}, neg_train={len(neg)}, total={len(combined)}")
         return combined
 
-    @lru_cache()
+    @lru_cache
     def valid_cuts(self) -> CutSet:
         logger.info("About to get valid cuts (positive test)")
         return _jsonl_gz_to_cuts(self.manifests_dir / "positive_test.jsonl.gz")
 
-    @lru_cache()
+    @lru_cache
     def test_cuts(self) -> CutSet:
         logger.info("About to get test cuts (positive + negative test)")
         pos = _jsonl_gz_to_cuts(self.manifests_dir / "positive_test.jsonl.gz")
@@ -103,9 +103,9 @@ class KwsAsrDataModule:
         cuts: CutSet,
         sampler_state_dict=None,
     ):
-        from torch.utils.data import DataLoader
         from lhotse.dataset import K2SpeechRecognitionDataset
         from lhotse.dataset.sampling import SimpleCutSampler
+        from torch.utils.data import DataLoader
         sampler = SimpleCutSampler(
             cuts,
             max_duration=self.args.max_duration,
@@ -121,9 +121,9 @@ class KwsAsrDataModule:
         )
 
     def valid_dataloaders(self, cuts_valid: CutSet):
-        from torch.utils.data import DataLoader
         from lhotse.dataset import K2SpeechRecognitionDataset
         from lhotse.dataset.sampling import SimpleCutSampler
+        from torch.utils.data import DataLoader
         sampler = SimpleCutSampler(
             cuts_valid, max_duration=self.args.max_duration, shuffle=False,
         )

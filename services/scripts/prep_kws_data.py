@@ -138,7 +138,7 @@ def main() -> int:
 
     print()
     print("  [done] 下一步：跑 train_kws.py")
-    print(f"    /home/ku/kws-train/bin/python /mnt/d/AI/workspace/JoyAI-VL-Interaction-main/services/kws-training/train_kws.py \\")
+    print("    /home/ku/kws-train/bin/python /mnt/d/AI/workspace/JoyAI-VL-Interaction-main/services/kws-training/train_kws.py \\")
     print(f"        --manifests-dir {manifests_dir}")
     return 0
 

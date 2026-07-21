@@ -17,13 +17,11 @@ import base64
 import os
 import sys
 import time
-from pathlib import Path
 from typing import Any, Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Environment configuration (kept CODEX_API_* names to remain drop-in compatible
@@ -231,7 +229,8 @@ Recent frame metadata:
 
 def _frames_to_content(prompt: str, frames: list[FrameInput]) -> list[dict[str, Any]]:
     """Convert frames into OpenAI multimodal content parts. Decodes base64 lazily so
-    the gateway can stream them straight into its image_url slots."""
+    the gateway can stream them straight into its image_url slots.
+    """
     parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     for index, frame in enumerate(frames, start=1):
         image_url = _normalize_frame_data_url(frame.image_url, index)

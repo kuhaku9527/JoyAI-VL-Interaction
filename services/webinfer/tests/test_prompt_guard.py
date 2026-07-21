@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import live_adapter as la
+import live_adapter as la  # noqa: E402  (after sys.path setup for repo-root pytest runs)
 
 
 def _msg(role, text):
