@@ -3787,6 +3787,8 @@ limitations under the License.
     <script src="./capture_webcam.js"></script>
     <script src="./capture_rtsp.js"></script>
     <script src="./render_markdown.js"></script>
+    <script src="./sanitize_static_html.js"></script>
+    <script src="./config_services.js"></script>
     <script>
         document.title = 'JoyAI VL Live';
 
@@ -4869,78 +4871,9 @@ limitations under the License.
         })();
 
         // Services panel (v3.38): load / save / probe 4 API slots (LLM / Summary / TTS / ASR)
+        // (function bodies extracted to config_services.js → window.JoyConfig)
         (function () {
-            const SERVICES = ["llm", "summary", "tts", "asr"];
-            function setBadge(name, status, hint) {
-                const b = document.getElementById("badge-" + name);
-                if (!b) return;
-                b.textContent = status;
-                b.className = "service-badge " + (status === "OK" ? "ok" : status === "ERR" ? "err" : "");
-                if (hint) b.title = hint;
-            }
-            function readForm() {
-                const cfg = { llm: {}, summary: {}, tts: {}, asr: {} };
-                const urlEl = function (s, k) { return document.getElementById("svc-" + s + "-" + k); };
-                cfg.llm.api_base = (urlEl("llm", "api-base") || {}).value || "";
-                cfg.llm.model = (urlEl("llm", "model") || {}).value || "";
-                cfg.llm.api_key = (urlEl("llm", "api-key") || {}).value || "";
-                cfg.summary.api_base = (urlEl("summary", "api-base") || {}).value || "";
-                cfg.summary.model = (urlEl("summary", "model") || {}).value || "";
-                cfg.tts.api_base = (urlEl("tts", "api-base") || {}).value || "";
-                cfg.asr.api_base = (urlEl("asr", "api-base") || {}).value || "";
-                cfg.asr.model = (urlEl("asr", "model") || {}).value || "";
-                return cfg;
-            }
-            function writeForm(cfg) {
-                const setVal = function (id, v) { const el = document.getElementById(id); if (el) el.value = v || ""; };
-                setVal("svc-llm-api-base", cfg.llm && cfg.llm.api_base);
-                setVal("svc-llm-model", cfg.llm && cfg.llm.model);
-                setVal("svc-llm-api-key", cfg.llm && cfg.llm.api_key);
-                setVal("svc-summary-api-base", cfg.summary && cfg.summary.api_base);
-                setVal("svc-summary-model", cfg.summary && cfg.summary.model);
-                setVal("svc-tts-api-base", cfg.tts && cfg.tts.api_base);
-                setVal("svc-asr-api-base", cfg.asr && cfg.asr.api_base);
-                setVal("svc-asr-model", cfg.asr && cfg.asr.model);
-            }
-            async function load() {
-                try {
-                    const r = await fetch("/api/services/config");
-                    if (!r.ok) throw new Error("HTTP " + r.status);
-                    const cfg = await r.json();
-                    writeForm(cfg);
-                } catch (e) {
-                    console.warn("load services config:", e);
-                }
-                await probe();
-            }
-            async function probe() {
-                SERVICES.forEach(function (s) { setBadge(s, "..."); });
-                try {
-                    const r = await fetch("/api/services/status");
-                    if (!r.ok) throw new Error("HTTP " + r.status);
-                    const data = await r.json();
-                    SERVICES.forEach(function (s) {
-                        const item = data[s] || {};
-                        setBadge(s, item.ok ? "OK" : "ERR", item.reason || "");
-                    });
-                } catch (e) {
-                    SERVICES.forEach(function (s) { setBadge(s, "ERR", String(e)); });
-                }
-            }
-            async function save() {
-                const cfg = readForm();
-                try {
-                    const r = await fetch("/api/services/config", {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(cfg),
-                    });
-                    if (!r.ok) throw new Error("HTTP " + r.status);
-                    await probe();
-                } catch (e) {
-                    alert("Save failed: " + e);
-                }
-            }
+            const { readForm, writeForm, load, probe, save } = window.JoyConfig;
             const saveBtn = document.getElementById("svcSaveBtn");
             const probeBtn = document.getElementById("svcProbeBtn");
             if (saveBtn) saveBtn.addEventListener("click", save);
@@ -5518,171 +5451,18 @@ limitations under the License.
             );
         }
 
-        function completeStaticHtmlDocument(value) {
-            let html = String(value || '').trim();
-            if (!html) return '';
+        // Static-HTML sanitizers moved to sanitize_static_html.js (window.JoySanitize).
+        // Local aliases keep existing call sites (completeStaticHtmlDocument, sanitizeStaticHtml, ...) working.
+        const {
+            completeStaticHtmlDocument,
+            sanitizeStaticHtml,
+            normalizeStaticHtmlDocument,
+            sanitizeStaticHtmlFallback,
+            makeStaticHtmlNodeCleaner,
+            isSafeStaticUrl,
+            sanitizeStaticCss,
+        } = window.JoySanitize;
 
-            if (/<style\b[^>]*>/i.test(html) && !/<\/style\s*>/i.test(html)) {
-                html += '\n</style>';
-            }
-            if (/<head\b[^>]*>/i.test(html) && !/<\/head\s*>/i.test(html)) {
-                html += '\n</head>';
-            }
-            if (!/<body\b/i.test(html)) {
-                html += '\n<body><main style="min-height:100vh;display:grid;place-items:center;font-family:sans-serif;color:#333;background:#f7f7f7;">HTML 内容可能被截断，只有样式片段可预览。</main>';
-            }
-            if (/<body\b[^>]*>/i.test(html) && !/<\/body\s*>/i.test(html)) {
-                html += '\n</body>';
-            }
-            if (/<html\b[^>]*>/i.test(html) && !/<\/html\s*>/i.test(html)) {
-                html += '\n</html>';
-            }
-            if (!/<html\b/i.test(html)) {
-                html = `<!doctype html>\n<html><head><meta charset="UTF-8"></head><body>${html}</body></html>`;
-            }
-            return html;
-        }
-
-        function sanitizeStaticHtml(html) {
-            if (!html) return '';
-            const rawHtml = String(html);
-            const allowedTags = [
-                'html', 'head', 'body', 'title', 'style',
-                'main', 'header', 'footer', 'nav', 'section', 'article', 'aside',
-                'div', 'span', 'p', 'br', 'strong', 'em', 'b', 'i', 'u', 'small',
-                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-                'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption',
-                'pre', 'code', 'blockquote', 'hr',
-                'a', 'img', 'figure', 'figcaption', 'button'
-            ];
-            const allowedAttrs = [
-                'class', 'id', 'style', 'title', 'role', 'aria-label',
-                'href', 'src', 'alt', 'width', 'height', 'colspan', 'rowspan'
-            ];
-
-            if (typeof DOMPurify !== 'undefined') {
-                const cleaned = DOMPurify.sanitize(rawHtml, {
-                    WHOLE_DOCUMENT: true,
-                    ALLOWED_TAGS: allowedTags,
-                    ALLOWED_ATTR: allowedAttrs,
-                    ALLOW_DATA_ATTR: false,
-                    ALLOW_ARIA_ATTR: true,
-                    ALLOWED_URI_REGEXP: /^(?:#|data:image\/(?:png|jpe?g|gif|webp);base64,)/i,
-                    FORBID_TAGS: ['script', 'form', 'input', 'textarea', 'select', 'option', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'svg', 'math']
-                });
-                return normalizeStaticHtmlDocument(cleaned, allowedTags, allowedAttrs);
-            }
-
-            return sanitizeStaticHtmlFallback(rawHtml, allowedTags, allowedAttrs);
-        }
-
-        function normalizeStaticHtmlDocument(html, allowedTags, allowedAttrs) {
-            if (typeof DOMParser === 'undefined') {
-                return escapeHtml(html);
-            }
-            const parser = new DOMParser();
-            const source = parser.parseFromString(String(html || ''), 'text/html');
-            const cleanDoc = document.implementation.createHTMLDocument('');
-            const cleanNode = makeStaticHtmlNodeCleaner(cleanDoc, allowedTags, allowedAttrs);
-
-            Array.from(source.head.childNodes).forEach((child) => {
-                const cleaned = cleanNode(child);
-                if (cleaned) cleanDoc.head.appendChild(cleaned);
-            });
-            Array.from(source.body.childNodes).forEach((child) => {
-                const cleaned = cleanNode(child);
-                if (cleaned) cleanDoc.body.appendChild(cleaned);
-            });
-
-            return '<!doctype html>\n' + cleanDoc.documentElement.outerHTML;
-        }
-
-        function sanitizeStaticHtmlFallback(html, allowedTags, allowedAttrs) {
-            if (typeof DOMParser === 'undefined') {
-                return escapeHtml(html);
-            }
-            return normalizeStaticHtmlDocument(html, allowedTags, allowedAttrs);
-        }
-
-        function makeStaticHtmlNodeCleaner(cleanDoc, allowedTags, allowedAttrs) {
-            const tagSet = new Set(allowedTags);
-            const attrSet = new Set(allowedAttrs);
-            const dropTags = new Set(['script', 'form', 'input', 'textarea', 'select', 'option', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'svg', 'math']);
-
-            const cleanNode = (node) => {
-                if (node.nodeType === Node.TEXT_NODE) {
-                    return cleanDoc.createTextNode(node.textContent || '');
-                }
-                if (node.nodeType !== Node.ELEMENT_NODE) {
-                    return null;
-                }
-
-                const tagName = node.tagName.toLowerCase();
-                if (dropTags.has(tagName)) {
-                    return null;
-                }
-                if (!tagSet.has(tagName)) {
-                    const fragment = cleanDoc.createDocumentFragment();
-                    Array.from(node.childNodes).forEach((child) => {
-                        const cleanedChild = cleanNode(child);
-                        if (cleanedChild) fragment.appendChild(cleanedChild);
-                    });
-                    return fragment;
-                }
-
-                const element = cleanDoc.createElement(tagName);
-                Array.from(node.attributes || []).forEach((attr) => {
-                    const attrName = attr.name.toLowerCase();
-                    if (!attrSet.has(attrName) || attrName.startsWith('on')) {
-                        return;
-                    }
-                    if (tagName === 'a' && attrName === 'href') {
-                        return;
-                    }
-                    if (attrName === 'src' && !isSafeStaticUrl(attr.value)) {
-                        return;
-                    }
-                    if (attrName === 'style') {
-                        element.setAttribute(attrName, sanitizeStaticCss(attr.value));
-                        return;
-                    }
-                    element.setAttribute(attrName, attr.value);
-                });
-
-                Array.from(node.childNodes).forEach((child) => {
-                    const cleanedChild = cleanNode(child);
-                    if (cleanedChild) element.appendChild(cleanedChild);
-                });
-
-                if (tagName === 'style') {
-                    element.textContent = sanitizeStaticCss(node.textContent || '');
-                }
-                if (tagName === 'a') {
-                    element.setAttribute('data-static-link', 'true');
-                    element.setAttribute('tabindex', '-1');
-                }
-                if (tagName === 'button') {
-                    element.setAttribute('type', 'button');
-                }
-                return element;
-            };
-
-            return cleanNode;
-        }
-
-        function isSafeStaticUrl(url) {
-            const value = String(url || '').trim();
-            return !value || value.startsWith('#') || /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(value);
-        }
-
-        function sanitizeStaticCss(css) {
-            return String(css || '')
-                .replace(/@import\b[^;]+;?/gi, '')
-                .replace(/javascript:/gi, '')
-                .replace(/expression\s*\(/gi, '')
-                .replace(/url\s*\(\s*(['"]?)(?!data:image\/(?:png|jpe?g|gif|webp);base64,)[^)]+\)/gi, 'none');
-        }
 
         function drawBackgroundBarChart(canvas, chart) {
             const dpr = window.devicePixelRatio || 1;

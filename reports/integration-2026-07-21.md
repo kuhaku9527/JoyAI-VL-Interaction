@@ -130,6 +130,95 @@ webinfer `/health` 的 `memory_store.healthy` 是**启动一次性探针缓存**
 - **结论**：Block 1（markdown/escape/render 集群外置为 `render_markdown.js` + `window.JoyRender` 别名）**回归通过，可提交**。唯一残留的 `modelSelect` 报错为预存缺陷，需单列跟踪，不因本次拆分回退。
 - 注：本回归在运行中的未提交改动上执行；测试对话未改动任何业务代码。
 
+### Block 2 — 静态 HTML 净化集群（2026-07-21 晚，前端对话已实施）
+
+**抽出**：`completeStaticHtmlDocument` / `sanitizeStaticHtml` / `normalizeStaticHtmlDocument` / `sanitizeStaticHtmlFallback` / `makeStaticHtmlNodeCleaner` / `isSafeStaticUrl` / `sanitizeStaticCss` 共 7 个函数。
+
+**新文件**：`services/webui/src/joy_interaction_webui/static/sanitize_static_html.js`
+- IIFE，挂载 `window.JoySanitize`。
+- 唯一跨模块依赖：`escapeHtml` 现已在 `window.JoyRender.escapeHtml`（Block 1 抽出）；模块内 `normalizeStaticHtmlDocument` / `sanitizeStaticHtmlFallback` 的兜底分支改为惰性引用 `window.JoyRender.escapeHtml(html)`，不依赖加载顺序。
+
+**index.html 改动**：
+- `head` 在 `render_markdown.js` 之后插入 `<script src="./sanitize_static_html.js">`（行 ~3790）。
+- 原 7 个 `function` 定义（原 5521–5685，165 行）已删除，替换为解构别名：
+  ```js
+  const { completeStaticHtmlDocument, sanitizeStaticHtml, normalizeStaticHtmlDocument,
+          sanitizeStaticHtmlFallback, makeStaticHtmlNodeCleaner, isSafeStaticUrl,
+          sanitizeStaticCss } = window.JoySanitize;
+  ```
+  既有的调用点因此无需改动即可工作。
+
+**仍被执行的调用点（回归需覆盖）**：
+- `completeStaticHtmlDocument` → 行 ~5470、~5487（`normalizeExtractedHtmlDetails`，由提取 HTML 在运行时触发，非同步 init，别名无 TDZ 风险）。
+- `sanitizeStaticHtml` → 行 ~5847（background HTML 预览 `iframe.srcdoc`）。
+
+**前端已做的离线自检（不取代 live 尺子）**：
+- `node --check sanitize_static_html.js` → SYNTAX OK。
+- Node + 桩（JoyRender.escapeHtml 真转义 / DOMPurify stub / DOMParser 留 undefined 走 escape 兜底分支）执行该模块：`window.JoySanitize` 7 个导出齐全；`completeStaticHtmlDocument('<p>hi</p>')` 返回完整 `<!doctype html>` 文档；`sanitizeStaticCss` 剥离 `url(...)`；`sanitizeStaticHtml` 与 `normalizeStaticHtmlDocument` 经 `window.JoyRender.escapeHtml` 跑通 → ALL OK。
+- 静态确认：index.html 无残留 `function completeStaticHtmlDocument` / `function sanitizeStaticHtml(` 定义；别名与 script 标签就位。
+
+**测试对话回归清单**：
+1. `bash scripts/smoke-frontend-baseline.sh` → 期望 9/9 PASS。
+2. Playwright 页面加载：① 控制台无**新增** JS 报错（modelSelect 预存报错单列，不因本次拆分回退）；② `window.JoySanitize` 已定义且含 7 函数；③ background HTML 预览正常（`iframe.srcdoc` 走 `sanitizeStaticHtml` 净化渲染）。
+3. 若动到 capture×3 / Jarvis / TTS UI / memory UI 须一并回归（本 Block 未触及这些）。
+
+**下一块候选**：配置/API 集群（`readForm`/`writeForm`/`load`/`save`、`applyApiSettings`）或 WebSocket 集群（`connectWebSocket`）。
+
+---
+
+### Block 3 — 服务配置/API 表单集群（2026-07-21 晚，前端对话已实施）
+
+**抽出**：services-panel 配置 IIFE 的函数体整体 → `window.JoyConfig`，7 个导出：`SERVICES` / `setBadge` / `readForm` / `writeForm` / `load` / `probe` / `save`。
+
+**新文件**：`services/webui/src/joy_interaction_webui/static/config_services.js`
+- IIFE，挂载 `window.JoyConfig`。
+- 依赖仅全局 `document` / `fetch` / `console` / `alert`，无跨模块依赖。
+- **关键约束**：原 IIFE 末尾 `load()` 立即触发（拉 `/api/services/config` 后 `writeForm` 填表）。若把整个 IIFE 搬进 `<head>` 脚本，`load()` 会在 services-panel DOM 就绪前 fire，导致表单永不被填充。因此**按钮绑定 + `load()` 触发保留在 index.html 内联**（行 ~4873，DOM 已解析），仅抽函数体。
+
+**index.html 改动**：
+- `head` 在 `sanitize_static_html.js` 之后插入 `<script src="./config_services.js">`（行 ~3791）。
+- 原 IIFE 函数体（原 4874–4944，约 71 行）删除，替换为：
+  ```js
+  (function () {
+      const { readForm, writeForm, load, probe, save } = window.JoyConfig;
+      const saveBtn = document.getElementById("svcSaveBtn");
+      const probeBtn = document.getElementById("svcProbeBtn");
+      if (saveBtn) saveBtn.addEventListener("click", save);
+      if (probeBtn) probeBtn.addEventListener("click", probe);
+      load();
+  })();
+  ```
+  函数取自 `window.JoyConfig`，调用点经别名工作；`SERVICES`/`setBadge` 仅模块内部使用（grep 确认 index.html 已无 `setBadge`/`SERVICES` 残留）。
+
+**仍被执行的调用点（回归需覆盖）**：
+- 行 ~4873 内联 IIFE：`svcSaveBtn`/`svcProbeBtn` 绑定 `save`/`probe`；`load()` 在 DOM 解析后运行，拉配置并 `writeForm` 填 4 个 API 槽；`probe()` 拉 `/api/services/status` 写 4 个 badge（OK/ERR）。
+
+**前端已做的离线自检（不取代 live 尺子）**：
+- `node --check config_services.js` → SYNTAX OK。
+- Node + 桩（document.getElementById 假元素 / fetch 假后端）执行：`window.JoyConfig` 7 导出齐全；`readForm()` 返回 4 槽结构；`writeForm({...})` 正确写入 `svc-llm-api-base`；`probe()` 按假 status 写 badge `[OK,ERR,OK,OK]`；`load()` 拉配置后写 `svc-llm-model=m1`；`save()` 触发 PUT → ALL OK。
+- 静态确认：index.html 无残留 `function readForm`/`function writeForm`/`const SERVICES`；别名与 script 标签就位。
+
+**测试对话回归清单**：
+1. `bash scripts/smoke-frontend-baseline.sh` → 期望 9/9 PASS（Block 2 + Block 3 同在 worktree，一并回归）。
+2. Playwright 页面加载：① 控制台无**新增** JS 报错（modelSelect 预存报错单列，不因拆分回退）；② `window.JoyConfig` 已定义且含 7 函数；③ Services 面板：加载后 4 个 API 槽被后端配置填充（`writeForm` 生效），4 个 badge 显示 OK/ERR（`probe` 生效）；④ 点击 Save / Probe 分别触发 PUT 与 status 重探。
+3. 若动到 capture×3 / Jarvis / TTS UI / memory UI 须一并回归（本 Block 未触及这些）。
+
+**下一块候选**：`applyApiSettings`（行 ~8751，较大的独立函数，可单独成块）或 WebSocket 集群（`connectWebSocket`）。
+
+---
+
+### 测试对话回归确认（Block 2+3 一并，2026-07-21 21:3x，本测试对话执行）
+
+- **9 项冒烟尺子**：`bash scripts/smoke-frontend-baseline.sh` → **PASS=9 FAIL=0、EXIT=0**（live 栈全绿、契约一致、端到端 chat 返回 content）。基线无回归。
+- **Playwright 页面加载回归**（headless Chromium 1.61.1，NODE_PATH 指向 npx 缓存）：
+  - ① 控制台/页面 JS 报错：**仅预存 `modelSelect.addEventListener` on null 一条，无新增**。该行原始未拆版 `7914`、Block 1 `7807`、本次 Block 2+3 `7587` —— 行号随累计删行（Block2 净删 ~165、Block3 净删 ~71，合计 ~220）整体前移；A/B 对照（Block 1 已做）+ 行号算术证明是拆分工件之前的预存 bug，与 Block 2/3 无关，不阻塞提交（同一条 `modelSelect` issue 跟踪）。
+  - ② `window.JoyConfig` 定义 + 7 导出齐全（SERVICES/readForm/writeForm/load/probe/save/setBadge）✅；`window.JoySanitize` 定义 + 7 函数齐全 ✅；`window.JoyRender` 连续性完好（8 函数）✅。
+  - ③ `sanitizeStaticHtml('<script>alert(1)</script>')` 经 DOMPurify 净化后不含 `<script>` ✅（Block 2 净化链路通）。
+  - ④ Services 面板：`writeForm` 把 live `GET /api/services/config` 全 8 字段精确写入表单（4 个 API 槽 api-base + model/api_key 全部与后端一致）✅；`probe` 把 live `GET /api/services/status` 渲染成 4 个 badge = `OK/ERR/OK/OK`（llm OK、summary ERR/401、tts OK、asr OK）✅。
+  - ⑤ Save 按钮 → 捕获到 `PUT /api/services/config` 请求 ✅；Probe 按钮 → 捕获到 `GET /api/services/status` 请求 ✅；点击无 JS 报错、无失败 alert（`dialogs: []`）。
+- **结论**：Block 2（静态 HTML 净化外置 `sanitize_static_html.js`/JoySanitize）+ Block 3（配置/API 表单外置 `config_services.js`/JoyConfig）**回归通过，可一并提交**。唯一残留仍为预存 `modelSelect` 报错，单列跟踪，不因本次拆分回退。
+- 注：本回归在运行中的未提交改动上执行；测试对话未改动任何业务代码。
+
 ## 停止
 ```
 start-joyai.ps1 -Stop
