@@ -105,7 +105,6 @@ async def synthesize(
 def wrap_pcm16_as_wav(pcm: bytes, sample_rate: int = 24000) -> bytes:
     """Wrap raw PCM16 mono as a minimal RIFF/WAV file."""
     import io
-    import struct
     import wave
 
     buf = io.BytesIO()

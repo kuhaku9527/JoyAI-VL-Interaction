@@ -22,7 +22,9 @@ sys.path.insert(0, str(REPO / "services" / "asr"))
 sys.path.insert(0, str(REPO))  # for services.asr.jarvis.asr import
 
 from joy_interaction_webui.jarvis_mode import (
-    JarvisConfig, JarvisState, JarvisStateMachine,
+    JarvisConfig,
+    JarvisState,
+    JarvisStateMachine,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -96,7 +98,7 @@ async def test_state_machine_basic():
     print(f"[step 1] state after LLM: {jarvis.state.name}")
 
     # Step 2: Mock ASR.feed_chunk to return exit word (simulate ASR producing it)
-    print(f"[step 2] mocking ASR to return exit word")
+    print("[step 2] mocking ASR to return exit word")
     original_feed = jarvis._asr.feed_chunk
     jarvis._asr.feed_chunk = lambda pcm: "知道了"
     try:
@@ -107,7 +109,7 @@ async def test_state_machine_basic():
         jarvis._asr.feed_chunk = original_feed
     print(f"[step 2] state after exit: {jarvis.state.name}")
     assert jarvis.state == JarvisState.KWS_LISTENING, f"state should be KWS_LISTENING, got {jarvis.state}"
-    print(f"[step 2] PASS — state back to KWS_LISTENING")
+    print("[step 2] PASS — state back to KWS_LISTENING")
     print(f"[step 2] state_log: {state_log}")
 
     bg.cancel()

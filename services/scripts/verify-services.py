@@ -11,13 +11,10 @@ all-green, 2 on failure.
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import sys
 import urllib.error
 import urllib.request
-from pathlib import Path
-
 
 TINY_JPEG_B64 = (
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4n"

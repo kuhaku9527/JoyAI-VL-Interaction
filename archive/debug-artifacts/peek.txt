@@ -1,0 +1,37 @@
+function renderVlmHistory({ animateLast = false } = {}) {
+            const contentDiv = document.getElementById('resultTextContent');
+            if (!contentDiv) return;
+
+            const shouldAutoScroll = isVlmHistoryNearBottom(contentDiv);
+
+            contentDiv.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            vlmHistory.forEach((entry, index) => {
+                const { promptDiv, responseDiv } = createHistoryNodes(
+                    entry,
+                    animateLast && index === vlmHistory.length - 1
+                );
+                if (promptDiv) {
+                    fragment.appendChild(promptDiv);
+                }
+                if (responseDiv) {
+                    fragment.appendChild(responseDiv);
+                }
+            });
+            contentDiv.appendChild(fragment);
+
+            resultText.style.display = shouldShowVlmHistoryShell() ? 'flex' : 'none';
+            if (shouldAutoScroll) {
+                scrollVlmHistoryToBottom(contentDiv);
+            }
+
+            // Auto-sync to fullscreen overlay if in fullscreen mode
+            const videoCard = document.getElementById('videoCard');
+            if (videoCard && videoCard.classList.contains('fullscreen')) {
+                syncVlmToFullscreen();
+            }
+        }
+
+        function appendPromptHistoryEntry(prompt) {
+            const latest = vlmHistory[vlmHistory.length - 1];
+            const cleanPrompt = cleanBackgroundQuestionText

@@ -2,11 +2,10 @@
 """FastAPI endpoint contract tests (spec §D-7)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import httpx
 import pytest
-
 from memory_store import app as app_module
 
 

@@ -21,8 +21,8 @@ Windows) so the merge order is deterministic across runs.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 # Default discovery root: ``<repo>/prompts/`` next to ``services/webinfer``.
 _REPO_DIR = Path(__file__).resolve().parent.parent.parent

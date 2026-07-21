@@ -26,9 +26,8 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
 import torchaudio
+from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent))
 from kws_data_module import KwsAsrDataModule

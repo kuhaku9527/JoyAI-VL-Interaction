@@ -1,6 +1,5 @@
 """Unit tests for compose_system_prompt_with_memory (memory-store v0.2)."""
 
-import pytest
 
 from system_prompts import (
     _clip_memory_blocks,

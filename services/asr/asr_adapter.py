@@ -30,12 +30,12 @@ import json
 import logging
 import os
 import struct
-import time
 import uuid
 import wave
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable
 
 import httpx
 import uvicorn

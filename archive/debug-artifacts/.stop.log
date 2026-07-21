@@ -1,0 +1,17 @@
+
+================================================================
+ stop-joyai.ps1
+================================================================
+ RepoRoot      : D:\AI\workspace\JoyAI-VL-Interaction-main
+ Targets       : 7060, 8065, 8070, 8079, 8090, 8099, 8642, 8985, 8991, 8992, 8993, 8994, 8996
+ DryRun        : False
+
+  [kill] pid-file:llama-main (PID 22204) ...
+  [OK]   pid-file:llama-main stopped
+  [kill] pid-file:webinfer (PID 25932) ...
+  [OK]   pid-file:webinfer stopped
+  [kill] pid-file:webui (PID 29092) ...
+  [OK]   pid-file:webui stopped
+  [..]  No listeners on target ports. All clean.
+
+[OK]  All target ports free. Killed 3 process(es).
