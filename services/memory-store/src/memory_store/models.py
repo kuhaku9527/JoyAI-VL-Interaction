@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 
 class MemoryBlock(BaseModel):
     block_id: str = Field(default_factory=lambda: __import__("uuid").uuid4().hex)
-    session_id: str
+    session_id: Optional[str] = None
     content: str
     score: float = 1.0
-    created_at: datetime
+    created_at: Optional[datetime] = None
     last_hit_at: Optional[datetime] = None
     hit_count: int = 0
 
