@@ -55,7 +55,7 @@ dev = [
 joyvl-webinfer-adapter = "live_adapter:main"
 
 [tool.setuptools]
-# All 13 top-level modules shipped by this adapter package.
+# All 18 top-level modules shipped by this adapter package.
 # Keep this list in sync with the *.py files at the package root
 # (excluding the tests/ subpackage, which is not a top-level module).
 # See the package-smoke CI job for a regression gate.
