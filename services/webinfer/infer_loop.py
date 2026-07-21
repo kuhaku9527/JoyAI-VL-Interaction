@@ -42,6 +42,7 @@ from response_format import (
     build_model_input_record,
     extract_response_payload,
     normalize_model_output,
+    parse_model_decision,
 )
 from time_ranges import (
     _extract_time_range_from_text,
@@ -586,12 +587,15 @@ class InferLoopMixin:
                 adapter_timing["adapter_total_ms"],
             )
 
+        decision, _, delegation_question = parse_model_decision(ctx.raw_text or "")
         result = _chat_completion_response(
             model=self.config.adapter_model,
             content=ctx.generated_text,
             usage=ctx.usage,
             raw_model=model_name,
             raw_text=ctx.raw_text,
+            decision=decision,
+            delegation_question=delegation_question,
         )
         result["streamingharness"]["timing"] = adapter_timing
         summarizer_timing = {}
@@ -631,12 +635,15 @@ class InferLoopMixin:
         )
         raw_text = response.choices[0].message.content if response.choices else ""
         usage = response.usage.model_dump() if getattr(response, "usage", None) else None
+        decision, _, delegation_question = parse_model_decision(raw_text or "")
         return _chat_completion_response(
             model=self.config.adapter_model,
             content=raw_text or "",
             usage=usage,
             raw_model=model_name,
             raw_text=raw_text or "",
+            decision=decision,
+            delegation_question=delegation_question,
         )
 
     def _time_range_for_frame(self, frame_index: int) -> str:

@@ -110,37 +110,31 @@ def extract_response_payload(text: str) -> Optional[str]:
     return payload or None
 
 
-def _parse_decision_tokens(raw_text: str) -> tuple[str, str, Optional[str]]:
-    """Resolve a model reply into (decision, clean_text, delegation_question).
+def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
+    """Single decision-parsing entry point (unified by #2).
 
-    `raw_text` may carry one of three decision tokens at any position:
+    Returns ``(decision, clean_text, delegation_question)``:
 
-      * `</silence>`           -> ("silence", "", None)
-      * `</response> X`        -> ("response", X, None)
-      * `</delegation> Q`      -> ("delegation", "", Q)
+      * ``decision`` ∈ {"silence", "response", "delegation"}, never ``None``;
+      * ``clean_text``: body text with decision tokens stripped
+        ("" for silence/delegation);
+      * ``delegation_question``: the delegated question when ``decision``
+        is "delegation", else ``None``.
 
-    Anything that does not start with a known token is treated as a
-    bare response, mirroring :func:
-    ormalize_model_output so both
-    paths stay in lock-step on what counts as a "reply".
+    Recognizes the ``</response>`` / ``</silence>`` / ``</delegation>``
+    tokens and takes the EARLIEST occurrence. A bare reply with no token
+    is treated as "response" (aligned with :func:`normalize_model_output`).
     """
     text = (raw_text or "").strip()
     if not text:
         return "silence", "", None
-
-    # Walk every occurrence and pick the EARLIEST marker, mirroring
-    # normalize_model_output behaviour so callers never see two
-    # tokens interpreted differently by the two helpers.
     earliest: Optional[tuple[int, str]] = None
     for marker in ("</response>", "</silence>", "</delegation>"):
         idx = text.find(marker)
         if idx >= 0 and (earliest is None or idx < earliest[0]):
             earliest = (idx, marker)
-
     if earliest is None:
-        # Bare reply -> treat as response (matches normalize_model_output).
         return "response", text, None
-
     _, marker = earliest
     tail = text[earliest[0] + len(marker):].strip()
     if marker == "</silence>":
@@ -149,6 +143,12 @@ def _parse_decision_tokens(raw_text: str) -> tuple[str, str, Optional[str]]:
         return "delegation", "", tail or None
     # </response>
     return "response", tail, None
+
+
+# Backwards-compatible alias: keeps the existing
+# ``from response_format import _parse_decision_tokens`` import working and
+# routes the text path through the single unified parser.
+_parse_decision_tokens = parse_model_decision
 
 
 def build_model_input_record(
