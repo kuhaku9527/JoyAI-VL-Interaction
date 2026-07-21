@@ -3789,6 +3789,7 @@ limitations under the License.
     <script src="./render_markdown.js"></script>
     <script src="./sanitize_static_html.js"></script>
     <script src="./config_services.js"></script>
+    <script src="./joy_ws.js"></script>
     <script>
         document.title = 'JoyAI VL Live';
 
@@ -8679,39 +8680,17 @@ limitations under the License.
 
         refreshModelsBtn.addEventListener('click', fetchModels);
 
-        // Helper function to apply API settings to server
-        function applyApiSettings(options = {}) {
-            const currentApiBase = apiBaseUrl.value.trim();
-            const currentApiKey = apiKey.value.trim();
-            const currentModel = modelSelect.value;
-
-            if (!currentApiBase) {
-                return; // Silently skip if no API base
-            }
-
-            if (!isValidModelName(currentModel)) {
-                return; // Silently skip if no model selected yet
-            }
-
-            // Send update to server
-            if (websocket && websocket.readyState === WebSocket.OPEN) {
-                websocket.send(JSON.stringify({
-                    type: 'update_model',
-                    model: currentModel,
-                    api_base: currentApiBase,
-                    api_key: currentApiKey
-                }));
-
-                if (options.showFeedback) {
-                    updateStatus('API settings updated', 'connected');
-                }
-
-                // Refresh models from new endpoint if requested
-                if (options.refreshModels) {
-                    fetchModels();
-                }
-            }
-        }
+        // Block 4: applyApiSettings + cleanupServerSession extracted to joy_ws.js (window.JoyWs)
+        const { applyApiSettings, cleanupServerSession } = window.JoyWs;
+        window.JoyWs.register({
+            apiBaseUrl,
+            apiKey,
+            modelSelect,
+            isValidModelName,
+            updateStatus,
+            fetchModels,
+            getWebSocket: () => websocket
+        });
 
         // Auto-apply API settings when API Base URL changes
         apiBaseUrl.addEventListener('blur', (e) => {
@@ -9177,27 +9156,10 @@ limitations under the License.
             };
         }
 
-        async function cleanupServerSession(sessionIdToCleanup) {
-            if (!sessionIdToCleanup) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/session/cleanup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sessionIdToCleanup,
-                        reset_adapter: true
-                    })
-                });
-                if (!response.ok) {
-                    console.warn('Session cleanup failed:', response.status);
-                }
-            } catch (error) {
-                console.warn('Session cleanup request failed:', error);
-            }
-        }
+        // cleanupServerSession moved to joy_ws.js (window.JoyWs) — see Block 4.
+        // The alias `const { cleanupServerSession } = window.JoyWs;` declared at the
+        // old applyApiSettings location keeps resetSession's await cleanupServerSession(...)
+        // working unchanged.
 
         async function resetSession({ clearConversation = false, cleanupServer = true } = {}) {
             const oldSessionId = sessionId;

@@ -219,6 +219,53 @@ webinfer `/health` 的 `memory_store.healthy` 是**启动一次性探针缓存**
 - **结论**：Block 2（静态 HTML 净化外置 `sanitize_static_html.js`/JoySanitize）+ Block 3（配置/API 表单外置 `config_services.js`/JoyConfig）**回归通过，可一并提交**。唯一残留仍为预存 `modelSelect` 报错，单列跟踪，不因本次拆分回退。
 - 注：本回归在运行中的未提交改动上执行；测试对话未改动任何业务代码。
 
+### Block 4 — API 设置 / WebSocket 会话集群（applyApiSettings + cleanupServerSession，2026-07-21 晚，前端对话已实施）
+
+**抽出**：`applyApiSettings`（原 ~8683–8714）与 `cleanupServerSession`（原 ~9180–9200），挂载到新模块 `window.JoyWs`。
+
+**新文件**：`services/webui/src/joy_interaction_webui/static/joy_ws.js`
+- IIFE，挂载 `window.JoyWs`，3 个导出：`register` / `applyApiSettings` / `cleanupServerSession`。
+- `cleanupServerSession` 是纯函数，仅依赖全局 `fetch` + `console`，无需桥接。
+- `applyApiSettings` 读闭包局部引用，其中 `websocket` 是 `connectWebSocket`/`resetSession` 会重赋值的 `let`——用一个 **`register(ctx)` 桥**传入：稳定引用（`apiBaseUrl`/`apiKey`/`modelSelect` DOM 节点，`isValidModelName`/`updateStatus`/`fetchModels`）按值传一次；`websocket` 通过 `getWebSocket: () => websocket` 实时访问器传，保证模块始终读到内联脚本里的最新 `websocket`。
+- 这是相对 Blocks 1–3「纯函数 IIFE-to-window」的演进：对运行时可重赋的闭包变量改用访问器桥，避免把整个单体翻面。
+
+**index.html 改动**：
+- `head` 在 `config_services.js` 之后插入 `<script src="./joy_ws.js">`（行 3792）。
+- 原 `function applyApiSettings(...)` 定义（~32 行）删除，替换为别名 + 桥注册：
+  ```js
+  // Block 4: applyApiSettings + cleanupServerSession extracted to joy_ws.js (window.JoyWs)
+  const { applyApiSettings, cleanupServerSession } = window.JoyWs;
+  window.JoyWs.register({
+      apiBaseUrl,
+      apiKey,
+      modelSelect,
+      isValidModelName,
+      updateStatus,
+      fetchModels,
+      getWebSocket: () => websocket
+  });
+  ```
+  注意：`register({...})` 在别名所在行执行，此时 `apiBaseUrl`/`apiKey`/`modelSelect`/`websocket`/`isValidModelName`/`updateStatus`/`fetchModels` 全部已在作用域内（`websocket` 为 `let` 声明于 4500，其余函数声明均早于此处，闭包可用）。
+- 原 `function cleanupServerSession(...)` 定义删除，仅留注释指回 `joy_ws.js`；别名已在上方覆盖，故 `resetSession` 内 `await cleanupServerSession(...)` 无需改动。
+- `connectWebSocket`（~240 行，~30 个闭包依赖、且会写 `websocket`/`sessionId`/`lastText` 等）**本次不抽**，留作 Block 5（届时用同一 `register` 桥扩展，把可重赋闭包变量也以访问器暴露给模块）。
+
+**仍被执行的调用点（回归需覆盖）**：
+- `applyApiSettings` → 行 ~7570（某 handler 内，`window load` 前不会触发，别名 TDZ 无风险）；~8719/~8730（`apiBaseUrl` blur/change）；~8744/~8751（`apiKey` debounce/blur）；~8788（preset 选择）；~8971（`connectWebSocket` onopen 内，经别名调模块版，发送 `update_model` 并 `fetchModels`）。
+- `cleanupServerSession` → 行 ~9242（`resetSession` 内 `await cleanupServerSession(oldSessionId)`，POST `/api/session/cleanup`）。
+- `connectWebSocket`（未动）→ 行 ~7765（启动）、~9176（onclose 重连）、~9222（`resetSession`）。
+
+**前端已做的离线自检（不取代 live 尺子）**：
+- `node --check joy_ws.js` → SYNTAX OK。
+- Node + 桩（fake `window`/`WebSocket.OPEN`/`fetch` + DOM 元素 `.value` + 假 `isValidModelName`/`updateStatus`/`fetchModels`/`getWebSocket`）执行该模块：`window.JoyWs` 3 导出齐全；`register` 后 `applyApiSettings({showFeedback,refreshModels})` 在 WS OPEN 时正确 `send({type:'update_model',...})` 并触发 `updateStatus`+`fetchModels`；无 `apiBase`/`invalid model`/WS 非 OPEN 三种情况均静默跳过；`getWebSocket` 实时访问器在重赋 `websocket` 后仍能读到新值；`cleanupServerSession('x')` 触发 `fetch` POST、`cleanupServerSession('')` 直接 no-op → **ALL_BLOCK4_SELFCHECK_PASS**。
+- 静态确认：index.html 无残留 `function applyApiSettings` / `function cleanupServerSession` 定义；别名 + `register` + `head` script 标签就位。
+
+**测试对话回归清单**：
+1. `bash scripts/smoke-frontend-baseline.sh` → 期望 9/9 PASS（Block 4 与 Block 1/2/3 同在 worktree，一并回归）。
+2. Playwright 页面加载：① 控制台无**新增** JS 报错（modelSelect 预存报错单列，不因拆分回退）；② `window.JoyWs` 已定义且含 `register`/`applyApiSettings`/`cleanupServerSession`；③ `applyApiSettings` 链路：在 WS 连上后页面加载会经 `connectWebSocket` onopen 发 `update_model`（`type:'update_model'` 出现在 WS 出站帧），且模型下拉被后端 `server_config`/`fetchModels` 正确填充；④ 改 `apiBaseUrl`/`apiKey` 触发 blur/change → 无 JS 报错、对应 `applied` 闪烁动画出现；⑤ Reset Session 按钮 → 捕获到 `POST /api/session/cleanup`（`cleanupServerSession` 生效），且新 session 重连 WS。
+3. 若动到 capture×3 / Jarvis / TTS UI / memory UI 须一并回归（本 Block 未触及这些 UI；仅改 API 设置与 session 清理逻辑路径）。
+
+**下一块候选**：`connectWebSocket`（~240 行，Block 5）——沿用 `window.JoyWs` 的 `register` 桥，把 `websocket`/`sessionId`/`isAnalysisRunning`/`resultText`/`fadeTimeout`/`settings`/`lastText` 等可重赋闭包变量以访问器暴露给模块；`connectWebSocket`/`resetSession` 内联调用点改为经别名调用。这是最大、耦合最深的块，建议拆分前先与测试对话确认 live 栈可拉起再做。
+
 ## 停止
 ```
 start-joyai.ps1 -Stop
