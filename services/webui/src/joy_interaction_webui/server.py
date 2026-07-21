@@ -865,7 +865,34 @@ def main():
 
 
     default_vlm_config.update({"api_base": args.api_base, "model": args.model, "prompt": None})
-    app = web.Application()
+
+    @web.middleware
+    async def security_headers_middleware(request, handler):
+        # Apply defensive HTTP headers to every response (static pages, JSON API,
+        # WebSocket upgrade). SRI on the CDN <script>/<link> tags plus this CSP
+        # is the primary supply-chain / XSS defense-in-depth for the SPA.
+        try:
+            response = await handler(request)
+        except Exception:
+            raise
+        if response is not None and getattr(response, "headers", None) is not None:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: blob:; "
+                "font-src 'self' data: https://cdn.jsdelivr.net; "
+                "media-src 'self' blob: data:; "
+                "connect-src 'self' ws: wss: http://127.0.0.1:* https://127.0.0.1:*; "
+                "object-src 'none'; "
+                "base-uri 'self'; "
+                "frame-ancestors 'none'"
+            )
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    app = web.Application(middlewares=[security_headers_middleware])
     app.router.add_get("/", _index_handler)
     app.router.add_get("/models", _models_handler)
     app.router.add_get("/detect-services", _detect_services_handler)
