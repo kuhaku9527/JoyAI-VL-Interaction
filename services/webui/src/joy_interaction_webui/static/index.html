@@ -393,6 +393,14 @@ limitations under the License.
 
         /* Sidebar */
         .sidebar {
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            flex-direction: row;
+            transition: width 0.25s ease, flex-basis 0.25s ease, padding 0.25s ease;
+        }
+
+        .sidebar-panels {
             width: 350px;
             flex: 0 0 350px;
             background: var(--bg-secondary);
@@ -400,12 +408,17 @@ limitations under the License.
             overflow-y: auto;
             overflow-x: hidden;
             padding: 20px;
-            transition: width 0.25s ease, flex-basis 0.25s ease, padding 0.25s ease;
+            height: 100%;
+            box-sizing: border-box;
         }
 
         .sidebar.docked {
+            flex-basis: auto;
+        }
+
+        .sidebar.docked .sidebar-panels {
             width: 64px;
-            flex-basis: 64px;
+            flex: 0 0 64px;
             padding: 12px 8px;
         }
 
@@ -3092,7 +3105,7 @@ limitations under the License.
         */
 
         /* Responsive Layout - Side by Side on Wide Screens */
-        @media (min-width: 1400px) {
+        @media (min-width: 1280px) {
             .main-content {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
@@ -3148,10 +3161,6 @@ limitations under the License.
 
         /* Responsive adjustments for smaller screens */
         @media (max-width: 1024px) {
-            .sidebar {
-                width: 280px;
-            }
-
             .header-title {
                 font-size: 18px;
             }
@@ -3505,25 +3514,8 @@ limitations under the License.
                 left: -8px;
             }
 
-            .sidebar {
-                order: 2;
-                width: 100%;
-                flex: 0 0 auto;
-                padding: 10px;
-                border-right: none;
-                border-top: 1px solid var(--border-color);
-                overflow: visible;
-            }
-
-            .sidebar.docked {
-                width: 100%;
-                flex-basis: auto;
-                padding: 8px 10px;
-                display: grid;
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 8px;
-            }
-
+            /* Settings panels are now an off-canvas drawer (see ≤1023 block);
+               only the touch-friendly panel tweaks remain here. */
             .sidebar .panel {
                 margin-bottom: 10px;
             }
@@ -3603,6 +3595,139 @@ limitations under the License.
             }
         }
 
+        /* ===== Responsive System v2 & Interaction Layer (additive) ===== */
+
+        /* Sidebar drawer toggle button (hidden on desktop, shown ≤1023px) */
+        .sidebar-toggle-btn {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: transparent;
+            color: var(--text-primary);
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+        .sidebar-toggle-btn:hover { background: rgba(255, 255, 255, 0.08); }
+        .sidebar-toggle-btn svg { width: 22px; height: 22px; }
+
+        /* Scrim behind the off-canvas sidebar.
+           Uses visibility (not display) so the opacity transition can run;
+           display:none -> block would make the dimming pop instead of fade. */
+        .sidebar-scrim {
+            visibility: hidden;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 9990;
+            opacity: 0;
+            transition: opacity 0.28s ease, visibility 0.28s ease;
+        }
+        body.sidebar-open .sidebar-scrim {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Tablet / small-laptop: settings panels become an off-canvas drawer.
+           Only `.sidebar-panels` slides; `.main-content` stays in flow.
+           Selector intentionally omits `.docked` so it works regardless of
+           whether the desktop default is docked(64px) or expanded(350px). */
+        @media (max-width: 1023px) {
+            .sidebar-toggle-btn { display: inline-flex; }
+
+            .sidebar-panels {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100dvh;
+                width: min(320px, 82vw);
+                transform: translateX(-100%);
+                transition: transform 0.28s ease;
+                z-index: 9991;
+                box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
+                border-right: 1px solid var(--border-color);
+                overflow-y: auto;
+                flex: none;
+            }
+            body.sidebar-open .sidebar-panels {
+                transform: translateX(0);
+            }
+            .main-content { width: 100%; }
+        }
+
+        /* Re-assert drawer on phones (keeps panels off-canvas; main content
+           remains full-width in flow, so it never disappears when closed) */
+        @media (max-width: 768px) {
+            .sidebar-panels {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100dvh;
+                width: min(320px, 82vw);
+                transform: translateX(-100%);
+                border-top: none;
+                display: block;
+                order: 0;
+                flex: none;
+                z-index: 9991;
+            }
+            body.sidebar-open .sidebar-panels {
+                transform: translateX(0);
+            }
+        }
+
+        /* ---- Interaction & Accessibility Layer ---- */
+        :focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        .icon-btn:focus-visible,
+        .settings-btn:focus-visible,
+        .theme-toggle:focus-visible,
+        .chat-prompt-action:focus-visible,
+        .big-start-btn:focus-visible,
+        .sidebar-toggle-btn:focus-visible,
+        .video-control-btn:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
+        button, .icon-btn, .settings-btn, .theme-toggle, .chat-prompt-action,
+        .big-start-btn, .panel-header, .video-control-btn, .quick-camera-btn {
+            transition: background-color 0.2s ease, border-color 0.2s ease,
+                        box-shadow 0.2s ease, transform 0.15s ease, color 0.2s ease;
+        }
+        .icon-btn:hover, .settings-btn:hover, .theme-toggle:hover,
+        .chat-prompt-action:hover, .big-start-btn:hover, .video-control-btn:hover {
+            transform: translateY(-1px);
+        }
+        .icon-btn:active, .chat-prompt-action:active, .big-start-btn:active {
+            transform: translateY(0) scale(0.97);
+        }
+
+        /* Subtle pulse on the connection badge while processing */
+        .status-badge.processing {
+            animation: statusPulse 1.4s ease-in-out infinite;
+        }
+        @keyframes statusPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
+
+        /* Respect users who prefer reduced motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 
     <!-- SVG Gradient Definitions (for gradient strokes) -->
@@ -3676,6 +3801,9 @@ limitations under the License.
     <!-- Header -->
     <div class="header">
         <div class="header-left">
+            <button class="sidebar-toggle-btn" id="sidebarToggle" type="button" aria-label="Toggle settings sidebar" aria-controls="sidebarPanels" aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <div class="logo" id="jdLogo" role="button" tabindex="0" aria-label="Refresh page">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-hidden="true">
                     <rect width="128" height="128" rx="28" fill="#c81e2a"/>
@@ -3688,7 +3816,7 @@ limitations under the License.
             </div>
         </div>
         <div class="header-right">
-            <span class="status-badge disconnected" id="connectionStatus">Disconnected</span>
+            <span class="status-badge disconnected" id="connectionStatus" role="status" aria-live="polite">Disconnected</span>
             <span class="status-badge llm-unknown" id="llmServiceStatus" title="LLM (llama-server) reachability -- polled every 3s">LLM ?</span>
             <span class="status-badge llm-unknown" id="ttsServiceStatus" title="TTS (voice_clone_api) reachability -- polled every 3s">TTS ?</span>
             <span class="status-badge llm-unknown" id="kwsServiceStatus" title="KWS (sherpa-onnx wake-word) model presence -- polled every 3s">KWS ?</span>
@@ -3907,7 +4035,8 @@ limitations under the License.
 
     <div class="container">
         <!-- Left Sidebar -->
-        <div class="sidebar docked" id="sidebar">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-panels" id="sidebarPanels">
             <!-- Video Source: 3 independent capture modules (v3.38). -->
             <div class="panel">
                 <div class="panel-header" onclick="togglePanel('videoSourceConfig')">
@@ -4008,6 +4137,7 @@ limitations under the License.
                     </div>
                 </div>
             </div>
+            </div><!-- /.sidebar-panels -->
 
         <!-- Main Content -->
         <div class="main-content">
@@ -9643,6 +9773,31 @@ limitations under the License.
         })();
 
     </script>
+
+        <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+        <script>
+        (function () {
+            var body = document.body;
+            var toggle = document.getElementById('sidebarToggle');
+            var scrim = document.getElementById('sidebarScrim');
+            if (!toggle || !scrim) return;
+            function setOpen(open) {
+                body.classList.toggle('sidebar-open', open);
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }
+            toggle.addEventListener('click', function () {
+                setOpen(!body.classList.contains('sidebar-open'));
+            });
+            scrim.addEventListener('click', function () { setOpen(false); });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') setOpen(false);
+            });
+            window.addEventListener('resize', function () {
+                if (window.innerWidth >= 1024) setOpen(false);
+            });
+        })();
+        </script>
 </body>
 </html>
 
