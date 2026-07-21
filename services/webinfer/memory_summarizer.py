@@ -1,3 +1,5 @@
+"""Mid/long-term summarizer model client (vLLM-backed summarization)."""
+
 import base64
 import io
 import os

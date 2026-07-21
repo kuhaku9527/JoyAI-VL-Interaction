@@ -1,0 +1,36 @@
+sequenceDiagram
+    autonumber
+    participant H as handle_chat_completions (InferLoopMixin)
+    participant P as _handle_chat_payload (InferLoopMixin)
+    participant IL as InferLoopMixin
+    participant PA as PromptAssemblyMixin
+    participant SR as SummarizerRoutingMixin
+    participant MI as MemoryIOMixin
+    participant RF as response_format
+
+    H->>P: _handle_chat_payload(state, payload, request, client, model_name)
+    P->>P: 解析 messages / _extract_all_image_refs
+    alt 无图像引用
+        P->>IL: _forward_text_only(payload)
+        IL-->>P: result
+    else 有图像引用
+        P->>P: _chat_payload_resolve_frames（帧路径/时间区间）
+        P->>PA: _update_query_state(...)
+        P->>SR: _commit_required_async_summaries(state, turn, non_blocking=True)
+        P->>MI: _execute_pending_qa_archive(state)
+        P->>SR: _flush_chunk(state, use_async_summary)
+        P->>PA: _build_main_internal_messages(state)
+        P->>PA: _build_cached_api_messages(state, internal)
+        P->>PA: _build_main_http_messages(api_messages, session_state)
+        P->>SR: _append_async_summary_user_message(state, ...)
+        P->>IL: _call_main_model(payload, api_messages, client, ...)
+        IL->>RF: normalize_model_output(raw_text)
+        IL-->>P: (raw_text, usage)
+        P->>MI: _execute_pending_qa_archive(state)
+        P->>RF: extract_response_payload(generated_text)
+        P->>SR: _submit_async_summary_if_needed(state)
+        P->>P: _chat_payload_finalize（prediction / adapter_timing）
+    end
+    P->>RF: _chat_completion_response(model, content, usage, ...)
+    RF-->>H: result
+    H-->>H: web.json_response(result)
