@@ -345,8 +345,6 @@ class SummarizerModel:
         else:
             self._longterm_client = self._client
 
-        from transformers import AutoTokenizer
-        self._tokenizer_cls = AutoTokenizer
         self._tokenizer_model_name = model_name
         self._tokenizer = None
         self._tokenizer_failed = False
@@ -433,7 +431,8 @@ class SummarizerModel:
             return None
         if self._tokenizer is None:
             try:
-                self._tokenizer = self._tokenizer_cls.from_pretrained(
+                from transformers import AutoTokenizer
+                self._tokenizer = AutoTokenizer.from_pretrained(
                     self._tokenizer_model_name
                 )
             except Exception as e:
