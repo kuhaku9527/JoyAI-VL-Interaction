@@ -150,7 +150,7 @@ class InferLoopMixin:
                 blocks = await self.memory_store.warmup(state.session_id)
                 if blocks:
                     state._memory_block_cache = list(blocks)
-                    state._memory_warmed = True
+                    state._memory_warmed.set()
             except Exception:
                 LOGGER.debug("memory-store warmup failed for %s", state.session_id)
 
@@ -462,7 +462,7 @@ class InferLoopMixin:
                 if state._memory_block_cache:
                     LOGGER.info('DEBUG v0.2 cache blocks=%d first_id=%s', len(state._memory_block_cache), state._memory_block_cache[0].get('block_id'))
                 else:
-                    LOGGER.info('DEBUG v0.2 cache empty (warmed=%s)', state._memory_warmed)
+                    LOGGER.info('DEBUG v0.2 cache empty (warmed=%s)', state._memory_warmed.is_set())
             except Exception as e:
                 LOGGER.warning('DEBUG v0.2 failed: %s', e)
             turn_model_input_record = build_model_input_record(

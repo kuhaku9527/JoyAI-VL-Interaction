@@ -129,6 +129,6 @@ class SessionState:
     _pending_write_task: Optional[asyncio.Task] = field(default=None, repr=False)
     # Memory-store v0.2 fields (live adapter spec D-9):
     _memory_block_cache: list = field(default_factory=list)
-    _memory_warmed: bool = False
+    _memory_warmed: asyncio.Event = field(default_factory=asyncio.Event)
     _memory_pushed: bool = False
     _memory_warmup_task: Optional[asyncio.Task] = field(default=None, repr=False)
