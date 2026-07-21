@@ -1,5 +1,6 @@
 """Unit tests for live_adapter memory-store hooks (v0.2)."""
 
+import asyncio
 import pathlib
 import sys
 
@@ -161,3 +162,47 @@ async def test_build_memory_prompt_slow_path():
     out = a._build_memory_prompt(state)
     assert "[Local Wiki]" in out or "[本地知识库]" in out
     assert "remembered fact" in out
+
+
+class _SlowMemoryClient(_StubMemoryClient):
+    """Memory client whose warmup sleeps briefly so concurrent callers
+    interleave, exercising the lock around _memory_block_cache writes."""
+
+    def __init__(self, blocks=None, delay=0.05):
+        super().__init__(blocks=blocks)
+        self._warmup_calls = 0
+        self._delay = delay
+
+    async def warmup(self, session_id, top_k=16, min_score=0.0):
+        self._warmup_calls += 1
+        await asyncio.sleep(self._delay)
+        return list(self._blocks)
+
+
+@pytest.mark.asyncio
+async def test_memory_warmup_concurrent_with_recall():
+    """Concurrent warmup + recall on the same session must not tear the
+    cache nor assign it more than once (lock-guarded critical sections)."""
+    blocks = [{"block_id": "x", "content": "hello"}]
+    stub = _SlowMemoryClient(blocks=blocks, delay=0.05)
+    a = _make_adapter(stub)
+    state = _make_state()
+
+    # Fire several warmups and reads concurrently.
+    tasks = [
+        asyncio.ensure_future(a._memory_warmup(state)),
+        asyncio.ensure_future(a._memory_warmup(state)),
+        asyncio.ensure_future(a._memory_recall(state, "any question")),
+        asyncio.ensure_future(a._memory_recall(state, "")),
+        asyncio.ensure_future(a._memory_recall(state, "another question")),
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    assert not any(isinstance(r, Exception) for r in results), results
+
+    # Double-checked locking must collapse concurrent warmups into a
+    # single memory-store pull.
+    assert stub._warmup_calls == 1
+    assert state._memory_warmed is True
+    # The cache must be a single, consistent assignment (no torn/duplicate
+    # write from the interleaved coroutines).
+    assert state._memory_block_cache == blocks

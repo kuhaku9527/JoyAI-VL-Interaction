@@ -35,15 +35,23 @@ class MemoryIOMixin:
         """
         if state._memory_warmed:
             return
-        state._memory_warmed = True
+        # Guard the cache under the session lock (shared with the request
+        # path) so concurrent warmups/reads cannot tear _memory_block_cache.
+        # asyncio.Lock is not reentrant, so callers must not hold state.lock
+        # when invoking this coroutine.
+        async with state.lock:
+            if state._memory_warmed:
+                return
+            state._memory_warmed = True
         try:
             blocks = await self.memory_store.warmup(state.session_id)
         except Exception as exc:
             LOGGER.warning("memory warmup failed for %s: %s", state.session_id, exc)
             return
         if blocks:
-            state._memory_block_cache = blocks
-            LOGGER.info("memory warmup %s: pulled %d block(s)", state.session_id, len(blocks))
+            async with state.lock:
+                state._memory_block_cache = blocks
+                LOGGER.info("memory warmup %s: pulled %d block(s)", state.session_id, len(blocks))
 
     async def _memory_recall(self, state, question):
         """Per-question recall. Uses warmup cache; warms up if needed.
@@ -54,12 +62,16 @@ class MemoryIOMixin:
         session memory without a separate round-trip.
         """
         if not question:
-            return list(state._memory_block_cache)
+            async with state.lock:
+                return list(state._memory_block_cache)
         if not state._memory_warmed:
+            # warmup takes the lock internally; we must NOT hold it here to
+            # avoid reentrancy deadlock on the non-reentrant asyncio.Lock.
             await self._memory_warmup(state)
         # v0.1 spec skips per-question rerank -- the cache is the answer.
         # v0.3+ may add per-question hot-fetch against the live query.
-        return list(state._memory_block_cache)
+        async with state.lock:
+            return list(state._memory_block_cache)
 
     async def _memory_push(self, state):
         """Push session memory blocks to memory-store at session end.
