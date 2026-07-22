@@ -12,7 +12,7 @@ import asyncio
 import copy
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 from adapter_types import SessionState
 from aiohttp import web
@@ -96,9 +96,9 @@ class SummarizerRoutingMixin:
         self,
         state: SessionState,
         chunk_snapshot: dict[str, Any],
-        chunk_index: Optional[int] = None,
-        current_query_text: Optional[str] = None,
-        query_start_time: Optional[str] = None,
+        chunk_index: int | None = None,
+        current_query_text: str | None = None,
+        query_start_time: str | None = None,
     ) -> tuple[dict[str, Any], float]:
         assert self.summarizer is not None
         resolved_chunk_index = chunk_index if chunk_index is not None else state.chunk_index
@@ -297,7 +297,7 @@ class SummarizerRoutingMixin:
     async def _commit_required_async_summaries(
         self,
         state: SessionState,
-        upto_turn_count: Optional[int] = None,
+        upto_turn_count: int | None = None,
         wait_all: bool = False,
         non_blocking: bool = False,
     ) -> None:
