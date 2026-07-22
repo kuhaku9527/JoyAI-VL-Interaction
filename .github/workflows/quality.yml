@@ -75,3 +75,16 @@ jobs:
         run: /tmp/webinfer-smoke-venv/bin/python -c "from live_adapter import create_app, parse_args; app = create_app(parse_args()); assert app is not None"
       - name: Console script smoke test
         run: /tmp/webinfer-smoke-venv/bin/joyvl-webinfer-adapter --help
+
+  eslint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/webui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run lint

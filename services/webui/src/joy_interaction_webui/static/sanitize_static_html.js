@@ -1,3 +1,5 @@
+'use strict';
+
 // sanitize_static_html.js
 // Static-HTML sanitizers extracted from index.html (background HTML preview / ASR).
 //

@@ -1,3 +1,5 @@
+'use strict';
+
 // Screen Capture via getDisplayMedia.
 // Captures a user-selected window/tab at 1 fps and ships JPEG frames to the
 // server over the existing WebSocket (type: frame). Runs alongside the
@@ -140,7 +142,7 @@
     if (screenCaptureVideo) {
       try {
         screenCaptureVideo.pause();
-      } catch (err) {
+      } catch {
         // ignore
       }
       screenCaptureVideo.srcObject = null;

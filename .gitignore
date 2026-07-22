@@ -115,3 +115,6 @@ services/voice-clone/voices/**/*.wav
 
 # Debug / launcher log dir used by the orchestrator; per-launch traces only.
 /services/.logs/
+
+# Node / npm (frontend lint tooling under services/webui)
+node_modules/
