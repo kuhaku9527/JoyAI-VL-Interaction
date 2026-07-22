@@ -39,3 +39,17 @@
 - 抽取未触动任何业务逻辑，仅重排归属；行为等价（含重连、stale-socket 守卫）。
 - 完整栈由前端对话手动拉起（webui/webinfer/voice-clone/memory-store 在跑，7060 关）；测试对话可直接复测，无需重启服务。
 - 分支可合并 `main`（base 已含 PR #3）。合并后如需继续 BLOCK 6+，同理基于 `main` 开分支。
+
+## 测试对话回归结论（Block 5，2026-07-22 下午） —— ✅ 通过
+
+- 环境：直接复测前端对话已在跑的完整栈（8099 服务 `fix/webui-block5-connectws`@`08f7436` 的 Block 5 代码；8070/8985/8996 在线；7060 关）。**未建 worktree、未重启服务、未碰共享工作树**——纯只读 HTTP/Playwright 复测（遵循共享工作树事故教训）。
+- **9 项尺子 7/9 PASS**：⑥ llama /health=000、⑨ 端到端 chat Connection error 均因 7060 关（环境阻断），非 Block 5 回归（脚本 "!! 存在回归" 是对 FAIL 的通用输出，实为环境项）。其余 7 项全绿。
+- **Playwright（headless 1.61.1）全绿**：
+  - ② `window.JoyWs` **4 导出齐全**（register / applyApiSettings / cleanupServerSession / **connectWebSocket**）——Block 5 新导出确认存在。
+  - ① `pageErrors:[]`，`crashSig` 空——无 `modelSelect`/`processEvery` 崩溃。
+  - ③ `updateModelOnOpen:true`——onopen 经 `JoyWs.connectWebSocket` 发 `update_model`（本次共 5 次出站）。
+  - ④ 改 `svc-llm-api-base`/`-api-key` → `updateModelOnChange:true` + `appliedFlash:true`（applied 闪烁出现）+ `errorsAfterChange:0`。
+  - ⑤ Reset Session → `cleanupPostSeen:true`（捕获 `POST http://127.0.0.1:8099/api/session/cleanup`）+ `wsReconnected:true` + `sessionIdChanged:true`（重连 session `0fc497f2…` → `d3e27ea5…`）。
+  - WS 实测 `ws://127.0.0.1:8099/ws?session_id=…`（WebUI `/ws` 代理）；reset 后第二条连接 session_id 变更 → **stale-socket / 重连守卫行为等价保留**。
+- **结论**：Block 5 窄抽取**行为等价**——连接生命周期外置 `joy_ws.js` 后，WS 连接 / onopen update_model / api-base 变更触发 update_model / Reset Session cleanup + 重连全链路正常，零 JS 崩溃。PR #3 的 live 项 ③/④/⑤ 在 Block 5 后仍全部通过。**可合并 main**。
+- 资源：未起 7060（遵循省显存规则，且 ③/④/⑤ 不需 7060）；未建 worktree；临时 Playwright 脚本在系统 temp（非仓库）。
