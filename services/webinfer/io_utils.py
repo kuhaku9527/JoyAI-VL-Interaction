@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 from PIL import Image
-
 from prompt_constants import DEFAULT_SAVE_ROOT
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
 
 def sanitize_output_name(name: str, max_len: int = 120) -> str:
     safe_chars = []

@@ -41,7 +41,7 @@ if str(ROOT) not in sys.path:
 
 @dataclass
 class _StubChoice:
-    message: "_StubMessage"
+    message: _StubMessage
 
 
 @dataclass

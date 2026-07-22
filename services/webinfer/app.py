@@ -6,7 +6,6 @@ import argparse
 import json
 import logging
 import os
-import re
 from datetime import datetime
 
 from adapter_core import StreamingInferAdapter
@@ -19,11 +18,10 @@ from io_utils import (
     resolve_save_dir,
     sanitize_output_name,
 )
+from prompt_constants import DEFAULT_SAVE_ROOT, DEFAULT_SYSTEM_PROMPT_EN
 from system_prompts import (
     resolve_prompt_paths,
 )
-
-from prompt_constants import DEFAULT_SAVE_ROOT, DEFAULT_SYSTEM_PROMPT_EN
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
@@ -285,14 +283,12 @@ def parse_args() -> AdapterConfig:
     )
     parser.add_argument(
         "--light-out-dir",
-        default=os.environ.get("LIVE_ADAPTER_LIGHT_OUT_DIR")
-        or os.environ.get("LIGHT_OUT_DIR"),
+        default=os.environ.get("LIVE_ADAPTER_LIGHT_OUT_DIR") or os.environ.get("LIGHT_OUT_DIR"),
         help="Light live output directory. Defaults to output_light_* derived from out-dir.",
     )
     parser.add_argument(
         "--debug-input-dir",
-        default=os.environ.get("LIVE_ADAPTER_DEBUG_INPUT_DIR")
-        or os.environ.get("DEBUG_INPUT_DIR"),
+        default=os.environ.get("LIVE_ADAPTER_DEBUG_INPUT_DIR") or os.environ.get("DEBUG_INPUT_DIR"),
         help="Directory for live input_* debug snapshots. Relative paths resolve under save-root.",
     )
     parser.add_argument(
@@ -469,6 +465,7 @@ def create_app(config: AdapterConfig) -> web.Application:
     adapter = StreamingInferAdapter(config)
     app = web.Application(client_max_size=128 * 1024 * 1024)
     app["adapter"] = adapter
+
     async def _on_startup(_app: web.Application) -> None:
         adapter.start_background_tasks()
         # Memory-store v0.2: one-shot health probe so the adapter logs
@@ -484,10 +481,12 @@ def create_app(config: AdapterConfig) -> web.Application:
                 )
         except Exception as exc:
             LOGGER.warning("memory-store startup ping raised: %s", exc)
+
     app.on_startup.append(_on_startup)
 
     async def _on_cleanup(_app: web.Application) -> None:
         await adapter.stop_background_tasks()
+
     app.on_cleanup.append(_on_cleanup)
     app.router.add_get("/health", adapter.handle_health)
     app.router.add_get("/v1/models", adapter.handle_models)
@@ -512,7 +511,12 @@ def main() -> None:
     if config.main_backends:
         LOGGER.info("Multi-backend mode: %d backends", len(config.main_backends))
         for b in config.main_backends:
-            LOGGER.info("  Backend: %s -> %s (model=%s)", b["name"], b["api_base"], b.get("model", b["name"]))
+            LOGGER.info(
+                "  Backend: %s -> %s (model=%s)",
+                b["name"],
+                b["api_base"],
+                b.get("model", b["name"]),
+            )
     else:
         LOGGER.info("Main model: %s at %s", config.main_model, config.main_api_base)
     if config.character_prompts_enabled:
@@ -522,7 +526,8 @@ def main() -> None:
             _paths = []
         LOGGER.info(
             "Character prompt: enabled (files=%d extra_paths=%s)",
-            len(_paths), list(config.character_prompt_paths),
+            len(_paths),
+            list(config.character_prompt_paths),
         )
     else:
         LOGGER.info("Character prompt: disabled (--no-character-prompt)")

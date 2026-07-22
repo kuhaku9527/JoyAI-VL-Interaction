@@ -68,7 +68,9 @@ class SummarizerRoutingMixin:
 
         if self.summarizer is not None and use_async_summary:
             await self._commit_required_async_summaries(
-                state, state.turn_count, non_blocking=False,
+                state,
+                state.turn_count,
+                non_blocking=False,
             )
         elif self.summarizer is not None:
             mid_term_entry, summary_time = await asyncio.to_thread(
@@ -100,8 +102,14 @@ class SummarizerRoutingMixin:
     ) -> tuple[dict[str, Any], float]:
         assert self.summarizer is not None
         resolved_chunk_index = chunk_index if chunk_index is not None else state.chunk_index
-        resolved_query_text = current_query_text if current_query_text is not None else (state.current_query_text or "")
-        resolved_query_start_time = query_start_time if query_start_time is not None else state.query_start_time
+        resolved_query_text = (
+            current_query_text
+            if current_query_text is not None
+            else (state.current_query_text or "")
+        )
+        resolved_query_start_time = (
+            query_start_time if query_start_time is not None else state.query_start_time
+        )
         frame_range = _compute_chunk_frame_range(chunk_snapshot)
         key_frames = self.summarizer.select_key_frames(
             chunk_snapshot["image_paths"],
@@ -143,16 +151,14 @@ class SummarizerRoutingMixin:
         assert self.summarizer is not None
         batch_index = state.long_term_compression_next_index
         state.long_term_compression_next_index += 1
-        source_chunk_indices = [
-            entry["chunk_index"] for entry in state.mid_term_summaries
-        ]
-        source_frame_ranges = [
-            entry["frame_range"] for entry in state.mid_term_summaries
-        ]
+        source_chunk_indices = [entry["chunk_index"] for entry in state.mid_term_summaries]
+        source_frame_ranges = [entry["frame_range"] for entry in state.mid_term_summaries]
         start = time.time()
-        merged, token_count, compressed_text, long_term_debug_input = self.summarizer.batch_compress_to_longterm(
-            state.memory_state["long_term_memory"],
-            state.mid_term_summaries,
+        merged, token_count, compressed_text, long_term_debug_input = (
+            self.summarizer.batch_compress_to_longterm(
+                state.memory_state["long_term_memory"],
+                state.mid_term_summaries,
+            )
         )
         elapsed = time.time() - start
         state.memory_state["long_term_memory"] = merged
@@ -190,9 +196,7 @@ class SummarizerRoutingMixin:
                 for entry in state.long_term_history
                 if entry.get("compressed_text")
             )
-            token_count = self.summarizer.estimate_tokens(
-                state.memory_state["long_term_memory"]
-            )
+            token_count = self.summarizer.estimate_tokens(state.memory_state["long_term_memory"])
             long_term_entry["token_count_after_slide"] = token_count
 
         state.mid_term_summaries.clear()
@@ -303,8 +307,7 @@ class SummarizerRoutingMixin:
         while state.async_pending_summary_jobs:
             job = state.async_pending_summary_jobs[0]
             is_required = wait_all or (
-                upto_turn_count is not None
-                and job["required_turn_count"] <= upto_turn_count
+                upto_turn_count is not None and job["required_turn_count"] <= upto_turn_count
             )
             if not is_required:
                 break

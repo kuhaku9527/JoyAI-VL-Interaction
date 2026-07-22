@@ -1,6 +1,5 @@
 """Unit tests for compose_system_prompt_with_memory (memory-store v0.2)."""
 
-
 from system_prompts import (
     _clip_memory_blocks,
     compose_system_prompt,
@@ -29,7 +28,7 @@ def test_chinese_header_for_zh_language():
         "BASE", character_prompts=None, language="zh-CN", memory_blocks=blocks
     )
     # Chinese header should contain "\u672c\u5730\u77e5\u8bc6\u5e93"
-    assert '\u672c\u5730\u77e5\u8bc6\u5e93' in out
+    assert "\u672c\u5730\u77e5\u8bc6\u5e93" in out
     assert "(id=a1)" in out
     assert "Pilot training done" in out
 
@@ -63,8 +62,6 @@ def test_clip_skips_non_dict_and_empty():
 
 
 def test_clip_uses_block_id_when_present():
-    out = _clip_memory_blocks(
-        [{"block_id": "abc-123", "content": "hi", "score": 1.0}], "en"
-    )
+    out = _clip_memory_blocks([{"block_id": "abc-123", "content": "hi", "score": 1.0}], "en")
     assert "(id=abc-123)" in out
     assert "hi" in out

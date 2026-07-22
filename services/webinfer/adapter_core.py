@@ -59,6 +59,7 @@ class StreamingInferAdapter(
     see the module docstring for the responsibility split. The coordinator role
     (this module) owns only ``__init__`` and the public class identity.
     """
+
     def __init__(self, config: AdapterConfig):
         self.config = config
         self.sessions: dict[str, SessionState] = {}

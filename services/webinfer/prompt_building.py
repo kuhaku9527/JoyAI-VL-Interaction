@@ -3,30 +3,28 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Optional
 
-from system_prompts import (
-    compose_system_prompt,
-)
-
 from prompt_constants import (
-    USER_QUERY_HEADER_EN,
-    USER_QUERY_HEADER_ZH,
-    VIDEO_HISTORY_HEADER_EN,
-    VIDEO_HISTORY_HEADER_ZH,
+    _CHARS_PER_TOKEN_BUDGET,
+    _CTX_SAFETY_FACTOR,
+    _PROMPT_GUARD_MIN_RECENT,
     QA_HISTORY_HEADER_EN,
     QA_HISTORY_HEADER_ZH,
     QA_QUERY_LABEL_EN,
     QA_QUERY_LABEL_ZH,
     QA_RESPONSE_LABEL_EN,
     QA_RESPONSE_LABEL_ZH,
-    _CHARS_PER_TOKEN_BUDGET,
-    _CTX_SAFETY_FACTOR,
-    _PROMPT_GUARD_MIN_RECENT,
+    USER_QUERY_HEADER_EN,
+    VIDEO_HISTORY_HEADER_EN,
+    VIDEO_HISTORY_HEADER_ZH,
+)
+from system_prompts import (
+    compose_system_prompt,
 )
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
 
 def _get_i18n(language: str = "en") -> dict[str, str]:
     if language == "en":
@@ -54,18 +52,18 @@ def _estimate_messages_chars(messages):
     # which would dominate the budget on its own).
     total = 0
     for message in messages or ():
-        content = message.get('content') if isinstance(message, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
         if isinstance(content, str):
             total += len(content)
         elif isinstance(content, list):
             for part in content:
                 if not isinstance(part, dict):
                     continue
-                if part.get('type') == 'text':
-                    text_value = part.get('text')
+                if part.get("type") == "text":
+                    text_value = part.get("text")
                     if isinstance(text_value, str):
                         total += len(text_value)
-                elif part.get('type') in ('image', 'image_url'):
+                elif part.get("type") in ("image", "image_url"):
                     total += 1024
         total += 16  # role + json framing overhead
     return total
@@ -149,10 +147,7 @@ def build_static_system_content(
             history_parts.append(f"<{entry['frame_range']}>\n{entry['summary_text']}")
 
     if history_parts:
-        sections.append(
-            i18n["video_history_header"]
-            + "\n\n".join(history_parts)
-        )
+        sections.append(i18n["video_history_header"] + "\n\n".join(history_parts))
 
     return "\n\n".join(sections) if sections else ""
 
@@ -169,7 +164,8 @@ def build_dynamic_system_content(
 
     if include_qa_history and memory_state is not None and memory_state.get("qa_history"):
         qa_entries = [
-            entry for entry in memory_state["qa_history"]
+            entry
+            for entry in memory_state["qa_history"]
             if (entry.get("archived_in_chunk") or 0) < current_chunk_index
         ]
         if qa_entries:
@@ -180,10 +176,7 @@ def build_dynamic_system_content(
                 for response_time, payload in entry.get("responses", []):
                     parts.append(f"[{i18n['qa_response_label']}@{response_time}] {payload}")
                 qa_lines.append("\n".join(parts))
-            sections.append(
-                i18n["qa_history_header"]
-                + "\n".join(qa_lines)
-            )
+            sections.append(i18n["qa_history_header"] + "\n".join(qa_lines))
 
     if current_query_text:
         sections.append(i18n["user_query_header"] + "\n" + current_query_text.strip())

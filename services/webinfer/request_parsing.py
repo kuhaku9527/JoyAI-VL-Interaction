@@ -13,6 +13,7 @@ from time_ranges import _normalize_time_range_text
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
+
 def _safe_session_id(session_id: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(session_id or "default"))
     return safe.strip("._")[:120] or "default"
