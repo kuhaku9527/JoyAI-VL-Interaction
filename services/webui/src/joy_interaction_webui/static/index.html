@@ -4087,6 +4087,16 @@ limitations under the License.
                             </div>
                             <div id="rtspBetaWarning" class="input-hint" style="margin-top: 8px; color: var(--warning-color);"><strong>Beta:</strong> Tested with Reolink RLC-811A.</div>
                         </div>
+                        <div class="form-group">
+                            <label>Processing Interval</label>
+                            <input type="number" id="processEvery" value="1" min="0.1" max="60" step="0.1">
+                            <div class="input-hint">Seconds between each VLM inference (default: 1s)</div>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>Frames per Batch</label>
+                            <input type="number" id="framesPerBatch" value="1" min="1" max="30" step="1">
+                            <div class="input-hint">Number of frames batched per inference (default: 1)</div>
+                        </div>
                     </div>
 
                     <!-- Screen capture -->
@@ -4173,6 +4183,9 @@ limitations under the License.
                 <div class="video-controls" style="top: 64px;">
                     <button class="video-control-btn" id="mirrorBtn" title="Mirror video">
                         <i data-lucide="flip-horizontal"></i> Mirror
+                    </button>
+                    <button class="video-control-btn" id="resetSessionBtn" title="Reset session: new session id, clear prompt, cleanup server">
+                        <i data-lucide="rotate-ccw"></i> Reset
                     </button>
                 </div>
 
@@ -4373,7 +4386,13 @@ limitations under the License.
         const speechBtn = document.getElementById('speechBtn');
         const speechButtons = [speechBtn].filter(Boolean);
         const promptSendBtn = document.getElementById('promptSendBtn');
-        const modelSelect = document.getElementById('modelSelect');
+        // Block 3 renamed the API form fields to service-scoped `svc-*` ids, so the
+        // legacy `modelSelect`/`apiBaseUrl`/`apiKey` element ids no longer exist. Point
+        // these closure refs at the LLM service inputs so applyApiSettings / fetchModels
+        // read the live values (fixes the null addEventListener crash + undeclared refs).
+        const modelSelect = document.getElementById('svc-llm-model');
+        const apiBaseUrl = document.getElementById('svc-llm-api-base');
+        const apiKey = document.getElementById('svc-llm-api-key');
         const refreshModelsBtn = document.getElementById('refreshModelsBtn');
         const processEvery = document.getElementById('processEvery');
         const framesPerBatch = document.getElementById('framesPerBatch');
@@ -7391,13 +7410,17 @@ limitations under the License.
 
             if (isRemote) {
                 // Show API key field for remote services
-                apiKeyField.classList.remove('collapsed');
-                apiKeyToggle.classList.remove('collapsed');
+                if (apiKeyField && apiKeyToggle) {
+                    apiKeyField.classList.remove('collapsed');
+                    apiKeyToggle.classList.remove('collapsed');
+                }
                 console.log('Remote API detected - API Key field expanded');
             } else {
                 // Hide API key field for local services
-                apiKeyField.classList.add('collapsed');
-                apiKeyToggle.classList.add('collapsed');
+                if (apiKeyField && apiKeyToggle) {
+                    apiKeyField.classList.add('collapsed');
+                    apiKeyToggle.classList.add('collapsed');
+                }
                 console.log('Local API detected - API Key field collapsed');
             }
         }
@@ -7418,10 +7441,14 @@ limitations under the License.
             promptSendBtn.title = '发送给 BT-7274';
             syncSpeechButtons();
 
-            processEvery.disabled = isAnalysisRunning;
-            processEvery.title = isAnalysisRunning ? '推理中不可修改，请先停止视频' : '';
-            framesPerBatch.disabled = isAnalysisRunning;
-            framesPerBatch.title = isAnalysisRunning ? '推理中不可修改，请先停止视频' : '';
+            if (processEvery) {
+                processEvery.disabled = isAnalysisRunning;
+                processEvery.title = isAnalysisRunning ? '推理中不可修改，请先停止视频' : '';
+            }
+            if (framesPerBatch) {
+                framesPerBatch.disabled = isAnalysisRunning;
+                framesPerBatch.title = isAnalysisRunning ? '推理中不可修改，请先停止视频' : '';
+            }
         }
 
         function setVideoWaitingForStream(waiting) {
@@ -7500,13 +7527,16 @@ limitations under the License.
                     // Check if API key is required
                     checkApiKeyRequirement(service.url);
 
-                    // Update hint text
+                    // Update hint text (svc-llm-api-base has no hint sibling after
+                    // Block 3's form refactor, so guard against a null element).
                     const hintDiv = apiBaseUrl.nextElementSibling;
-                    if (data.detected.length > 1) {
-                        const serviceNames = data.detected.map(s => s.name).join(', ');
-                        hintDiv.textContent = `Detected: ${serviceNames}`;
-                    } else if (service.name === 'NVIDIA API Catalog') {
-                        hintDiv.textContent = 'No local VLM services found. Using NVIDIA API Catalog (requires API key from build.nvidia.com)';
+                    if (hintDiv) {
+                        if (data.detected.length > 1) {
+                            const serviceNames = data.detected.map(s => s.name).join(', ');
+                            hintDiv.textContent = `Detected: ${serviceNames}`;
+                        } else if (service.name === 'NVIDIA API Catalog') {
+                            hintDiv.textContent = 'No local VLM services found. Using NVIDIA API Catalog (requires API key from build.nvidia.com)';
+                        }
                     }
                 }
             } catch (error) {
@@ -7524,7 +7554,7 @@ limitations under the License.
 
         async function fetchModels() {
             try {
-                modelSelect.innerHTML = '<option value=">Loading models...</option>';
+                if (!apiBaseUrl || !apiKey || !modelSelect) return;
 
                 // Get current API settings from UI
                 const currentApiBase = apiBaseUrl.value.trim();
@@ -7545,24 +7575,12 @@ limitations under the License.
 
                 const validModels = (data.models || []).filter(model => isValidModelName(model && model.id));
                 if (validModels.length > 0) {
-                    modelSelect.innerHTML = '';
-                    let currentModel = null;
-                    let autoSelectedModel = null;
-
-                    validModels.forEach((model, index) => {
-                        const option = document.createElement('option');
-                        option.value = model.id;
-                        option.textContent = model.id;
-                        if (model.current) {
-                            option.selected = true;
-                            currentModel = model.id;
-                        }
-                        modelSelect.appendChild(option);
-                    });
-
-                    // If no current model, auto-select first model and apply
-                    if (!currentModel && validModels.length > 0) {
-                        autoSelectedModel = validModels[0].id;
+                    // `modelSelect` is now the `svc-llm-model` text input (Block 3), not a
+                    // <select>, so prefill its value instead of building <option>s.
+                    let currentModel = (modelSelect.value || '').trim();
+                    if (!currentModel) {
+                        const current = validModels.find(m => m.current);
+                        const autoSelectedModel = current ? current.id : validModels[0].id;
                         modelSelect.value = autoSelectedModel;
                         currentModel = autoSelectedModel;
 
@@ -7573,14 +7591,14 @@ limitations under the License.
 
                     // Update model name in VLM output header
                     if (currentModel) {
-                        document.getElementById('modelName').textContent = currentModel;
+                        const nameEl = document.getElementById('modelName');
+                        if (nameEl) nameEl.textContent = currentModel;
                     }
                 } else {
-                    modelSelect.innerHTML = '<option value=">No models available</option>';
+                    console.warn('fetchModels: no models available from', currentApiBase);
                 }
             } catch (error) {
                 console.error('Error fetching models:', error);
-                modelSelect.innerHTML = '<option value=">Error loading models</option>';
             }
         }
 
@@ -8678,7 +8696,11 @@ limitations under the License.
         updatePromptAvailability();
         resizePromptInput();
 
-        refreshModelsBtn.addEventListener('click', fetchModels);
+        // refreshModelsBtn was removed by the Block 3 services-panel refactor (the
+        // "Probe" action covers re-probing). Guard so a missing element can't abort the
+        // IIFE before window.JoyWs.register() runs. fetchModels still fires on load and
+        // on API-base change via applyApiSettings({ refreshModels: true }).
+        if (refreshModelsBtn) refreshModelsBtn.addEventListener('click', fetchModels);
 
         // Block 4: applyApiSettings + cleanupServerSession extracted to joy_ws.js (window.JoyWs)
         const { applyApiSettings, cleanupServerSession } = window.JoyWs;
@@ -8769,7 +8791,7 @@ limitations under the License.
                     // Update hint
                     const hint = document.getElementById('apiBaseHint');
                     const serviceName = e.currentTarget.querySelector('strong').textContent;
-                    hint.textContent = `Using ${serviceName}`;
+                    if (hint) hint.textContent = `Using ${serviceName}`;
                 });
             });
         }
@@ -8781,7 +8803,7 @@ limitations under the License.
         });
 
         // Auto-apply processing interval on change
-        processEvery.addEventListener('change', () => {
+        if (processEvery) processEvery.addEventListener('change', () => {
             const interval = parseFloat(processEvery.value) || 1.0;
 
             if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -8799,7 +8821,7 @@ limitations under the License.
         });
 
         // Also trigger flash on blur
-        processEvery.addEventListener('blur', () => {
+        if (processEvery) processEvery.addEventListener('blur', () => {
             const interval = parseFloat(processEvery.value) || 1.0;
 
             if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -8817,7 +8839,7 @@ limitations under the License.
         });
 
         // Auto-apply frames per batch on change
-        framesPerBatch.addEventListener('change', () => {
+        if (framesPerBatch) framesPerBatch.addEventListener('change', () => {
             const value = parseInt(framesPerBatch.value) || 1;
 
             if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -8833,7 +8855,7 @@ limitations under the License.
             }, 600);
         });
 
-        framesPerBatch.addEventListener('blur', () => {
+        if (framesPerBatch) framesPerBatch.addEventListener('blur', () => {
             const value = parseInt(framesPerBatch.value) || 1;
 
             if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -9099,10 +9121,10 @@ limitations under the License.
                         serverConfigApplied = true;
                         fetchModels();
                     }
-                    if (data.process_interval != null && !isNaN(data.process_interval)) {
+                    if (data.process_interval != null && !isNaN(data.process_interval) && processEvery) {
                         processEvery.value = String(data.process_interval);
                     }
-                    if (data.frames_per_batch != null && !isNaN(data.frames_per_batch)) {
+                    if (data.frames_per_batch != null && !isNaN(data.frames_per_batch) && framesPerBatch) {
                         framesPerBatch.value = String(data.frames_per_batch);
                     }
                     if (data.background_model) {
@@ -9129,10 +9151,10 @@ limitations under the License.
                     // Prompt was updated on server (already handled in applyPrompt)
                     console.log('Prompt updated:', data.prompt);
                 } else if (data.type === 'processing_updated') {
-                    if (data.process_interval != null) processEvery.value = String(data.process_interval);
+                    if (data.process_interval != null && processEvery) processEvery.value = String(data.process_interval);
                     console.log('Processing interval updated:', data.process_interval, 's');
                 } else if (data.type === 'frames_per_batch_updated') {
-                    if (data.frames_per_batch != null) framesPerBatch.value = String(data.frames_per_batch);
+                    if (data.frames_per_batch != null && framesPerBatch) framesPerBatch.value = String(data.frames_per_batch);
                     if (data.background_model) applyBackgroundConfig(data.background_model);
                     console.log('Frames per batch updated:', data.frames_per_batch);
                 } else if (data.type === 'background_config_updated') {
@@ -9203,6 +9225,14 @@ limitations under the License.
             if (cleanupServer) {
                 await cleanupServerSession(oldSessionId);
             }
+        }
+
+        // Wire the Reset Session button (was orphaned — resetSession had no call site).
+        const resetSessionBtn = document.getElementById('resetSessionBtn');
+        if (resetSessionBtn) {
+            resetSessionBtn.addEventListener('click', () => {
+                resetSession({ clearConversation: true, cleanupServer: true });
+            });
         }
 
         // Start - dispatch to webcam or RTSP based on active tab
