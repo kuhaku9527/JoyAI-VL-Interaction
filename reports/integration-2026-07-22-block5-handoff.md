@@ -1,0 +1,41 @@
+# Handoff: Block 5 — connectWebSocket 抽取（前端对话 → 测试对话）
+
+> 来源分支：`fix/webui-block5-connectws`（base `origin/main` @ `bbf8b61`，PR #3 已合并）
+> 改动文件：`services/webui/src/joy_interaction_webui/static/index.html` + `joy_ws.js`
+
+## 1) 本次做了什么（窄抽取）
+
+`connectWebSocket`（原 ~240 行，是整个 server→client 协议路由 `ws.onmessage` 所在地，引用约 30 个闭包符号，其中 `websocket`/`sessionId` 在运行时重赋值）按**窄抽取**策略拆分：
+
+- **外置到 `joy_ws.js`（`window.JoyWs.connectWebSocket`）**：WebSocket 创建、`onopen`/`onerror`/`onclose`、断线 2s 重连、首次连接后 `applyApiSettings` 应用模型。`websocket`/`sessionId` 经 `setWebSocket`/`getSessionId` 实时访问器与内联脚本的单一真相源同步。
+- **保留内联 `dispatchServerMessage(event)`**：原 `ws.onmessage` 协议体作为内联函数留在 monolith 闭包内（因为它重赋值 `sessionId`/`serverConfigApplied`/`lastText`/`fadeTimeout`，必须留在单一真相源）。经 `JoyWs.register({ dispatchServerMessage })` 桥接，`connectWebSocket` 用 `ws.onmessage = dispatchServerMessage` 接线。
+- **桥接引用收敛到 ~9 个**：`getWebSocket`/`setWebSocket`/`getSessionId`/`installLlmReplyHandler`/`updateStatus`/`modelSelect`/`isValidModelName`/`fetchModels`/`dispatchServerMessage`（含原 `apiBaseUrl`/`apiKey`）。
+- **原 `connectWebSocket` 改为 1 行别名**：`function connectWebSocket() { window.JoyWs.connectWebSocket(); }`，6 个调用点（capture 启动 ×3、`init` 加载、`resetSession`、页面 `load`）零改动。
+- **stale-socket 守卫语义保留**：原 `if (websocket !== ws) return;` 改为 `if (websocket !== event.target) return;`（事件目标即触发消息的 socket），行为等价。
+
+## 2) 回归验证结果（前端对话已自测）
+
+环境：8099/8070/8985/8996 在线，7060(llama) 关机。
+
+| 检查 | 结果 | 说明 |
+|------|------|------|
+| 语法编译（vm.Script 内联 + joy_ws.js） | ✅ | 0 错误 |
+| 页面加载 `pageerror` | ✅ 0 | register 无异常；`window.JoyWs.connectWebSocket` / 别名 / `dispatchServerMessage` 均定义 |
+| ① 无 `modelSelect` 崩溃 | ✅ | — |
+| ② `window.JoyWs` 定义 | ✅ | register/applyApiSettings/cleanupServerSession/connectWebSocket 齐全 |
+| ③ WS onopen 发 `update_model` | ✅ | `updateModelOnOpen:true` |
+| ④ 改 api-base/key 触发 `update_model` | ✅ | `updateModelOnChange:true`，`errorsAfterChange:0` |
+| ⑤ Reset Session → `POST /api/session/cleanup` + WS 重连 | ✅ | `cleanupPostSeen:true`，`sessionIdChanged:true`（cleanup POST 返回 400 系 7060 关、非前端） |
+| 9 项尺子 | ✅ 7/9 | ⑥ llama /health 000、⑨ 端到端 chat Connection error 均因 7060 关，与前端无关 |
+
+## 3) 测试对话复测清单
+
+- `bash scripts/smoke-frontend-baseline.sh` → 期望 7/9（7060 关时 ⑥/⑨ 环境阻断）
+- Playwright（headless）：① 无 `modelSelect`/`processEvery` 崩溃 ② `window.JoyWs` 含 `connectWebSocket` ③ onopen `update_model` 出站 ④ 改 `svc-llm-api-base`/`-api-key` 触发 `update_model` ⑤ Reset Session 按钮 → `POST /api/session/cleanup` + WS 新 session 重连
+- 若起 7060 应达 9/9
+
+## 4) 备注
+
+- 抽取未触动任何业务逻辑，仅重排归属；行为等价（含重连、stale-socket 守卫）。
+- 完整栈由前端对话手动拉起（webui/webinfer/voice-clone/memory-store 在跑，7060 关）；测试对话可直接复测，无需重启服务。
+- 分支可合并 `main`（base 已含 PR #3）。合并后如需继续 BLOCK 6+，同理基于 `main` 开分支。
