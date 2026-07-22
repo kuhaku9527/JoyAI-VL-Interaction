@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Shared pytest fixtures for memory-store v0.1."""
+
 from __future__ import annotations
 
 import sys
@@ -32,6 +33,7 @@ def _isolate_env(monkeypatch, tmp_path):
 
     from memory_store import app as app_module
     from memory_store import backends
+
     importlib.reload(backends)
     app_module._reset_backend_for_tests()
     yield

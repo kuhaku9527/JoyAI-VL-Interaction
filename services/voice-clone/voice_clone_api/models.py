@@ -47,10 +47,7 @@ class VoiceCreateRequest(BaseModel):
     )
     language_boost: str = Field(
         default="Chinese",
-        description=(
-            "Language hint forwarded to MiniMax T2A (e.g. 'Chinese', "
-            "'auto', 'English')."
-        ),
+        description=("Language hint forwarded to MiniMax T2A (e.g. 'Chinese', 'auto', 'English')."),
     )
     prompt_audio_path: str | None = Field(
         default=None,
@@ -94,7 +91,9 @@ class SynthesizeRequest(BaseModel):
 
     text: str = Field(..., min_length=1, max_length=4000, description="Text to synthesise")
     voice_id: str = Field(..., description="Voice profile id from /v1/voices")
-    speed: float = Field(default=1.0, ge=0.5, le=2.0, description="Speech-rate multiplier (best-effort)")
+    speed: float = Field(
+        default=1.0, ge=0.5, le=2.0, description="Speech-rate multiplier (best-effort)"
+    )
     streaming: bool = Field(
         default=False,
         description=(
@@ -105,9 +104,7 @@ class SynthesizeRequest(BaseModel):
     )
     language_boost: str = Field(
         default="Chinese",
-        description=(
-            "MiniMax language hint ('Chinese', 'auto', 'English', etc.)."
-        ),
+        description=("MiniMax language hint ('Chinese', 'auto', 'English', etc.)."),
     )
     use_async: bool = Field(
         default=False,

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """FastAPI endpoint contract tests (spec §D-7)."""
+
 from __future__ import annotations
 
 from datetime import datetime

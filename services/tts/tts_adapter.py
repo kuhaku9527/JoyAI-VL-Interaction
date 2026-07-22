@@ -47,14 +47,11 @@ def env_value(*names: str, default: str = "") -> str:
 
 
 class UpstreamWebSocket(Protocol):
-    async def send(self, message: str | bytes) -> None:
-        ...
+    async def send(self, message: str | bytes) -> None: ...
 
-    async def recv(self) -> str | bytes:
-        ...
+    async def recv(self) -> str | bytes: ...
 
-    async def close(self) -> None:
-        ...
+    async def close(self) -> None: ...
 
 
 ConnectUpstream = Callable[[str], Awaitable[UpstreamWebSocket]]
@@ -87,9 +84,7 @@ def load_settings_from_env() -> Settings:
         upstream_url=env_value("TTS_UPSTREAM_URL", default=DEFAULT_UPSTREAM_URL),
         model=env_value("TTS_MODEL", default=MODEL_NAME),
         default_voice=env_value("TTS_DEFAULT_VOICE", default=DEFAULT_VOICE),
-        sample_rate=int(
-            env_value("TTS_SAMPLE_RATE", default=str(DEFAULT_SAMPLE_RATE))
-        ),
+        sample_rate=int(env_value("TTS_SAMPLE_RATE", default=str(DEFAULT_SAMPLE_RATE))),
         output_format=env_value("TTS_OUTPUT_FORMAT", default=WEBUI_OUTPUT_FORMAT),
         request_timeout=float(
             env_value("TTS_REQUEST_TIMEOUT", default=str(DEFAULT_TIMEOUT_SECONDS))
@@ -132,9 +127,9 @@ def clone_websocket_url(clone_api_url: str) -> str:
     """Translate the HTTP ``clone_api_url`` to a ws:// endpoint."""
     base = (clone_api_url or "").rstrip("/")
     if base.startswith("https://"):
-        return "wss://" + base[len("https://"):] + "/v1/synthesize/ws"
+        return "wss://" + base[len("https://") :] + "/v1/synthesize/ws"
     if base.startswith("http://"):
-        return "ws://" + base[len("http://"):] + "/v1/synthesize/ws"
+        return "ws://" + base[len("http://") :] + "/v1/synthesize/ws"
     return base + "/v1/synthesize/ws"
 
 
@@ -338,7 +333,9 @@ async def run_tts_clone_request(
                 }
             )
         )
-        upstream = await websockets.connect(ws_url, max_size=None, ping_interval=20, ping_timeout=20)
+        upstream = await websockets.connect(
+            ws_url, max_size=None, ping_interval=20, ping_timeout=20
+        )
         await upstream.send(json_dumps({"text": text, "voice_id": voice_id}))
         while True:
             message = await upstream.recv()

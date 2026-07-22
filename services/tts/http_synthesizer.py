@@ -11,6 +11,7 @@ Usage:
     async for audio_chunk in synth.synthesize("你好"):
         await client.send_bytes(audio_chunk)
 """
+
 from __future__ import annotations
 
 import base64
@@ -18,7 +19,6 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -70,9 +70,9 @@ class MiniMaxTTSSynthesizer:
         self,
         text: str,
         *,
-        voice_id: Optional[str] = None,
-        speed: Optional[float] = None,
-        vol: Optional[float] = None,
+        voice_id: str | None = None,
+        speed: float | None = None,
+        vol: float | None = None,
     ) -> AsyncIterator[bytes]:
         """Stream-synthesize text via MiniMax T2A V2 SSE, yielding raw audio chunks.
 
@@ -112,28 +112,28 @@ class MiniMaxTTSSynthesizer:
             "Accept": "text/event-stream",
         }
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            async with client.stream(
-                "POST", MINIMAX_TTS_URL, json=payload, headers=headers
-            ) as resp:
-                resp.raise_for_status()
+        async with (
+            httpx.AsyncClient(timeout=30.0) as client,
+            client.stream("POST", MINIMAX_TTS_URL, json=payload, headers=headers) as resp,
+        ):
+            resp.raise_for_status()
 
-                total = 0
-                async for line in resp.aiter_lines():
-                    if line.startswith("data:"):
-                        data_str = line[5:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            extra = chunk.get("extra_info", {})
-                            audio_b64 = extra.get("audio")
-                            if audio_b64:
-                                audio_chunk = base64.b64decode(audio_b64)
-                                total += len(audio_chunk)
-                                yield audio_chunk
-                        except json.JSONDecodeError:
-                            continue
+            total = 0
+            async for line in resp.aiter_lines():
+                if line.startswith("data:"):
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        extra = chunk.get("extra_info", {})
+                        audio_b64 = extra.get("audio")
+                        if audio_b64:
+                            audio_chunk = base64.b64decode(audio_b64)
+                            total += len(audio_chunk)
+                            yield audio_chunk
+                    except json.JSONDecodeError:
+                        continue
 
         logger.debug("MiniMax TTS complete: voice=%s, bytes=%d", vid, total)
 
@@ -161,8 +161,10 @@ class MiniMaxTTSSynthesizer:
 # Smoke test
 # ============================================================================
 
+
 async def _smoke_test():
     import os
+
     api_key = os.getenv("MINIMAX_API_KEY", "")
     group_id = os.getenv("MINIMAX_GROUP_ID", "")
     voice_id = os.getenv("MINIMAX_VOICE_ID", "")
@@ -186,5 +188,6 @@ async def _smoke_test():
 
 if __name__ == "__main__":
     import asyncio
+
     logging.basicConfig(level=logging.INFO)
     asyncio.run(_smoke_test())

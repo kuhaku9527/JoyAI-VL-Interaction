@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Port-conflict self-check (spec §D-1, ADR 0005 E)."""
+
 from __future__ import annotations
 
 import socket as _socket
