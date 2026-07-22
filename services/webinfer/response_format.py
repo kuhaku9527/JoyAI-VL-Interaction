@@ -6,7 +6,7 @@ import copy
 import logging
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from aiohttp import web
 from time_ranges import _parse_start_second
@@ -39,7 +39,7 @@ def normalize_model_output(text: str) -> str:
     return f"</response> {first_line}" if first_line else "</silence>"
 
 
-def extract_response_payload(text: str) -> Optional[str]:
+def extract_response_payload(text: str) -> str | None:
     normalized = normalize_model_output(text)
     if not normalized.startswith("</response>"):
         return None
@@ -47,7 +47,7 @@ def extract_response_payload(text: str) -> Optional[str]:
     return payload or None
 
 
-def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
+def parse_model_decision(raw_text: str) -> tuple[str, str, str | None]:
     """Single decision-parsing entry point (unified by #2).
 
     Returns ``(decision, clean_text, delegation_question)``:
@@ -72,8 +72,8 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
         return "silence", "", None
 
     # Delegation priority: detect either delegation tag anywhere in the output.
-    delegation_idx: Optional[int] = None
-    delegation_tag: Optional[str] = None
+    delegation_idx: int | None = None
+    delegation_tag: str | None = None
     for tag in ("</delegation>", "<delegation>"):
         idx = text.find(tag)
         if idx >= 0 and (delegation_idx is None or idx < delegation_idx):
@@ -84,7 +84,7 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
         return "delegation", "", tail or None
 
     # No delegation tag: fall back to the earliest of response / silence.
-    earliest: Optional[tuple[int, str]] = None
+    earliest: tuple[int, str] | None = None
     for marker in ("</response>", "</silence>"):
         idx = text.find(marker)
         if idx >= 0 and (earliest is None or idx < earliest[0]):
@@ -109,14 +109,14 @@ def build_model_input_record(
     chunk_index: int,
     messages: list[dict[str, Any]],
     frame_count: int,
-    model: Optional[str] = None,
-    generation_kwargs: Optional[dict[str, Any]] = None,
+    model: str | None = None,
+    generation_kwargs: dict[str, Any] | None = None,
     inference_skipped: bool = False,
-    skip_reason: Optional[str] = None,
-    image_paths: Optional[list[str]] = None,
-    frame_time_ranges: Optional[list[str]] = None,
-    prefix_content: Optional[str] = None,
-    prompt: Optional[str] = None,
+    skip_reason: str | None = None,
+    image_paths: list[str] | None = None,
+    frame_time_ranges: list[str] | None = None,
+    prefix_content: str | None = None,
+    prompt: str | None = None,
 ) -> dict[str, Any]:
     if inference_skipped:
         return {
@@ -139,8 +139,8 @@ def build_model_input_record(
 def archive_chunk_response_records(
     current_chunk: dict[str, Any],
     memory_state: dict[str, Any],
-    current_query_text: Optional[str],
-    query_start_time: Optional[str],
+    current_query_text: str | None,
+    query_start_time: str | None,
     chunk_index: int = 0,
     before_time_sec: float = float("inf"),
 ) -> None:
@@ -182,12 +182,12 @@ def archive_chunk_response_records(
 def _chat_completion_response(
     model: str,
     content: str,
-    usage: Optional[dict[str, Any]],
+    usage: dict[str, Any] | None,
     raw_model: str,
     raw_text: str,
     *,
-    decision: Optional[str] = None,
-    delegation_question: Optional[str] = None,
+    decision: str | None = None,
+    delegation_question: str | None = None,
     memory_chars: int = 0,
     qa_history_len: int = 0,
     prompt_chars: int = 0,

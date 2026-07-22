@@ -27,7 +27,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 from aiohttp.test_utils import make_mocked_request
@@ -69,7 +69,7 @@ class _StubUsage:
 @dataclass
 class _StubChatCompletion:
     choices: list[_StubChoice]
-    usage: Optional[_StubUsage] = None
+    usage: _StubUsage | None = None
 
 
 class _StubChatCompletionsAPI:
@@ -268,7 +268,10 @@ async def test_text_chat_rejects_image_url_content():
                     "role": "user",
                     "content": [
                         {"type": "text", "text": "describe this"},
-                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/jpeg;base64,..."},
+                        },
                     ],
                 }
             ],
@@ -380,12 +383,18 @@ async def test_text_chat_uses_session_header_for_state_isolation():
 
     resp_a = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "u1"}]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [{"role": "user", "content": "u1"}],
+        },
         session_id="session-A",
     )
     resp_b = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "u2"}]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [{"role": "user", "content": "u2"}],
+        },
         session_id="session-B",
     )
     assert resp_a.status == 200

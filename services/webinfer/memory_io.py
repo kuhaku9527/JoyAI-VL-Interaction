@@ -52,7 +52,11 @@ class MemoryIOMixin:
                 return
             if blocks:
                 state._memory_block_cache = blocks
-                LOGGER.info("memory warmup %s: pulled %d block(s)", state.session_id, len(blocks))
+                LOGGER.info(
+                    "memory warmup %s: pulled %d block(s)",
+                    state.session_id,
+                    len(blocks),
+                )
             state._memory_warmed.set()
 
     async def _memory_recall(self, state, question):

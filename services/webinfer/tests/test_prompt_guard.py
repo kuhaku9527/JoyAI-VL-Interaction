@@ -87,7 +87,11 @@ def test_trim_drops_oldest_user_assistant_turns_until_under_budget():
 
 
 def test_trim_always_preserves_system_message():
-    msgs = [_msg("system", "sys"), _msg("user", "u" * 5000), _msg("assistant", "a" * 5000)]
+    msgs = [
+        _msg("system", "sys"),
+        _msg("user", "u" * 5000),
+        _msg("assistant", "a" * 5000),
+    ]
     out, removed = la._trim_messages_to_ctx(msgs, max_total_chars=100, min_recent=2)
     # System preserved even when turns can't fit
     assert out[0]["content"] == "sys"

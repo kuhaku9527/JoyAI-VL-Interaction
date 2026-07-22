@@ -6,7 +6,6 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional
 
 from openai import OpenAI
 from PIL import Image
@@ -357,9 +356,9 @@ class SummarizerModel:
 
     def update_routing(
         self,
-        api_base: Optional[str] = None,
-        model_name: Optional[str] = None,
-        api_key: Optional[str] = None,
+        api_base: str | None = None,
+        model_name: str | None = None,
+        api_key: str | None = None,
     ) -> dict:
         """Hot-swap the summarizer's endpoint + model + key at runtime.
 

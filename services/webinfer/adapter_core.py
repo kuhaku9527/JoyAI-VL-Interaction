@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from adapter_types import AdapterConfig, SessionState
 from config import _env_bool, _env_float, _env_int, _split_paths
@@ -63,7 +63,7 @@ class StreamingInferAdapter(
     def __init__(self, config: AdapterConfig):
         self.config = config
         self.sessions: dict[str, SessionState] = {}
-        self._cleanup_task: Optional[asyncio.Task] = None
+        self._cleanup_task: asyncio.Task | None = None
         # memory-store v0.2: client is fail-soft; no raise on connect fail
         self.memory_store = MemoryStoreClient(
             base_url=config.memory_store_url,
@@ -89,7 +89,7 @@ class StreamingInferAdapter(
                 )
         else:
             self.main_clients[config.main_model] = (self.main_client, config.main_model)
-        self.summarizer: Optional[SummarizerModel] = None
+        self.summarizer: SummarizerModel | None = None
         if config.enable_summarizer:
             self.summarizer = SummarizerModel(
                 model_name=config.summarizer_model,

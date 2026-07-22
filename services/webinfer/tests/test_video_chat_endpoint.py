@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 
@@ -66,7 +66,7 @@ class _StubUsage:
 @dataclass
 class _StubChatCompletion:
     choices: list[_StubChoice]
-    usage: Optional[_StubUsage] = None
+    usage: _StubUsage | None = None
 
 
 class _StubChatCompletionsAPI:
