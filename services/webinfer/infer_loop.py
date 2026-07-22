@@ -14,7 +14,7 @@ import re
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Optional
+from typing import Any
 
 from adapter_types import SessionState
 from aiohttp import web
@@ -57,7 +57,7 @@ LOGGER = logging.getLogger("streaming_infer_adapter")
 class InferLoopMixin:
     """Main inference loop: chat endpoints, frame parsing, model call."""
 
-    def _resolve_backend(self, model_name: Optional[str] = None) -> tuple[AsyncOpenAI, str]:
+    def _resolve_backend(self, model_name: str | None = None) -> tuple[AsyncOpenAI, str]:
         if model_name and model_name in self.main_clients:
             return self.main_clients[model_name]
         return self.main_client, self.config.main_model
@@ -88,7 +88,10 @@ class InferLoopMixin:
             content = message.get("content")
             if isinstance(content, list):
                 for _, part in enumerate(content):
-                    if isinstance(part, dict) and part.get("type") in {"image_url", "image"}:
+                    if isinstance(part, dict) and part.get("type") in {
+                        "image_url",
+                        "image",
+                    }:
                         return _openai_error_response(
                             "image content not allowed on /v1/text/chat; use /v1/chat/completions for multimodal",
                             status=400,
@@ -130,8 +133,8 @@ class InferLoopMixin:
         state: SessionState,
         payload: dict[str, Any],
         *,
-        client: Optional[AsyncOpenAI] = None,
-        model_name: Optional[str] = None,
+        client: AsyncOpenAI | None = None,
+        model_name: str | None = None,
     ) -> dict[str, Any]:
         # Single-LLM-gateway text path. Composes the system prompt
         # (character profile + [Local Wiki]), runs the v3.34 prompt
@@ -229,8 +232,8 @@ class InferLoopMixin:
         payload: dict[str, Any],
         request: web.Request,
         *,
-        client: Optional[AsyncOpenAI] = None,
-        model_name: Optional[str] = None,
+        client: AsyncOpenAI | None = None,
+        model_name: str | None = None,
     ) -> dict[str, Any]:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
@@ -453,7 +456,9 @@ class InferLoopMixin:
                     len(m.get("content") or "") for m in http_messages if m.get("role") == "system"
                 ]
                 LOGGER.info(
-                    "DEBUG v0.2 http_messages roles=%s sys_content_lengths=%s", roles, sys_lens
+                    "DEBUG v0.2 http_messages roles=%s sys_content_lengths=%s",
+                    roles,
+                    sys_lens,
                 )
                 if state._memory_block_cache:
                     LOGGER.info(
@@ -462,7 +467,10 @@ class InferLoopMixin:
                         state._memory_block_cache[0].get("block_id"),
                     )
                 else:
-                    LOGGER.info("DEBUG v0.2 cache empty (warmed=%s)", state._memory_warmed.is_set())
+                    LOGGER.info(
+                        "DEBUG v0.2 cache empty (warmed=%s)",
+                        state._memory_warmed.is_set(),
+                    )
             except Exception as e:
                 LOGGER.warning("DEBUG v0.2 failed: %s", e)
             turn_model_input_record = build_model_input_record(
@@ -636,8 +644,8 @@ class InferLoopMixin:
         self,
         payload: dict[str, Any],
         *,
-        client: Optional[AsyncOpenAI] = None,
-        model_name: Optional[str] = None,
+        client: AsyncOpenAI | None = None,
+        model_name: str | None = None,
     ) -> dict[str, Any]:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
@@ -708,7 +716,7 @@ class InferLoopMixin:
         state: SessionState,
         prompt_text: str,
         time_range: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         if not self.config.use_prompt_as_query:
             return None
 
@@ -723,7 +731,10 @@ class InferLoopMixin:
             return normalized_prompt
 
         if normalized_prompt != state.current_query_text:
-            state._pending_qa_archive = (state.current_query_text, state.query_start_time)
+            state._pending_qa_archive = (
+                state.current_query_text,
+                state.query_start_time,
+            )
             state.current_query_text = normalized_prompt
             state.query_start_time = time_range
             state.query_in_current_chunk = True
@@ -736,12 +747,12 @@ class InferLoopMixin:
         inbound_payload: dict[str, Any],
         api_messages: list[dict[str, Any]],
         *,
-        client: Optional[AsyncOpenAI] = None,
-        model_name: Optional[str] = None,
-        session_state: Optional[SessionState] = None,
-        generation_kwargs: Optional[dict[str, Any]] = None,
-        http_messages: Optional[list[dict[str, Any]]] = None,
-    ) -> tuple[str, Optional[dict[str, Any]]]:
+        client: AsyncOpenAI | None = None,
+        model_name: str | None = None,
+        session_state: SessionState | None = None,
+        generation_kwargs: dict[str, Any] | None = None,
+        http_messages: list[dict[str, Any]] | None = None,
+    ) -> tuple[str, dict[str, Any] | None]:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
         generation_kwargs = generation_kwargs or self._main_generation_kwargs(inbound_payload)

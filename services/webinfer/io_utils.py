@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from PIL import Image
 from prompt_constants import DEFAULT_SAVE_ROOT
@@ -34,7 +34,7 @@ def derive_model_output_name(model_path: str) -> str:
     return sanitize_output_name(model_name)
 
 
-def resolve_save_dir(path: Optional[str], root: str = DEFAULT_SAVE_ROOT) -> Optional[str]:
+def resolve_save_dir(path: str | None, root: str = DEFAULT_SAVE_ROOT) -> str | None:
     if path is None:
         return None
     path = str(path).strip()
@@ -50,13 +50,13 @@ def derive_light_out_dir(out_dir: str) -> str:
     parent_dir = os.path.dirname(normalized_out_dir)
     base_name = os.path.basename(normalized_out_dir)
     if base_name.startswith("output_"):
-        return os.path.join(parent_dir, f"output_light_{base_name[len('output_'):]}")
+        return os.path.join(parent_dir, f"output_light_{base_name[len('output_') :]}")
     if base_name == "output":
         return os.path.join(parent_dir, "output_light")
     return normalized_out_dir + "_light"
 
 
-def _file_url_to_path(url: str) -> Optional[str]:
+def _file_url_to_path(url: str) -> str | None:
     if not url.startswith("file://"):
         return None
     from urllib.parse import unquote, urlparse
@@ -118,7 +118,7 @@ def _resize_data_url_if_needed(data_url: str, max_pixels: int = 0) -> str:
         return data_url
 
 
-def _resize_image_if_needed(image: Image.Image, max_pixels: int) -> Optional[Image.Image]:
+def _resize_image_if_needed(image: Image.Image, max_pixels: int) -> Image.Image | None:
     width, height = image.size
     if max_pixels <= 0 or width * height <= max_pixels:
         return None

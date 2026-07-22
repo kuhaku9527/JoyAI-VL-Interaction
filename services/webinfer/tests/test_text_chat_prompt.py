@@ -128,12 +128,15 @@ async def test_text_chat_includes_character_profile_in_system(tmp_path):
     adapter.config.character_prompt_paths = (str(char_path),)
     adapter._load_character_profiles = lambda: [char_body]
     adapter._build_memory_prompt = lambda state: (
-        f"<character_profile>{char_body}</character_profile>\n\n" "base decision prompt"
+        f"<character_profile>{char_body}</character_profile>\n\nbase decision prompt"
     )
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "hi"}]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
         session_id="char-1",
     )
     assert resp.status == 200
@@ -149,7 +152,10 @@ async def test_text_chat_includes_local_wiki_when_memory_warms():
     adapter, stub = _make_adapter(
         scripted=["</response> hi"],
         memory_blocks=[
-            {"block_id": "b1", "content": "X-Wing pilot ace maneuver is reverse-thrust"},
+            {
+                "block_id": "b1",
+                "content": "X-Wing pilot ace maneuver is reverse-thrust",
+            },
         ],
     )
     adapter._build_memory_prompt = lambda state: (
@@ -158,7 +164,10 @@ async def test_text_chat_includes_local_wiki_when_memory_warms():
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "hi"}]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
         session_id="wiki-1",
     )
     assert resp.status == 200
@@ -236,7 +245,10 @@ async def test_text_chat_skips_compose_when_no_prompt_and_no_memory():
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "hi"}]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [{"role": "user", "content": "hi"}],
+        },
         session_id="empty-1",
     )
     assert resp.status == 200

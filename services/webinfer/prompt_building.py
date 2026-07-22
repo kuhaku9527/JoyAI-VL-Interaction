@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from prompt_constants import (
     _CHARS_PER_TOKEN_BUDGET,
@@ -128,9 +128,9 @@ def _build_system_prompt(
 
 
 def build_static_system_content(
-    extra_system_messages: Optional[list[str]] = None,
-    memory_state: Optional[dict[str, Any]] = None,
-    mid_term_summaries: Optional[list[dict[str, Any]]] = None,
+    extra_system_messages: list[str] | None = None,
+    memory_state: dict[str, Any] | None = None,
+    mid_term_summaries: list[dict[str, Any]] | None = None,
     language: str = "en",
 ) -> str:
     i18n = _get_i18n(language)
@@ -153,8 +153,8 @@ def build_static_system_content(
 
 
 def build_dynamic_system_content(
-    current_query_text: Optional[str] = None,
-    memory_state: Optional[dict[str, Any]] = None,
+    current_query_text: str | None = None,
+    memory_state: dict[str, Any] | None = None,
     include_qa_history: bool = True,
     current_chunk_index: int = 0,
     language: str = "en",

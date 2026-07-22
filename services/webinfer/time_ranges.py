@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 import math
 import re
-from typing import Any, Optional
+from typing import Any
 
 from prompt_constants import TIME_RANGE_RE, TIME_RANGE_VALUE_RE, TIME_VALUE_RE
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
-def _parse_start_second(time_range: Optional[str]) -> float:
+def _parse_start_second(time_range: str | None) -> float:
     if not time_range:
         return -1.0
     try:
@@ -30,14 +30,14 @@ def _format_seconds_words(value: float) -> str:
     return f"{rounded:.1f} seconds"
 
 
-def _parse_time_value_seconds(text: str) -> Optional[float]:
+def _parse_time_value_seconds(text: str) -> float | None:
     match = TIME_VALUE_RE.fullmatch(str(text or "").strip())
     if not match:
         return None
     return float(match.group("value"))
 
 
-def _normalize_time_range_text(value: Any) -> Optional[str]:
+def _normalize_time_range_text(value: Any) -> str | None:
     text = str(value or "").strip()
     if not text:
         return None
@@ -65,7 +65,7 @@ def _normalize_time_range_text(value: Any) -> Optional[str]:
     return None
 
 
-def _format_time_span(time_ranges: list[str]) -> Optional[str]:
+def _format_time_span(time_ranges: list[str]) -> str | None:
     ranges = [str(tr).strip() for tr in time_ranges if str(tr or "").strip()]
     if not ranges:
         return None
@@ -74,7 +74,7 @@ def _format_time_span(time_ranges: list[str]) -> Optional[str]:
     return f"{ranges[0]} ~ {ranges[-1]}"
 
 
-def _format_batch_time_marker(time_ranges: list[str]) -> Optional[str]:
+def _format_batch_time_marker(time_ranges: list[str]) -> str | None:
     ranges = [str(tr).strip() for tr in time_ranges if str(tr or "").strip()]
     return ranges[0] if ranges else None
 
@@ -88,7 +88,7 @@ def _format_turn_time_range(time_ranges: list[str]) -> str:
     return " ~ ".join(ranges)
 
 
-def _extract_time_range_from_message(message: dict[str, Any]) -> Optional[str]:
+def _extract_time_range_from_message(message: dict[str, Any]) -> str | None:
     content = message.get("content", "")
     if isinstance(content, list):
         for item in content:
@@ -149,7 +149,7 @@ def _format_seconds(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".") + "s"
 
 
-def _extract_time_range_from_text(text: str) -> Optional[str]:
+def _extract_time_range_from_text(text: str) -> str | None:
     return _normalize_time_range_text(text)
 
 

@@ -7,7 +7,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from config import reset_chunk_state
 from prompt_constants import DEFAULT_SYSTEM_PROMPT_EN
@@ -72,10 +72,10 @@ class AdapterConfig:
     long_term_memory_window: int = 40
     request_timeout_seconds: float = 300.0
     session_timeout_seconds: float = 3600.0
-    out_dir: Optional[str] = None
-    light_out_dir: Optional[str] = None
-    debug_input_dir: Optional[str] = None
-    save_root: Optional[str] = None
+    out_dir: str | None = None
+    light_out_dir: str | None = None
+    debug_input_dir: str | None = None
+    save_root: str | None = None
     output_model_name: str = ""
     per_session_dirs: bool = True
     save_model_inputs: bool = True
@@ -101,8 +101,8 @@ class SessionState:
     memory_state: dict[str, Any] = field(
         default_factory=lambda: {"long_term_memory": "", "qa_history": []}
     )
-    current_query_text: Optional[str] = None
-    query_start_time: Optional[str] = None
+    current_query_text: str | None = None
+    query_start_time: str | None = None
     query_in_current_chunk: bool = False
     mid_term_summaries: list[dict[str, Any]] = field(default_factory=list)
     mid_term_history: list[dict[str, Any]] = field(default_factory=list)
@@ -114,19 +114,19 @@ class SessionState:
     async_pending_summary_jobs: list[dict[str, Any]] = field(default_factory=list)
     predictions: list[dict[str, Any]] = field(default_factory=list)
     session_started_at: float = field(default_factory=time.time)
-    output_path: Optional[Path] = None
-    light_output_path: Optional[Path] = None
-    debug_input_dir: Optional[Path] = None
-    session_out_dir: Optional[str] = None
-    session_light_out_dir: Optional[str] = None
-    session_frame_dir: Optional[Path] = None
+    output_path: Path | None = None
+    light_output_path: Path | None = None
+    debug_input_dir: Path | None = None
+    session_out_dir: str | None = None
+    session_light_out_dir: str | None = None
+    session_frame_dir: Path | None = None
     session_frame_counter: int = 0
     chunk_start_input_saved: set[int] = field(default_factory=set)
     last_access: float = field(default_factory=time.time)
-    _pending_qa_archive: Optional[tuple[str, Optional[str]]] = field(default=None, repr=False)
-    _pending_write_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    _pending_qa_archive: tuple[str, str | None] | None = field(default=None, repr=False)
+    _pending_write_task: asyncio.Task | None = field(default=None, repr=False)
     # Memory-store v0.2 fields (live adapter spec D-9):
     _memory_block_cache: list = field(default_factory=list)
     _memory_warmed: asyncio.Event = field(default_factory=asyncio.Event)
     _memory_pushed: bool = False
-    _memory_warmup_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    _memory_warmup_task: asyncio.Task | None = field(default=None, repr=False)

@@ -7,7 +7,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Keep in lock-step with the ruff version used in CI (see
     # .github/workflows/quality.yml). Bump both together.
-    rev: v0.6.9
+    rev: v0.15.22
     hooks:
       - id: ruff
         args: [--fix]
