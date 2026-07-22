@@ -1,3 +1,5 @@
+'use strict';
+
 // capture_webcam.js
 // Webcam capture via getUserMedia + WebRTC peer connection to backend.
 //
@@ -19,31 +21,25 @@
   let webcamPeer = null;
   let webcamVideo = null;
 
-  function resolveWebSocket(ws) {
-    if (ws && ws.readyState !== undefined) return ws;
-    if (typeof window !== "undefined" && window.websocket) return window.websocket;
-    return null;
-  }
-
   async function startWebcamCapture(ws, options) {
     if (options === undefined) options = {};
     if (webcamPeer) {
-      console.warn("Webcam capture already active");
+      console.warn('Webcam capture already active');
       return;
     }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("getUserMedia not supported in this browser");
+      throw new Error('getUserMedia not supported in this browser');
     }
 
     const constraints = options.constraints || {
       width: { ideal: 1280 },
       height: { ideal: 720 },
     };
-    const sessionId = options.sessionId || (window.sessionId || "default");
-    const onState = typeof options.onState === "function" ? options.onState : null;
-    const onStream = typeof options.onStream === "function" ? options.onStream : null;
+    const sessionId = options.sessionId || (window.sessionId || 'default');
+    const onState = typeof options.onState === 'function' ? options.onState : null;
+    const onStream = typeof options.onStream === 'function' ? options.onStream : null;
 
-    if (onState) onState("requesting-camera");
+    if (onState) onState('requesting-camera');
     webcamStream = await navigator.mediaDevices.getUserMedia({
       video: constraints,
       audio: false,
@@ -52,7 +48,7 @@
     if (onStream) onStream(webcamStream);
 
     webcamPeer = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
 
     webcamStream.getTracks().forEach(function (track) {
@@ -68,14 +64,14 @@
       if (!webcamPeer) return;
       if (onState) {
         switch (webcamPeer.iceConnectionState) {
-          case "connected":
-          case "completed":
-            onState("streaming");
+          case 'connected':
+          case 'completed':
+            onState('streaming');
             break;
-          case "disconnected":
-          case "failed":
-          case "closed":
-            onState("disconnected");
+          case 'disconnected':
+          case 'failed':
+          case 'closed':
+            onState('disconnected');
             break;
         }
       }
@@ -84,9 +80,9 @@
     const offer = await webcamPeer.createOffer();
     await webcamPeer.setLocalDescription(offer);
 
-    const response = await fetch("/offer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const response = await fetch('/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sdp: webcamPeer.localDescription.sdp,
         type: webcamPeer.localDescription.type,
@@ -95,11 +91,11 @@
     });
     if (!response.ok) {
       const errBody = await response.json().catch(function () { return {}; });
-      throw new Error(errBody.error || ("HTTP " + response.status));
+      throw new Error(errBody.error || ('HTTP ' + response.status));
     }
     const answer = await response.json();
     await webcamPeer.setRemoteDescription(new RTCSessionDescription(answer));
-    if (onState) onState("negotiated");
+    if (onState) onState('negotiated');
   }
 
   function stopWebcamCapture() {

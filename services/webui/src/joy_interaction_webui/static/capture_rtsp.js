@@ -1,3 +1,5 @@
+'use strict';
+
 // capture_rtsp.js
 // RTSP capture via WebRTC peer connection (server fetches the RTSP stream,
 // re-encodes, and ships it back via WebRTC).
@@ -17,36 +19,30 @@
 (function () {
   let rtspPeer = null;
   let rtspStream = null;
-  let rtspUrl = "";
-
-  function resolveWebSocket(ws) {
-    if (ws && ws.readyState !== undefined) return ws;
-    if (typeof window !== "undefined" && window.websocket) return window.websocket;
-    return null;
-  }
+  let rtspUrl = '';
 
   async function startRtspCapture(ws, options) {
     if (options === undefined) options = {};
     if (rtspPeer) {
-      console.warn("RTSP capture already active");
+      console.warn('RTSP capture already active');
       return;
     }
-    const url = (options.rtspUrl || "").trim();
+    const url = (options.rtspUrl || '').trim();
     if (!url) {
-      throw new Error("rtspUrl is required");
+      throw new Error('rtspUrl is required');
     }
-    const sessionId = options.sessionId || (window.sessionId || "default");
-    const onState = typeof options.onState === "function" ? options.onState : null;
-    const onStream = typeof options.onStream === "function" ? options.onStream : null;
+    const sessionId = options.sessionId || (window.sessionId || 'default');
+    const onState = typeof options.onState === 'function' ? options.onState : null;
+    const onStream = typeof options.onStream === 'function' ? options.onStream : null;
 
     rtspUrl = url;
 
     rtspPeer = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
 
     rtspPeer.ontrack = function (event) {
-      if (event.track.kind === "video" && event.streams && event.streams[0]) {
+      if (event.track.kind === 'video' && event.streams && event.streams[0]) {
         rtspStream = event.streams[0];
         if (onStream) onStream(rtspStream);
       }
@@ -56,45 +52,45 @@
       if (!rtspPeer) return;
       if (onState) {
         switch (rtspPeer.iceConnectionState) {
-          case "connected":
-          case "completed":
-            onState("streaming");
+          case 'connected':
+          case 'completed':
+            onState('streaming');
             break;
-          case "disconnected":
-          case "failed":
-          case "closed":
-            onState("disconnected");
+          case 'disconnected':
+          case 'failed':
+          case 'closed':
+            onState('disconnected');
             break;
         }
       }
     };
 
-    rtspPeer.addTransceiver("video", { direction: "recvonly" });
+    rtspPeer.addTransceiver('video', { direction: 'recvonly' });
     const offer = await rtspPeer.createOffer();
     await rtspPeer.setLocalDescription(offer);
 
     // Wait for ICE gathering (max 5s) so all candidates embed in the SDP
     await new Promise(function (resolve) {
-      if (rtspPeer.iceGatheringState === "complete") {
+      if (rtspPeer.iceGatheringState === 'complete') {
         resolve();
       } else {
         const check = function () {
-          if (rtspPeer && rtspPeer.iceGatheringState === "complete") {
-            rtspPeer.removeEventListener("icegatheringstatechange", check);
+          if (rtspPeer && rtspPeer.iceGatheringState === 'complete') {
+            rtspPeer.removeEventListener('icegatheringstatechange', check);
             resolve();
           }
         };
-        rtspPeer.addEventListener("icegatheringstatechange", check);
+        rtspPeer.addEventListener('icegatheringstatechange', check);
         setTimeout(function () {
-          if (rtspPeer) rtspPeer.removeEventListener("icegatheringstatechange", check);
+          if (rtspPeer) rtspPeer.removeEventListener('icegatheringstatechange', check);
           resolve();
         }, 5000);
       }
     });
 
-    const response = await fetch("/offer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const response = await fetch('/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sdp: rtspPeer.localDescription.sdp,
         type: rtspPeer.localDescription.type,
@@ -104,11 +100,11 @@
     });
     if (!response.ok) {
       const errBody = await response.json().catch(function () { return {}; });
-      throw new Error(errBody.error || ("HTTP " + response.status));
+      throw new Error(errBody.error || ('HTTP ' + response.status));
     }
     const answer = await response.json();
     await rtspPeer.setRemoteDescription(new RTCSessionDescription(answer));
-    if (onState) onState("negotiated");
+    if (onState) onState('negotiated');
   }
 
   function stopRtspCapture() {
@@ -117,7 +113,7 @@
       rtspPeer = null;
     }
     rtspStream = null;
-    rtspUrl = "";
+    rtspUrl = '';
   }
 
   function isRtspCapturing() {
