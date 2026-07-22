@@ -27,6 +27,7 @@ Async flow (long-text T2A, for >10k chars only):
   2. Poll GET /v1/query/t2a_async_query_v2?task_id=<id> until status == "success"
   3. GET /v1/files/retrieve_content?file_id=<file_id> -> audio bytes
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -39,7 +40,6 @@ import re
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -76,7 +76,7 @@ BT_DESIGNATION_PATTERN = re.compile(
 )
 
 
-def _get_credentials(api_key: Optional[str] = None, group_id: Optional[str] = None) -> tuple[str, str]:
+def _get_credentials(api_key: str | None = None, group_id: str | None = None) -> tuple[str, str]:
     """Read credentials from arguments or environment. Never hard-coded."""
     key = api_key or os.environ.get("MINIMAX_API_KEY", "")
     gid = group_id or os.environ.get("MINIMAX_GROUP_ID", "")
@@ -143,15 +143,15 @@ class MiniMaxClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        group_id: Optional[str] = None,
+        api_key: str | None = None,
+        group_id: str | None = None,
         base_url: str = MINIMAX_BASE,
         timeout: float = 30.0,
     ):
         self.api_key, self.group_id = _get_credentials(api_key, group_id)
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self, content_type: str | None = None) -> httpx.AsyncClient:
         if self._client is None:
@@ -216,7 +216,9 @@ class MiniMaxClient:
             "file": (
                 audio_path.name,
                 audio_path.read_bytes(),
-                {".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4"}.get(suffix, "audio/wav"),
+                {".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4"}.get(
+                    suffix, "audio/wav"
+                ),
             )
         }
         data = {"purpose": purpose}
@@ -235,7 +237,10 @@ class MiniMaxClient:
             raise RuntimeError(f"No file_id in upload response: {payload}")
         logger.info(
             "Audio uploaded: purpose=%s, file_id=%s, bytes=%d, name=%s",
-            purpose, file_id, size, audio_path.name,
+            purpose,
+            file_id,
+            size,
+            audio_path.name,
         )
         return file_id
 
@@ -252,11 +257,11 @@ class MiniMaxClient:
         self,
         audio_path: str | Path,
         *,
-        voice_id: str,                                       # 8-256 chars, letter start
-        ref_text: Optional[str] = None,                      # preview text (<=1000 chars)
-        prompt_audio_path: Optional[str | Path] = None,       # optional <8s clip for higher similarity
-        prompt_audio_text: Optional[str] = None,             # transcript of prompt_audio_path
-        language_boost: str = DEFAULT_LANGUAGE_BOOST,        # "Chinese" | "auto" | other ISO codes
+        voice_id: str,  # 8-256 chars, letter start
+        ref_text: str | None = None,  # preview text (<=1000 chars)
+        prompt_audio_path: str | Path | None = None,  # optional <8s clip for higher similarity
+        prompt_audio_text: str | None = None,  # transcript of prompt_audio_path
+        language_boost: str = DEFAULT_LANGUAGE_BOOST,  # "Chinese" | "auto" | other ISO codes
         model: str = DEFAULT_MODEL,
         need_noise_reduction: bool = False,
         need_volume_normalization: bool = False,
@@ -287,22 +292,18 @@ class MiniMaxClient:
             {"voice_id", "file_id", "model", "prompt_file_id" (or None)}.
         """
         if model not in SUPPORTED_MODELS:
-            raise ValueError(
-                f"Unsupported model {model!r}; expected one of {SUPPORTED_MODELS}"
-            )
+            raise ValueError(f"Unsupported model {model!r}; expected one of {SUPPORTED_MODELS}")
         voice_id = _validate_voice_id(voice_id)
 
         p = Path(audio_path)
         file_id = await self._upload_audio_file(p, purpose="voice_clone")
 
-        clone_prompt: Optional[dict] = None
-        prompt_file_id: Optional[str] = None
+        clone_prompt: dict | None = None
+        prompt_file_id: str | None = None
         if prompt_audio_path is not None:
             prompt_p = Path(prompt_audio_path)
             if not prompt_audio_text:
-                raise ValueError(
-                    "prompt_audio_text is required when prompt_audio_path is provided"
-                )
+                raise ValueError("prompt_audio_text is required when prompt_audio_path is provided")
             prompt_file_id = await self._upload_audio_file(prompt_p, purpose="prompt_audio")
             clone_prompt = {
                 "prompt_audio": prompt_file_id,
@@ -331,7 +332,9 @@ class MiniMaxClient:
 
         logger.info(
             "Voice cloned: voice_id=%s, model=%s, ref_audio=%s, prompt_audio=%s, ref_text=%d chars",
-            voice_id, model, p.name,
+            voice_id,
+            model,
+            p.name,
             Path(prompt_audio_path).name if prompt_audio_path else None,
             len(ref_text or ""),
         )
@@ -430,9 +433,7 @@ class MiniMaxClient:
                 continue
             _raise_on_minimax_error(chunk, "MiniMax t2a_v2 stream failed")
             audio_hex = (
-                chunk.get("data", {}).get("audio")
-                or chunk.get("extra_info", {}).get("audio")
-                or ""
+                chunk.get("data", {}).get("audio") or chunk.get("extra_info", {}).get("audio") or ""
             )
             if audio_hex:
                 yield _decode_audio_payload(audio_hex)
@@ -486,9 +487,7 @@ class MiniMaxClient:
             Raw audio bytes (container = ``format``).
         """
         if model not in SUPPORTED_MODELS:
-            raise ValueError(
-                f"Unsupported model {model!r}; expected one of {SUPPORTED_MODELS}"
-            )
+            raise ValueError(f"Unsupported model {model!r}; expected one of {SUPPORTED_MODELS}")
         if not text:
             raise ValueError("text must not be empty")
 
@@ -524,7 +523,7 @@ class MiniMaxClient:
 
         # 2. Poll for completion
         deadline = time.monotonic() + max_wait_s
-        file_id: Optional[str] = None
+        file_id: str | None = None
         while time.monotonic() < deadline:
             await asyncio.sleep(poll_interval_s)
             poll_resp = await client.get(
@@ -544,9 +543,7 @@ class MiniMaxClient:
             # else: "processing" / "pending" / "queued" -- keep polling
 
         if file_id is None:
-            raise TimeoutError(
-                f"T2A async task {task_id} did not complete within {max_wait_s}s"
-            )
+            raise TimeoutError(f"T2A async task {task_id} did not complete within {max_wait_s}s")
 
         # 3. Download the produced audio
         dl_resp = await client.get("/v1/files/retrieve_content", params={"file_id": file_id})
@@ -554,7 +551,9 @@ class MiniMaxClient:
         audio_bytes = dl_resp.content
         logger.info(
             "T2A async task complete: task_id=%s, file_id=%s, bytes=%d",
-            task_id, file_id, len(audio_bytes),
+            task_id,
+            file_id,
+            len(audio_bytes),
         )
         return audio_bytes
 
@@ -586,9 +585,19 @@ class MiniMaxClient:
         cloning = data.get("voice_cloning") or []
         generated = data.get("voice_generation") or []
         system_v = data.get("system_voice") or []
-        out = (sorted([{"_kind": "cloning", **d} for d in cloning], key=lambda d: d.get("created_time", ""), reverse=True)
-               + sorted([{"_kind": "generation", **d} for d in generated], key=lambda d: d.get("created_time", ""), reverse=True)
-               + [{"_kind": "system", **d} for d in system_v])
+        out = (
+            sorted(
+                [{"_kind": "cloning", **d} for d in cloning],
+                key=lambda d: d.get("created_time", ""),
+                reverse=True,
+            )
+            + sorted(
+                [{"_kind": "generation", **d} for d in generated],
+                key=lambda d: d.get("created_time", ""),
+                reverse=True,
+            )
+            + [{"_kind": "system", **d} for d in system_v]
+        )
         return out
 
     async def delete_voice(self, voice_id: str) -> None:
@@ -606,10 +615,10 @@ class MiniMaxClient:
 # Standalone smoke test: clone once + synthesise one sentence.
 # ============================================================================
 
+
 async def _smoke_test():
     ref_wav = Path(
-        "D:/AI/workspace/bt-voice/ref_audio/1.BT-7274/"
-        "diag_sp_pilotLink_WD141_43_01_mcor_bt.wav"
+        "D:/AI/workspace/bt-voice/ref_audio/1.BT-7274/diag_sp_pilotLink_WD141_43_01_mcor_bt.wav"
     )
     if not ref_wav.exists():
         print(f"Reference audio missing: {ref_wav}")
@@ -643,5 +652,6 @@ async def _smoke_test():
 
 if __name__ == "__main__":
     import asyncio
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     asyncio.run(_smoke_test())

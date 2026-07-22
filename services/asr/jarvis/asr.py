@@ -2,6 +2,7 @@
 
 Streaming recognition with first-token latency 200-400ms.
 """
+
 from __future__ import annotations
 
 import logging
@@ -112,4 +113,3 @@ if __name__ == "__main__":
             if text:
                 print(f"[partial] {text}")
     print(f"[final] {asr.last_text}")
-

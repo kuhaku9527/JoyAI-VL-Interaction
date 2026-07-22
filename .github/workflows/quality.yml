@@ -52,6 +52,33 @@ jobs:
       - name: Ruff format check (scoped to services/webinfer)
         run: ruff format --check services/webinfer
 
+      # --- Phase 2 expansion: lint the remaining Python services -----------
+      # Every package keeps the repo-wide real-bug rules (F/E402/I/B/C4/SIM/
+      # N/RUF/UP/D) active; only its decorative historical-debt rules (measured
+      # during the enabling pass) are suppressed via --extend-ignore. webui is
+      # intentionally excluded: its Python suite carries ~250 docstring-debt
+      # violations plus real-bug fixes still in review, tracked as a separate PR.
+      - name: Ruff lint (scoped to services/memory-store)
+        run: ruff check services/memory-store --extend-ignore D101,D102,D103,RUF001,SIM105
+      - name: Ruff format check (scoped to services/memory-store)
+        run: ruff format --check services/memory-store
+      - name: Ruff lint (scoped to services/voice-clone)
+        run: ruff check services/voice-clone --extend-ignore RUF001,D102,D103,D105,D401,D205,SIM105
+      - name: Ruff format check (scoped to services/voice-clone)
+        run: ruff format --check services/voice-clone
+      - name: Ruff lint (scoped to services/asr)
+        run: ruff check services/asr --extend-ignore D103,D101,SIM105
+      - name: Ruff format check (scoped to services/asr)
+        run: ruff format --check services/asr
+      - name: Ruff lint (scoped to services/tts)
+        run: ruff check services/tts --extend-ignore D103,SIM105,D102,D101,RUF001
+      - name: Ruff format check (scoped to services/tts)
+        run: ruff format --check services/tts
+      - name: Ruff lint (scoped to services/background-agent)
+        run: ruff check services/background-agent --extend-ignore D101,D103,D102,D205
+      - name: Ruff format check (scoped to services/background-agent)
+        run: ruff format --check services/background-agent
+
   package-smoke:
     runs-on: ubuntu-latest
     steps:
