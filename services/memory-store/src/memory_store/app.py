@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """memory-store FastAPI entrypoint (spec §D-1, §D-2)."""
+
 from __future__ import annotations
 
 import logging
@@ -91,7 +92,7 @@ async def push_blocks(req: PushRequest) -> PushResponse:
     try:
         pushed = await backend.push(req.session_id, req.blocks)
     except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     return PushResponse(pushed=pushed, session_id=req.session_id)
 
 
@@ -101,7 +102,7 @@ async def recall_blocks(req: RecallRequest) -> RecallResponse:
     try:
         blocks = await backend.recall(req.query, req.top_k, req.min_score, req.filter)
     except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc))
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     return RecallResponse(blocks=blocks)
 
 
@@ -114,6 +115,7 @@ def main() -> int:
     reload = os.getenv("MEMORY_RELOAD", "false").lower() in {"1", "true", "yes"}
     # Pre-bind so we can detect conflicts before uvicorn's sys.exit() hides the cause.
     import socket as _socket
+
     probe = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
     try:
         probe.bind((host, port))

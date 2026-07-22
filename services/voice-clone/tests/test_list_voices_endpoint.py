@@ -8,6 +8,7 @@ We mock httpx and check that:
   - Successful response merges voice_cloning / voice_generation / system_voice,
     tagging each item with ``_kind`` for downstream selection.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,14 +47,17 @@ class _FakeClient:
     async def post(self, path, **kwargs):
         self.last_path = path
         self.last_kwargs = kwargs
-        return _FakeResp(self.body or {
-            "voice_cloning": [
-                {"voice_id": "bt-7274-x", "created_time": "2026-07-10"},
-            ],
-            "voice_generation": [],
-            "system_voice": [{"voice_id": "sys-x", "voice_name": "sys"}],
-            "base_resp": {"status_code": 0, "status_msg": "success"},
-        })
+        return _FakeResp(
+            self.body
+            or {
+                "voice_cloning": [
+                    {"voice_id": "bt-7274-x", "created_time": "2026-07-10"},
+                ],
+                "voice_generation": [],
+                "system_voice": [{"voice_id": "sys-x", "voice_name": "sys"}],
+                "base_resp": {"status_code": 0, "status_msg": "success"},
+            }
+        )
 
     async def get(self, *a, **kw):  # pragma: no cover - never called
         raise RuntimeError("GET should NOT be called by list_voices")
@@ -61,6 +65,7 @@ class _FakeClient:
 
 def _reload():
     import voice_clone_api.cloud_clone as cc
+
     importlib.reload(cc)
     return cc
 
@@ -92,8 +97,10 @@ def test_list_voices_merges_three_kinds():
 def test_list_voices_raises_on_auth_error():
     cc = _reload()
     c = cc.MiniMaxClient(api_key="sk-api-fake", group_id="g-fake")
-    c._client = _FakeClient(body={
-        "base_resp": {"status_code": 1004, "status_msg": "login fail"},
-    })
+    c._client = _FakeClient(
+        body={
+            "base_resp": {"status_code": 1004, "status_msg": "login fail"},
+        }
+    )
     with pytest.raises(RuntimeError, match="login fail"):
         asyncio.run(c.list_voices())

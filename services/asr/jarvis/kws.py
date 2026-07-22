@@ -3,11 +3,11 @@
 Detects wake word (default "bt"; sherpa-onnx KWS reads actual keyword
 3: from keywords.txt at model_dir/keywords.txt — must be BPE-style "B T @bt").
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import sherpa_onnx
@@ -84,7 +84,7 @@ class JarvisKWS:
             f"KWS config: score={keywords_score} th={keywords_threshold} "
             f"trailing_blanks={num_trailing_blanks} max_paths={max_active_paths}"
         )
-        self.stream: Optional[sherpa_onnx.KeywordSpotter.Stream] = None
+        self.stream: sherpa_onnx.KeywordSpotter.Stream | None = None
         logger.info(f"KWS loaded: model={model_dir}, wake_word={wake_word!r}")
 
     def start(self):
@@ -141,7 +141,7 @@ class JarvisKWS:
         stream = self.spotter.create_stream()
         chunk_bytes = max(1, chunk_samples) * 2
         for offset in range(0, len(pcm), chunk_bytes):
-            chunk = pcm[offset: offset + chunk_bytes]
+            chunk = pcm[offset : offset + chunk_bytes]
             if len(chunk) < 2:
                 continue
             if len(chunk) % 2:
@@ -199,4 +199,3 @@ if __name__ == "__main__":
 
     print("Wake word not detected")
     sys.exit(1)
-

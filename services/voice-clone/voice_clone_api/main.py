@@ -23,7 +23,6 @@ MiniMax cloud is the sole supported TTS provider.
 Default port: ``8985``.
 """
 
-
 from __future__ import annotations
 
 import argparse
@@ -85,15 +84,11 @@ class Settings:
     def __init__(self) -> None:
         self.host: str = env_value("VOICE_CLONE_HOST", default=DEFAULT_HOST)
         self.port: int = int(env_value("VOICE_CLONE_PORT", default=str(DEFAULT_PORT)))
-        self.voices_dir: Path = Path(
-            env_value("VOICES_DIR", default=DEFAULT_VOICES_DIR)
-        ).resolve()
+        self.voices_dir: Path = Path(env_value("VOICES_DIR", default=DEFAULT_VOICES_DIR)).resolve()
         self.sample_rate: int = int(
             env_value("VOICE_SAMPLE_RATE", default=str(DEFAULT_SAMPLE_RATE))
         )
-        self.request_timeout: float = float(
-            env_value("VOICE_CLONE_TIMEOUT", default="120.0")
-        )
+        self.request_timeout: float = float(env_value("VOICE_CLONE_TIMEOUT", default="120.0"))
         # TTS provider selection. As of 2026-07-12 only MiniMax is supported;
         # CosyVoice3 has been removed from the project (see doc/voice-clone.md
         # section 2). The provider must be set explicitly to ``minimax`` and
@@ -105,7 +100,6 @@ class Settings:
                 "(cosyvoice and stub were removed from this project)"
             )
         self.tts_provider: str = provider
-
 
         # MiniMax credentials (required when provider=minimax).
         self.minimax_api_key: str = env_value("MINIMAX_API_KEY", default="")
@@ -119,9 +113,7 @@ class Settings:
         self.minimax_default_model: str = env_value(
             "MINIMAX_DEFAULT_MODEL", default="speech-2.8-hd"
         )
-        self.minimax_language_boost: str = env_value(
-            "MINIMAX_LANGUAGE_BOOST", default="Chinese"
-        )
+        self.minimax_language_boost: str = env_value("MINIMAX_LANGUAGE_BOOST", default="Chinese")
         # Hard requirement: MiniMax credentials must be present.
         if not (self.minimax_api_key and self.minimax_group_id):
             raise RuntimeError(
@@ -226,9 +218,7 @@ class VoiceStore:
         profile_dir.mkdir(parents=True, exist_ok=False)
 
         try:
-            mono_bytes, mono_rate = _ensure_mono_pcm16(
-                audio_bytes, audio_ext, sample_rate_hint
-            )
+            mono_bytes, mono_rate = _ensure_mono_pcm16(audio_bytes, audio_ext, sample_rate_hint)
         except (wave.Error, ValueError, EOFError):
             # MiniMax accepts encoded mp3/m4a payloads directly.
             mono_bytes, mono_rate = audio_bytes, sample_rate_hint
@@ -259,9 +249,7 @@ class VoiceStore:
         return meta
 
 
-def _ensure_mono_pcm16(
-    audio_bytes: bytes, ext: str, fallback_rate: int
-) -> tuple[bytes, int]:
+def _ensure_mono_pcm16(audio_bytes: bytes, ext: str, fallback_rate: int) -> tuple[bytes, int]:
     """Normalize a wav upload to mono PCM16; pass other formats through.
 
     For ``.wav`` uploads we use the stdlib ``wave`` decoder. For
@@ -300,9 +288,6 @@ def _strip_wav_header(wav_bytes: bytes) -> tuple[bytes, int, int]:
             wav_file.getframerate(),
             wav_file.getsampwidth(),
         )
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -424,11 +409,15 @@ def create_app(
         # re-trigger registration later via /v1/voices/{voice_id}/refresh.
         if settings.tts_provider == "minimax":
             if minimax is None:
-                logger.warning("TTS_PROVIDER=minimax but client not initialised; skipping clone registration")
+                logger.warning(
+                    "TTS_PROVIDER=minimax but client not initialised; skipping clone registration"
+                )
             else:
                 try:
                     # MiniMax voice_id must start with a letter, 8-256 chars.
-                    safe_local = ''.join(c if c.isalnum() or c in '-_' else '-' for c in meta['voice_id'])
+                    safe_local = "".join(
+                        c if c.isalnum() or c in "-_" else "-" for c in meta["voice_id"]
+                    )
                     clone_voice_id = f"bt-{safe_local[:240]}"
                     ref_path = settings.voices_dir / meta["ref_audio_path"]
                     clone_result = await minimax.upload_reference(
@@ -445,12 +434,14 @@ def create_app(
                     await store._write_meta(meta["voice_id"], meta)
                     logger.info(
                         "MiniMax clone registered: local=%s cloud=%s",
-                        meta["voice_id"], meta["minimax_voice_id"],
+                        meta["voice_id"],
+                        meta["minimax_voice_id"],
                     )
                 except (httpx.HTTPError, OSError, ValueError, RuntimeError) as err:
                     logger.warning(
                         "MiniMax clone failed for %s (local clone still kept): %s",
-                        meta["voice_id"], err,
+                        meta["voice_id"],
+                        err,
                     )
 
         return JSONResponse(meta, status_code=201)
@@ -567,9 +558,7 @@ def create_app(
                     chunks.append(chunk)
                 wav_bytes = b"".join(chunks)
             except (httpx.HTTPError, OSError) as err:
-                raise HTTPException(
-                    status_code=502, detail=f"MiniMax failed: {err}"
-                ) from err
+                raise HTTPException(status_code=502, detail=f"MiniMax failed: {err}") from err
             if not wav_bytes:
                 raise HTTPException(status_code=502, detail="MiniMax returned empty audio")
             try:
@@ -591,9 +580,8 @@ def create_app(
             )
             return JSONResponse(response.model_dump())
 
-
-
     return app
+
 
 def _sse(payload: dict[str, Any]) -> str:
     """Format ``payload`` as a single Server-Sent Event data line."""
@@ -660,4 +648,3 @@ app = create_app()
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
