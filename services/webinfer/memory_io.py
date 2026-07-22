@@ -30,20 +30,30 @@ class MemoryIOMixin:
         """Pull blocks for this session from memory-store and cache.
 
         Safe to call concurrently for the same session -- only the first
-        result is kept. Failures are logged at WARNING and otherwise
-        degrade to an empty cache (no exception bubbles up).
+        result is kept. The completion signal is an ``asyncio.Event`` that is
+        set ONLY after the cache has actually been filled, so concurrent
+        callers never observe a "warmed" state with an empty cache (#4).
+        On failure the event is left unset, making the warmup retryable
+        instead of permanently degrading to a dead cache.
         """
-        if state._memory_warmed:
+        if state._memory_warmed.is_set():
             return
-        state._memory_warmed = True
-        try:
-            blocks = await self.memory_store.warmup(state.session_id)
-        except Exception as exc:
-            LOGGER.warning("memory warmup failed for %s: %s", state.session_id, exc)
-            return
-        if blocks:
-            state._memory_block_cache = blocks
-            LOGGER.info("memory warmup %s: pulled %d block(s)", state.session_id, len(blocks))
+        # Hold the session lock across the (slow) warmup await so concurrent
+        # warmups/reads serialize: the first caller pulls once and sets the
+        # event, the rest see it already set and return. asyncio.Lock is not
+        # reentrant, so callers must not hold state.lock when invoking this.
+        async with state.lock:
+            if state._memory_warmed.is_set():
+                return
+            try:
+                blocks = await self.memory_store.warmup(state.session_id)
+            except Exception as exc:
+                LOGGER.warning("memory warmup failed for %s: %s", state.session_id, exc)
+                return
+            if blocks:
+                state._memory_block_cache = blocks
+                LOGGER.info("memory warmup %s: pulled %d block(s)", state.session_id, len(blocks))
+            state._memory_warmed.set()
 
     async def _memory_recall(self, state, question):
         """Per-question recall. Uses warmup cache; warms up if needed.
@@ -54,12 +64,16 @@ class MemoryIOMixin:
         session memory without a separate round-trip.
         """
         if not question:
-            return list(state._memory_block_cache)
-        if not state._memory_warmed:
+            async with state.lock:
+                return list(state._memory_block_cache)
+        if not state._memory_warmed.is_set():
+            # warmup takes the lock internally; we must NOT hold it here to
+            # avoid reentrancy deadlock on the non-reentrant asyncio.Lock.
             await self._memory_warmup(state)
         # v0.1 spec skips per-question rerank -- the cache is the answer.
         # v0.3+ may add per-question hot-fetch against the live query.
-        return list(state._memory_block_cache)
+        async with state.lock:
+            return list(state._memory_block_cache)
 
     async def _memory_push(self, state):
         """Push session memory blocks to memory-store at session end.
