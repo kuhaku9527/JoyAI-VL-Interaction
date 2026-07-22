@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from typing import Any
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
 
 def reset_chunk_state() -> dict[str, Any]:
     return {

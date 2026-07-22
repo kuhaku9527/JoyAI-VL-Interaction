@@ -11,6 +11,7 @@ from prompt_constants import TIME_RANGE_RE, TIME_RANGE_VALUE_RE, TIME_VALUE_RE
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
+
 def _parse_start_second(time_range: Optional[str]) -> float:
     if not time_range:
         return -1.0
@@ -113,8 +114,7 @@ def _compute_chunk_frame_range(current_chunk: dict[str, Any]) -> str:
         return _format_time_span(frame_time_ranges) or "unknown"
 
     user_messages = [
-        message for message in current_chunk.get("messages", [])
-        if message.get("role") == "user"
+        message for message in current_chunk.get("messages", []) if message.get("role") == "user"
     ]
     if not user_messages:
         return "unknown"
@@ -132,12 +132,8 @@ def _get_response_frame_indices(messages: list[dict[str, Any]]) -> list[int]:
     for message in messages:
         if message.get("role") == "user":
             content = message.get("content")
-            has_image = (
-                isinstance(content, list)
-                and any(
-                    isinstance(item, dict) and item.get("type") == "image"
-                    for item in content
-                )
+            has_image = isinstance(content, list) and any(
+                isinstance(item, dict) and item.get("type") == "image" for item in content
             )
             if has_image:
                 frame_idx += 1

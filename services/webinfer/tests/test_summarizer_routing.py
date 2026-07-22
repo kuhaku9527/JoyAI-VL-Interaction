@@ -19,6 +19,7 @@ is loaded lazily in `_get_tokenizer`, so the import is pure overhead
 for routing-only tests. We stub `transformers.AutoTokenizer` to keep
 the suite fast.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -75,6 +76,7 @@ class _FakeRequest:
 
 def _make_summarizer():
     from memory_summarizer import SummarizerModel
+
     return SummarizerModel(
         model_name="old-model",
         api_base="http://localhost:7060/v1",
@@ -145,6 +147,7 @@ def test_update_routing_omitted_kwargs_unchanged():
 
 def test_get_returns_503_when_summarizer_disabled():
     from live_adapter import StreamingInferAdapter
+
     adapter = StreamingInferAdapter.__new__(StreamingInferAdapter)
     adapter.summarizer = None
 
@@ -157,6 +160,7 @@ def test_get_returns_503_when_summarizer_disabled():
 
 def test_post_returns_503_when_summarizer_disabled():
     from live_adapter import StreamingInferAdapter
+
     adapter = StreamingInferAdapter.__new__(StreamingInferAdapter)
     adapter.summarizer = None
 
@@ -169,6 +173,7 @@ def test_post_returns_503_when_summarizer_disabled():
 
 def test_post_bad_json_returns_400():
     from live_adapter import StreamingInferAdapter
+
     summarizer = _make_summarizer()
     adapter = StreamingInferAdapter.__new__(StreamingInferAdapter)
     adapter.summarizer = summarizer
@@ -184,6 +189,7 @@ def test_post_bad_json_returns_400():
 
 def test_post_returns_new_snapshot():
     from live_adapter import StreamingInferAdapter
+
     summarizer = _make_summarizer()
     adapter = StreamingInferAdapter.__new__(StreamingInferAdapter)
     adapter.summarizer = summarizer

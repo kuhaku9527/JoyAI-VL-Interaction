@@ -192,9 +192,7 @@ class PromptAssemblyMixin:
             current_chunk_index=state.chunk_index,
             language=self.config.language,
         )
-        prefix_content = "\n\n".join(
-            part for part in (static_content, dynamic_content) if part
-        )
+        prefix_content = "\n\n".join(part for part in (static_content, dynamic_content) if part)
         all_messages = list(state.current_chunk["messages"])
 
         if prefix_content:
@@ -204,9 +202,9 @@ class PromptAssemblyMixin:
                 new_message = dict(message)
                 content = message.get("content")
                 if isinstance(content, list):
-                    new_message["content"] = [
-                        {"type": "text", "text": prefix_content}
-                    ] + list(content)
+                    new_message["content"] = [{"type": "text", "text": prefix_content}] + list(
+                        content
+                    )
                 elif isinstance(content, str):
                     new_message["content"] = prefix_content + "\n\n" + content
                 else:
@@ -234,7 +232,7 @@ class PromptAssemblyMixin:
         # internal_messages[0] has prefix injected, so always re-convert it.
         # internal_messages[1:] are identical to chunk_msgs[1:], so reuse cache.
         first_msg = _internal_message_to_openai(internal_messages[0])
-        remaining = cache[1:len(internal_messages)]
+        remaining = cache[1 : len(internal_messages)]
         return [first_msg] + remaining
 
     def _build_main_http_messages(
@@ -271,7 +269,10 @@ class PromptAssemblyMixin:
                 LOGGER.warning(
                     "v3.34 prompt guard: dropped %d oldest turn(s) to fit ctx "
                     "budget (max_total_chars=%d, before=%d, after=%d, est_chars=%d)",
-                    removed, max_total_chars, before, len(messages),
+                    removed,
+                    max_total_chars,
+                    before,
+                    len(messages),
                     _estimate_messages_chars(messages),
                 )
         return messages
@@ -287,7 +288,9 @@ class PromptAssemblyMixin:
                 "max_tokens": inbound_payload.get("max_tokens", self.config.main_max_tokens),
                 "temperature": inbound_payload.get("temperature", self.config.main_temperature),
                 "top_p": inbound_payload.get("top_p", self.config.main_top_p),
-                "presence_penalty": inbound_payload.get("presence_penalty", self.config.main_presence_penalty),
+                "presence_penalty": inbound_payload.get(
+                    "presence_penalty", self.config.main_presence_penalty
+                ),
                 "extra_body": extra_body,
             }
 

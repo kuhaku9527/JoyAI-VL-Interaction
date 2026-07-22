@@ -86,14 +86,14 @@ class MemoryIOMixin:
             return 0
         state._memory_pushed = True
         blocks = []
-        for entry in (state.mid_term_summaries or []):
+        for entry in state.mid_term_summaries or []:
             if not isinstance(entry, dict):
                 continue
             text = entry.get("summary_text") or entry.get("text") or ""
             if not text:
                 continue
             blocks.append({"content": text, "score": 1.0})
-        for entry in (state.long_term_history or []):
+        for entry in state.long_term_history or []:
             if not isinstance(entry, dict):
                 continue
             text = entry.get("compressed_text") or ""
@@ -139,13 +139,15 @@ class MemoryIOMixin:
                 existing = entry
                 break
         if existing is None:
-            qa_history.append({
-                "query_time": now_iso,
-                "query": last_user_text,
-                "responses": [{"prediction": clean_text, "decision": decision}],
-                "archived_in_chunk": None,
-                "text_path": True,
-            })
+            qa_history.append(
+                {
+                    "query_time": now_iso,
+                    "query": last_user_text,
+                    "responses": [{"prediction": clean_text, "decision": decision}],
+                    "archived_in_chunk": None,
+                    "text_path": True,
+                }
+            )
         else:
             existing.setdefault("responses", []).append(
                 {"prediction": clean_text, "decision": decision}

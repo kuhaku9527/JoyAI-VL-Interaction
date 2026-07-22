@@ -106,7 +106,9 @@ DETAILED_SUMMARY_PROMPT = """\
 
 仅输出该段落。"""
 
-EMPTY_CHUNK_SUMMARY_TEMPLATE_EN = "No visually significant change is evident in frames {frame_range}."
+EMPTY_CHUNK_SUMMARY_TEMPLATE_EN = (
+    "No visually significant change is evident in frames {frame_range}."
+)
 EMPTY_CHUNK_SUMMARY_TEMPLATE = "在帧 {frame_range} 中未观察到明显的视觉变化。"
 
 BATCH_COMPRESS_PROMPT_EN = """\
@@ -228,6 +230,7 @@ BATCH_COMPRESS_PROMPT = """\
 # Helper: encode image to base64 data URL
 # ============================================================
 
+
 def _encode_image_base64(image_path: str, max_pixels: int = 0) -> str:
     """Read an image file and return a base64 data URL for the OpenAI API.
 
@@ -284,6 +287,7 @@ def _encode_image_base64(image_path: str, max_pixels: int = 0) -> str:
 # ============================================================
 # SummarizerModel (OpenAI API client)
 # ============================================================
+
 
 class SummarizerModel:
     def __init__(
@@ -351,7 +355,6 @@ class SummarizerModel:
         self._tokenizer = None
         self._tokenizer_failed = False
 
-
     def update_routing(
         self,
         api_base: Optional[str] = None,
@@ -405,10 +408,18 @@ class SummarizerModel:
             "data_url": data_url,
         }, time.time() - start_time
 
-    def _chat(self, messages: list, max_tokens: int, temperature: float = 0.3, top_p: float = 0.9,
-              top_k: int = -1, repetition_penalty: float = 1.0,
-              presence_penalty: float = 0.0,
-              client: OpenAI = None, model_name: str = None) -> str:
+    def _chat(
+        self,
+        messages: list,
+        max_tokens: int,
+        temperature: float = 0.3,
+        top_p: float = 0.9,
+        top_k: int = -1,
+        repetition_penalty: float = 1.0,
+        presence_penalty: float = 0.0,
+        client: OpenAI = None,
+        model_name: str = None,
+    ) -> str:
         """Call the vLLM OpenAI API server."""
         client = client or self._client
         model_name = model_name or self.model_name
@@ -434,9 +445,8 @@ class SummarizerModel:
         if self._tokenizer is None:
             try:
                 from transformers import AutoTokenizer
-                self._tokenizer = AutoTokenizer.from_pretrained(
-                    self._tokenizer_model_name
-                )
+
+                self._tokenizer = AutoTokenizer.from_pretrained(self._tokenizer_model_name)
             except Exception as e:
                 print(f"WARNING: Failed to load tokenizer from {self._tokenizer_model_name}: {e}")
                 self._tokenizer_failed = True
@@ -489,7 +499,9 @@ class SummarizerModel:
             return f"{int(round(value))}s"
         return f"{value:.3f}".rstrip("0").rstrip(".") + "s"
 
-    def _build_range_from_frame_indices(self, frame_time_ranges: list, start_idx: int, end_idx: int) -> str:
+    def _build_range_from_frame_indices(
+        self, frame_time_ranges: list, start_idx: int, end_idx: int
+    ) -> str:
         start_value = float(start_idx)
         end_value = float(end_idx + 1)
 
@@ -554,11 +566,13 @@ class SummarizerModel:
         for phase in phases:
             content.append({"type": "text", "text": f"<{phase['time_range']}>"})
             for frame in phase["frames"]:
-                content.append({
-                    "type": "image_path",
-                    "image_path": frame["path"],
-                    "max_pixels": self.max_pixels,
-                })
+                content.append(
+                    {
+                        "type": "image_path",
+                        "image_path": frame["path"],
+                        "max_pixels": self.max_pixels,
+                    }
+                )
         return {
             "stage": "mid_term",
             "model_name": self.model_name,
@@ -575,8 +589,12 @@ class SummarizerModel:
                 {
                     "time_range": phase.get("time_range"),
                     "frame_count": len(phase.get("frames", [])),
-                    "frame_indices": [frame.get("frame_index") for frame in phase.get("frames", [])],
-                    "frame_time_ranges": [frame.get("time_range") for frame in phase.get("frames", [])],
+                    "frame_indices": [
+                        frame.get("frame_index") for frame in phase.get("frames", [])
+                    ],
+                    "frame_time_ranges": [
+                        frame.get("time_range") for frame in phase.get("frames", [])
+                    ],
                 }
                 for phase in phases
             ],
@@ -647,7 +665,11 @@ class SummarizerModel:
         key_frames = []
         for pos, idx in enumerate(selected_indices):
             left_idx = 0 if pos == 0 else (selected_indices[pos - 1] + idx) // 2 + 1
-            right_idx = n - 1 if pos == len(selected_indices) - 1 else (idx + selected_indices[pos + 1]) // 2
+            right_idx = (
+                n - 1
+                if pos == len(selected_indices) - 1
+                else (idx + selected_indices[pos + 1]) // 2
+            )
             left_idx = min(max(left_idx, 0), n - 1)
             right_idx = min(max(right_idx, left_idx), n - 1)
 
@@ -665,7 +687,9 @@ class SummarizerModel:
             key_frame = {
                 "path": path,
                 "source_time_range": source_time_range,
-                "time_range": self._build_range_from_frame_indices(frame_time_ranges, left_idx, right_idx),
+                "time_range": self._build_range_from_frame_indices(
+                    frame_time_ranges, left_idx, right_idx
+                ),
                 "frame_index": idx,
                 "range_start_index": left_idx,
                 "range_end_index": right_idx,
@@ -725,8 +749,7 @@ class SummarizerModel:
             )
 
         frames_to_encode = [
-            frame for phase in phases for frame in phase["frames"]
-            if not frame.get("data_url")
+            frame for phase in phases for frame in phase["frames"] if not frame.get("data_url")
         ]
         if frames_to_encode:
             max_px = self.max_pixels
@@ -748,10 +771,12 @@ class SummarizerModel:
             for frame in phase["frames"]:
                 data_url = frame.get("data_url")
                 if data_url:
-                    content_list.append({
-                        "type": "image_url",
-                        "image_url": {"url": data_url},
-                    })
+                    content_list.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": data_url},
+                        }
+                    )
 
         messages = [{"role": "user", "content": content_list}]
         summary_text = self._chat(
@@ -794,9 +819,7 @@ class SummarizerModel:
         # Step 1: Compress the new mid-term summaries into a single block
         summary_parts = []
         for entry in mid_term_summaries:
-            summary_parts.append(
-                f"<{entry['frame_range']}>\n{entry['summary_text']}"
-            )
+            summary_parts.append(f"<{entry['frame_range']}>\n{entry['summary_text']}")
         summaries_text = "\n\n".join(summary_parts)
 
         active_query = ""

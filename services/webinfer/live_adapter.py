@@ -5,6 +5,7 @@ Keeps the historical import surface of ``live_adapter`` intact (console script
 ``from live_adapter import X`` in tests) while the implementation lives in
 focused, single-responsibility submodules. See doc/adr/0007-split-live-adapter.md.
 """
+
 from __future__ import annotations
 
 from adapter_core import StreamingInferAdapter
@@ -36,16 +37,34 @@ from response_format import (
 
 __all__ = [
     # public API
-    "AdapterConfig", "SessionState", "reset_chunk_state",
-    "normalize_model_output", "extract_response_payload",
-    "sanitize_output_name", "derive_model_output_name", "resolve_save_dir", "derive_light_out_dir",
-    "build_model_input_record", "build_static_system_content", "build_dynamic_system_content",
-    "archive_chunk_response_records", "StreamingInferAdapter",
-    "create_app", "parse_args", "main",
+    "AdapterConfig",
+    "SessionState",
+    "reset_chunk_state",
+    "normalize_model_output",
+    "extract_response_payload",
+    "sanitize_output_name",
+    "derive_model_output_name",
+    "resolve_save_dir",
+    "derive_light_out_dir",
+    "build_model_input_record",
+    "build_static_system_content",
+    "build_dynamic_system_content",
+    "archive_chunk_response_records",
+    "StreamingInferAdapter",
+    "create_app",
+    "parse_args",
+    "main",
     # private helpers referenced by tests (la._xxx)
-    "_compute_prompt_guard_max_chars", "_estimate_messages_chars", "_trim_messages_to_ctx",
-    "_env_bool", "_env_int", "_env_float", "_split_paths",
-    "_chat_completion_response", "_openai_error_response", "_short",
+    "_compute_prompt_guard_max_chars",
+    "_estimate_messages_chars",
+    "_trim_messages_to_ctx",
+    "_env_bool",
+    "_env_int",
+    "_env_float",
+    "_split_paths",
+    "_chat_completion_response",
+    "_openai_error_response",
+    "_short",
 ]
 
 
