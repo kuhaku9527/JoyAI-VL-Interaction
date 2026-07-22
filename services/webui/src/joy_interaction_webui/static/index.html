@@ -8703,6 +8703,10 @@ limitations under the License.
         if (refreshModelsBtn) refreshModelsBtn.addEventListener('click', fetchModels);
 
         // Block 4: applyApiSettings + cleanupServerSession extracted to joy_ws.js (window.JoyWs)
+        // Block 5: connectWebSocket extracted to joy_ws.js; the onmessage protocol router stays
+        // inline as dispatchServerMessage (declared below) and is handed to JoyWs via register so
+        // connectWebSocket can wire ws.onmessage. Reassigned closure vars are bridged with live
+        // accessors (getWebSocket/setWebSocket/getSessionId).
         const { applyApiSettings, cleanupServerSession } = window.JoyWs;
         window.JoyWs.register({
             apiBaseUrl,
@@ -8711,7 +8715,11 @@ limitations under the License.
             isValidModelName,
             updateStatus,
             fetchModels,
-            getWebSocket: () => websocket
+            getWebSocket: () => websocket,
+            setWebSocket: (ws) => { websocket = ws; },
+            getSessionId: () => sessionId,
+            installLlmReplyHandler,
+            dispatchServerMessage
         });
 
         // Auto-apply API settings when API Base URL changes
@@ -8935,247 +8943,207 @@ limitations under the License.
 
 
         // WebSocket Connection
+        // Block 5: connectWebSocket extracted to joy_ws.js (window.JoyWs.connectWebSocket).
+        // Inline alias keeps the 6 existing call sites (capture start / resetSession / load) unchanged.
         function connectWebSocket() {
-            if (websocket && websocket.readyState === WebSocket.OPEN) {
+            window.JoyWs.connectWebSocket();
+        }
+
+        // dispatchServerMessage: server→client protocol router (was ws.onmessage).
+        // Kept INLINE so its reassignments of monolith closure vars (sessionId, serverConfigApplied,
+        // lastText, fadeTimeout) stay the single source of truth. window.JoyWs.connectWebSocket
+        // wires it via the dispatchServerMessage ref passed in JoyWs.register(...).
+        // Guard uses event.target (the socket that fired) vs the closure 'websocket' (current socket),
+        // preserving the original stale-socket protection.
+        function dispatchServerMessage(event) {
+            if (websocket !== event.target) {
                 return;
             }
+            const data = JSON.parse(event.data);
 
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws?session_id=${encodeURIComponent(sessionId)}`;
-
-            const ws = new WebSocket(wsUrl);
-            websocket = ws;
-            try {
-                installLlmReplyHandler(ws);
-            } catch (e) {
-                console.error('[ws-connect] installLlmReplyHandler failed:', e);
-            }
-            // Belt-and-suspenders: retry if first install didn't take.
-            // See jarvis-mode.md §14.4 / v3.5.
-            if (!ws.__llmReplyHookInstalled) {
-                try { installLlmReplyHandler(ws); } catch (e) { console.error('[ws-connect] retry installLlmReplyHandler failed:', e); }
-            }
-
-            ws.onopen = () => {
-                if (websocket !== ws) {
+            if (data.type === 'vlm_response') {
+                if (!isAnalysisRunning) {
                     return;
                 }
-                console.log('WebSocket connected');
-                updateStatus('Connected', 'connected');
 
-                // Send current model/API settings to server after WebSocket connects
-                // This ensures auto-selected models are properly initialized on the server side
-                // Fix for race condition: page load might auto-select model before WS connects
-                const currentModel = modelSelect.value;
-                if (isValidModelName(currentModel)) {
-                    console.log('Initializing server with current model:', currentModel);
-                    applyApiSettings({ showFeedback: false });
+                if (data.text !== lastText) {
+                    resultText.classList.remove('fade');
+
+                    if (fadeTimeout) {
+                        clearTimeout(fadeTimeout);
+                    }
+
+                    // Start fade after 2 seconds if enabled
+                    if (settings.fade) {
+                        fadeTimeout = setTimeout(() => {
+                            resultText.classList.add('fade');
+                        }, 2000);
+                    }
                 }
-            };
 
-            ws.onmessage = (event) => {
-                if (websocket !== ws) {
-                    return;
+                updateResultText(data.text, data.metrics, data.metrics?.background_handoff || null);
+                lastText = data.text;
+
+                // Update video overlay (always, visibility is controlled by CSS)
+                const displayText = getVlmDisplayText(data.text);
+                videoOverlay.textContent = displayText;
+                videoOverlay.classList.remove('show', 'top', 'bottom');
+                if (displayText && settings.overlayPosition !== 'none') {
+                    videoOverlay.classList.add('show', settings.overlayPosition);
                 }
-                const data = JSON.parse(event.data);
 
-                if (data.type === 'vlm_response') {
-                    if (!isAnalysisRunning) {
-                        return;
+                if (data.metrics) {
+                    metricsInline.style.display = 'flex';
+                    latencyValue.textContent = Math.round(data.metrics.last_latency_ms);
+                    avgLatencyValue.textContent = Math.round(data.metrics.avg_latency_ms);
+                    countValue.textContent = data.metrics.total_inferences;
+                    if (
+                        revealVideoAfterMetricsToken === streamStartToken &&
+                        Number(data.metrics.total_inferences) > 0
+                    ) {
+                        revealVideoWhenReady(streamStartToken);
                     }
-
-                    if (data.text !== lastText) {
-                        resultText.classList.remove('fade');
-
-                        if (fadeTimeout) {
-                            clearTimeout(fadeTimeout);
-                        }
-
-                        // Start fade after 2 seconds if enabled
-                        if (settings.fade) {
-                            fadeTimeout = setTimeout(() => {
-                                resultText.classList.add('fade');
-                            }, 2000);
-                        }
+                    logLatencyBreakdown(data.metrics);
+                }
+                if (data.summarizer_timing) {
+                    const st = data.summarizer_timing;
+                    const stKey = JSON.stringify(st);
+                    if (stKey !== window._lastSummarizerKey) {
+                        window._lastSummarizerKey = stKey;
+                        let parts = [];
+                        if (st.last_mid_term_ms != null) parts.push(`mid-term=${st.last_mid_term_ms}ms (chunk#${st.last_mid_term_chunk})`);
+                        if (st.barrier_wait_ms != null) parts.push(`barrier_wait=${st.barrier_wait_ms}ms`);
+                        if (st.last_long_term_ms != null) parts.push(`long-term=${st.last_long_term_ms}ms`);
+                        if (parts.length) console.log(`[summary model] ${parts.join(', ')}`);
                     }
-
-                    updateResultText(data.text, data.metrics, data.metrics?.background_handoff || null);
-                    lastText = data.text;
-
-                    // Update video overlay (always, visibility is controlled by CSS)
-                    const displayText = getVlmDisplayText(data.text);
-                    videoOverlay.textContent = displayText;
-                    videoOverlay.classList.remove('show', 'top', 'bottom');
-                    if (displayText && settings.overlayPosition !== 'none') {
-                        videoOverlay.classList.add('show', settings.overlayPosition);
+                }
+                if (data.request_payload) {
+                    const block = document.getElementById('requestPayloadDebug');
+                    const pre = document.getElementById('requestPayloadContent');
+                    if (block && pre && document.getElementById('debugShowRequestPayload')?.checked) {
+                        block.style.display = 'block';
+                        pre.textContent = JSON.stringify(data.request_payload, null, 2);
                     }
-
-                    if (data.metrics) {
-                        metricsInline.style.display = 'flex';
-                        latencyValue.textContent = Math.round(data.metrics.last_latency_ms);
-                        avgLatencyValue.textContent = Math.round(data.metrics.avg_latency_ms);
-                        countValue.textContent = data.metrics.total_inferences;
-                        if (
-                            revealVideoAfterMetricsToken === streamStartToken &&
-                            Number(data.metrics.total_inferences) > 0
-                        ) {
-                            revealVideoWhenReady(streamStartToken);
-                        }
-                        logLatencyBreakdown(data.metrics);
+                }
+                if (data.response_payload) {
+                    const block = document.getElementById('responsePayloadDebug');
+                    const pre = document.getElementById('responsePayloadContent');
+                    if (block && pre && document.getElementById('debugShowResponsePayload')?.checked) {
+                        block.style.display = 'block';
+                        pre.textContent = JSON.stringify(data.response_payload, null, 2);
                     }
-                    if (data.summarizer_timing) {
-                        const st = data.summarizer_timing;
-                        const stKey = JSON.stringify(st);
-                        if (stKey !== window._lastSummarizerKey) {
-                            window._lastSummarizerKey = stKey;
-                            let parts = [];
-                            if (st.last_mid_term_ms != null) parts.push(`mid-term=${st.last_mid_term_ms}ms (chunk#${st.last_mid_term_chunk})`);
-                            if (st.barrier_wait_ms != null) parts.push(`barrier_wait=${st.barrier_wait_ms}ms`);
-                            if (st.last_long_term_ms != null) parts.push(`long-term=${st.last_long_term_ms}ms`);
-                            if (parts.length) console.log(`[summary model] ${parts.join(', ')}`);
-                        }
-                    }
-                    if (data.request_payload) {
-                        const block = document.getElementById('requestPayloadDebug');
-                        const pre = document.getElementById('requestPayloadContent');
-                        if (block && pre && document.getElementById('debugShowRequestPayload')?.checked) {
-                            block.style.display = 'block';
-                            pre.textContent = JSON.stringify(data.request_payload, null, 2);
-                        }
-                    }
-                    if (data.response_payload) {
-                        const block = document.getElementById('responsePayloadDebug');
-                        const pre = document.getElementById('responsePayloadContent');
-                        if (block && pre && document.getElementById('debugShowResponsePayload')?.checked) {
-                            block.style.display = 'block';
-                            pre.textContent = JSON.stringify(data.response_payload, null, 2);
-                        }
-                    }
-                    if (data.memory_state) {
-                        const summaries = data.memory_state.mid_term_summaries || [];
-                        const longTerm = data.memory_state.long_term_memory || '';
-                        const memHash = JSON.stringify(data.memory_state);
-                        if (memHash !== _lastMemoryStateHash) {
-                            _lastMemoryStateHash = memHash;
-                            // UI display (controlled by toggle)
-                            const memBlock = document.getElementById('memoryStateDebug');
-                            if (memBlock && document.getElementById('debugShowMemoryState')?.checked) {
-                                memBlock.style.display = 'block';
-                                const midPre = document.getElementById('midTermMemoryContent');
-                                if (midPre) {
-                                    midPre.textContent = summaries.length
-                                        ? summaries.map(s => `[Chunk ${s.chunk_index} | ${s.frame_range}]\n${s.summary_text}`).join('\n\n')
-                                        : '(empty)';
-                                }
-                                const ltPre = document.getElementById('longTermMemoryContent');
-                                if (ltPre) {
-                                    ltPre.textContent = longTerm || '(empty)';
-                                }
+                }
+                if (data.memory_state) {
+                    const summaries = data.memory_state.mid_term_summaries || [];
+                    const longTerm = data.memory_state.long_term_memory || '';
+                    const memHash = JSON.stringify(data.memory_state);
+                    if (memHash !== _lastMemoryStateHash) {
+                        _lastMemoryStateHash = memHash;
+                        // UI display (controlled by toggle)
+                        const memBlock = document.getElementById('memoryStateDebug');
+                        if (memBlock && document.getElementById('debugShowMemoryState')?.checked) {
+                            memBlock.style.display = 'block';
+                            const midPre = document.getElementById('midTermMemoryContent');
+                            if (midPre) {
+                                midPre.textContent = summaries.length
+                                    ? summaries.map(s => `[Chunk ${s.chunk_index} | ${s.frame_range}]\n${s.summary_text}`).join('\n\n')
+                                    : '(empty)';
                             }
-                            // Console output
-                            console.group('%c[Memory State]', 'color: #4fc3f7; font-weight: bold;');
-                            if (summaries.length) {
-                                console.groupCollapsed(`Mid-term memory (${summaries.length} chunks)`);
-                                summaries.forEach(s => {
-                                    console.log(`%c[Chunk ${s.chunk_index} | ${s.frame_range}]`, 'color: #81c784;', '\n' + s.summary_text);
-                                });
-                                console.groupEnd();
-                            } else {
-                                console.log('Mid-term memory: (empty)');
+                            const ltPre = document.getElementById('longTermMemoryContent');
+                            if (ltPre) {
+                                ltPre.textContent = longTerm || '(empty)';
                             }
-                            if (longTerm) {
-                                console.groupCollapsed('Long-term memory');
-                                console.log(longTerm);
-                                console.groupEnd();
-                            } else {
-                                console.log('Long-term memory: (empty)');
-                            }
+                        }
+                        // Console output
+                        console.group('%c[Memory State]', 'color: #4fc3f7; font-weight: bold;');
+                        if (summaries.length) {
+                            console.groupCollapsed(`Mid-term memory (${summaries.length} chunks)`);
+                            summaries.forEach(s => {
+                                console.log(`%c[Chunk ${s.chunk_index} | ${s.frame_range}]`, 'color: #81c784;', '\n' + s.summary_text);
+                            });
                             console.groupEnd();
+                        } else {
+                            console.log('Mid-term memory: (empty)');
                         }
-                    }
-                } else if (data.type === 'status') {
-                    // Don't show status messages in result balloon (too flashy)
-                    // Status is already shown in the header
-                } else if (
-                    data.type === 'background_task_started' ||
-                    data.type === 'background_result_ready' ||
-                    data.type === 'background_result_error'
-                ) {
-                    appendOrUpdateBackgroundEntry(data);
-                } else if (data.type === 'server_config') {
-                    if (data.session_id) {
-                        sessionId = data.session_id;
-                        window.sessionId = sessionId;
-                    }
-                    // Server sent its current configuration (model, api_base, prompt)
-                    if (data.model) {
-                        document.getElementById('modelName').textContent = data.model;
-                        // Also update the model select if it matches
-                        if (modelSelect.querySelector(`option[value="${data.model}"]`)) {
-                            modelSelect.value = data.model;
+                        if (longTerm) {
+                            console.groupCollapsed('Long-term memory');
+                            console.log(longTerm);
+                            console.groupEnd();
+                        } else {
+                            console.log('Long-term memory: (empty)');
                         }
+                        console.groupEnd();
                     }
-                    if (data.api_base) {
-                        apiBaseUrl.value = data.api_base;
-                        checkApiKeyRequirement(apiBaseUrl.value);
-                        serverConfigApplied = true;
-                        fetchModels();
+                }
+            } else if (data.type === 'status') {
+                // Don't show status messages in result balloon (too flashy)
+                // Status is already shown in the header
+            } else if (
+                data.type === 'background_task_started' ||
+                data.type === 'background_result_ready' ||
+                data.type === 'background_result_error'
+            ) {
+                appendOrUpdateBackgroundEntry(data);
+            } else if (data.type === 'server_config') {
+                if (data.session_id) {
+                    sessionId = data.session_id;
+                    window.sessionId = sessionId;
+                }
+                // Server sent its current configuration (model, api_base, prompt)
+                if (data.model) {
+                    document.getElementById('modelName').textContent = data.model;
+                    // Also update the model select if it matches
+                    if (modelSelect.querySelector(`option[value="${data.model}"]`)) {
+                        modelSelect.value = data.model;
                     }
-                    if (data.process_interval != null && !isNaN(data.process_interval) && processEvery) {
-                        processEvery.value = String(data.process_interval);
-                    }
-                    if (data.frames_per_batch != null && !isNaN(data.frames_per_batch) && framesPerBatch) {
-                        framesPerBatch.value = String(data.frames_per_batch);
-                    }
-                    if (data.background_model) {
-                        applyBackgroundConfig(data.background_model);
-                    }
-                    const reqCb = document.getElementById('debugShowRequestPayload');
-                    const resCb = document.getElementById('debugShowResponsePayload');
-                    const memCb = document.getElementById('debugShowMemoryState');
-                    if ((reqCb?.checked || resCb?.checked || memCb?.checked) && websocket && websocket.readyState === WebSocket.OPEN) {
-                        websocket.send(JSON.stringify({
-                            type: 'set_debug',
-                            show_request_payload: !!reqCb?.checked,
-                            show_response_payload: !!resCb?.checked,
-                            show_memory_state: !!memCb?.checked
-                        }));
-                    }
-                } else if (data.type === 'model_updated') {
-                    // Model was updated on server
-                    if (data.model) {
-                        document.getElementById('modelName').textContent = data.model;
-                        console.log('Model updated to:', data.model);
-                    }
-                } else if (data.type === 'prompt_updated') {
-                    // Prompt was updated on server (already handled in applyPrompt)
-                    console.log('Prompt updated:', data.prompt);
-                } else if (data.type === 'processing_updated') {
-                    if (data.process_interval != null && processEvery) processEvery.value = String(data.process_interval);
-                    console.log('Processing interval updated:', data.process_interval, 's');
-                } else if (data.type === 'frames_per_batch_updated') {
-                    if (data.frames_per_batch != null && framesPerBatch) framesPerBatch.value = String(data.frames_per_batch);
-                    if (data.background_model) applyBackgroundConfig(data.background_model);
-                    console.log('Frames per batch updated:', data.frames_per_batch);
-                } else if (data.type === 'background_config_updated') {
+                }
+                if (data.api_base) {
+                    apiBaseUrl.value = data.api_base;
+                    checkApiKeyRequirement(apiBaseUrl.value);
+                    serverConfigApplied = true;
+                    fetchModels();
+                }
+                if (data.process_interval != null && !isNaN(data.process_interval) && processEvery) {
+                    processEvery.value = String(data.process_interval);
+                }
+                if (data.frames_per_batch != null && !isNaN(data.frames_per_batch) && framesPerBatch) {
+                    framesPerBatch.value = String(data.frames_per_batch);
+                }
+                if (data.background_model) {
                     applyBackgroundConfig(data.background_model);
-                    console.log('Background model config updated:', data.background_model);
                 }
-            };
-
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-
-            ws.onclose = () => {
-                if (websocket !== ws) {
-                    return;
+                const reqCb = document.getElementById('debugShowRequestPayload');
+                const resCb = document.getElementById('debugShowResponsePayload');
+                const memCb = document.getElementById('debugShowMemoryState');
+                if ((reqCb?.checked || resCb?.checked || memCb?.checked) && websocket && websocket.readyState === WebSocket.OPEN) {
+                    websocket.send(JSON.stringify({
+                        type: 'set_debug',
+                        show_request_payload: !!reqCb?.checked,
+                        show_response_payload: !!resCb?.checked,
+                        show_memory_state: !!memCb?.checked
+                    }));
                 }
-                console.log('WebSocket disconnected, will reconnect...');
-                websocket = null;
-                updateStatus('Reconnecting...', 'disconnected');
-                setTimeout(connectWebSocket, 2000);
-            };
+            } else if (data.type === 'model_updated') {
+                // Model was updated on server
+                if (data.model) {
+                    document.getElementById('modelName').textContent = data.model;
+                    console.log('Model updated to:', data.model);
+                }
+            } else if (data.type === 'prompt_updated') {
+                // Prompt was updated on server (already handled in applyPrompt)
+                console.log('Prompt updated:', data.prompt);
+            } else if (data.type === 'processing_updated') {
+                if (data.process_interval != null && processEvery) processEvery.value = String(data.process_interval);
+                console.log('Processing interval updated:', data.process_interval, 's');
+            } else if (data.type === 'frames_per_batch_updated') {
+                if (data.frames_per_batch != null && framesPerBatch) framesPerBatch.value = String(data.frames_per_batch);
+                if (data.background_model) applyBackgroundConfig(data.background_model);
+                console.log('Frames per batch updated:', data.frames_per_batch);
+            } else if (data.type === 'background_config_updated') {
+                applyBackgroundConfig(data.background_model);
+                console.log('Background model config updated:', data.background_model);
+            }
+
         }
 
         // cleanupServerSession moved to joy_ws.js (window.JoyWs) — see Block 4.
