@@ -1,3 +1,5 @@
+'use strict';
+
 // render_markdown.js
 // Markdown / static-text rendering helpers extracted from index.html.
 //

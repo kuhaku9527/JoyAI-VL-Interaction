@@ -1,3 +1,5 @@
+'use strict';
+
 // joy_ws.js — WebSocket / API-settings session cluster
 // Extracted from services/webui/src/joy_interaction_webui/static/index.html
 //   Block 4: applyApiSettings (~8683-8714) + cleanupServerSession (~9180-9200)
@@ -26,7 +28,6 @@
 // available here too). connectWebSocket() is then reachable as window.JoyWs.connectWebSocket()
 // and via the inline `connectWebSocket` alias kept in index.html.
 (function () {
-    'use strict';
 
     // Populated by register() from the main inline script.
     let _ctx = null;
