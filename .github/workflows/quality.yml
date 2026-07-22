@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# quality.yml — CI quality gate (GitHub Actions).
+#
+# Triggers on every push and every PR targeting `main` and BLOCKS merge when
+# the lint / format checks fail.
+#
+# Scope strategy
+# --------------
+# Lint is scoped to `services/webinfer` — the currently active development
+# package — rather than the whole monorepo. The rest of the repo carries large
+# amounts of pre-existing *decorative* lint debt (ambiguous-unicode strings in
+# Chinese comments, PEP 585/604 style annotations, missing docstrings on every
+# public symbol, test/loop naming, etc.) that would make a repo-wide gate red
+# on day one and mask real signal.
+#
+# Within `services/webinfer` we still enforce the rules that catch *real* bugs
+# and regressions (F = pyflakes undefined names / unused imports, E402 = import
+# ordering, I = isort, B = bugbear, C4 = comprehensions, SIM = simplify, plus
+# the few E/W basics). We `--extend-ignore` only the decorative rules that were
+# measured to remain after `ruff --fix` + `ruff format` in the enabling PR
+# (see `ruff check services/webinfer --statistics`). Those historical-debt
+# rules are: RUF001, RUF003, UP007, D101, D102, D103, D205, D401, RUF005,
+# RUF013, SIM105, SIM108.
+#
+# This keeps the gate green AND meaningful: it intercepts genuine defects in new
+# code while forgiving cosmetic debt that is out of scope to chase down now.
+# ---------------------------------------------------------------------------
+name: Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ruff
+        run: pip install ruff==0.6.9
+      - name: Ruff lint (scoped to services/webinfer)
+        # `--extend-ignore` adds to the repo-wide [tool.ruff.lint] select set
+        # in pyproject.toml; it only suppresses the decorative historical-debt
+        # rules measured in the enabling PR. Real-bug rules (F/E402/I/B/C4/SIM)
+        # stay active.
+        run: ruff check services/webinfer --extend-ignore RUF001,RUF003,UP007,D101,D102,D103,D205,D401,RUF005,RUF013,SIM105,SIM108
+      - name: Ruff format check (scoped to services/webinfer)
+        run: ruff format --check services/webinfer
+
+  package-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build backend
+        run: python -m pip install --upgrade pip build
+      - name: Build wheel
+        working-directory: services/webinfer
+        run: python -m build --wheel
+      - name: Install wheel into a clean venv
+        run: |
+          python -m venv /tmp/webinfer-smoke-venv
+          /tmp/webinfer-smoke-venv/bin/python -m pip install --upgrade pip
+          /tmp/webinfer-smoke-venv/bin/python -m pip install services/webinfer/dist/*.whl
+      - name: Import smoke test
+        run: |
+          /tmp/webinfer-smoke-venv/bin/python -c "import live_adapter; from live_adapter import StreamingInferAdapter, AdapterConfig"
+          /tmp/webinfer-smoke-venv/bin/python -m pip show joyvl-webinfer-adapter
+      - name: App construction smoke test
+        run: /tmp/webinfer-smoke-venv/bin/python -c "from live_adapter import create_app, parse_args; app = create_app(parse_args()); assert app is not None"
+      - name: Console script smoke test
+        run: /tmp/webinfer-smoke-venv/bin/joyvl-webinfer-adapter --help

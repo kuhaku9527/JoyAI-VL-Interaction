@@ -54,15 +54,28 @@ def _make_adapter(scripted, *, character_enabled=False, memory_blocks=None):
     class _StubMemoryClient:
         def __init__(self, blocks):
             self._blocks = list(blocks)
+
         @property
-        def is_enabled(self): return True
-        async def ping(self): return True
+        def is_enabled(self):
+            return True
+
+        async def ping(self):
+            return True
+
         async def warmup(self, session_id, top_k=16, min_score=0.0):
             return list(self._blocks)
-        async def recall(self, *a, **k): return list(self._blocks)
-        async def push(self, session_id, blocks): return len(blocks)
-        async def aclose(self): pass
-        def health_snapshot(self): return {"enabled": True, "healthy": True}
+
+        async def recall(self, *a, **k):
+            return list(self._blocks)
+
+        async def push(self, session_id, blocks):
+            return len(blocks)
+
+        async def aclose(self):
+            pass
+
+        def health_snapshot(self):
+            return {"enabled": True, "healthy": True}
 
     adapter.memory_store = _StubMemoryClient(memory_blocks or [])
 
@@ -75,21 +88,24 @@ def _make_adapter(scripted, *, character_enabled=False, memory_blocks=None):
 
 def _post_json(adapter, body, session_id=None):
     from aiohttp import streams
+
     raw = json.dumps(body).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if session_id:
         headers["x-streaming-session"] = session_id
     loop = asyncio.new_event_loop()
     stream = streams.StreamReader(
-        protocol=_StreamProtocol(), limit=2 ** 16, loop=loop,
+        protocol=_StreamProtocol(),
+        limit=2**16,
+        loop=loop,
     )
     stream.feed_data(raw)
     stream.feed_eof()
-    request = make_mocked_request(
-        "POST", "/v1/text/chat", headers=headers, payload=stream
-    )
+    request = make_mocked_request("POST", "/v1/text/chat", headers=headers, payload=stream)
+
     async def _run():
         return await adapter.handle_text_chat(request)
+
     return _run()
 
 
@@ -112,14 +128,12 @@ async def test_text_chat_includes_character_profile_in_system(tmp_path):
     adapter.config.character_prompt_paths = (str(char_path),)
     adapter._load_character_profiles = lambda: [char_body]
     adapter._build_memory_prompt = lambda state: (
-        f"<character_profile>{char_body}</character_profile>\n\n"
-        "base decision prompt"
+        f"<character_profile>{char_body}</character_profile>\n\n" "base decision prompt"
     )
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview",
-         "messages": [{"role": "user", "content": "hi"}]},
+        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "hi"}]},
         session_id="char-1",
     )
     assert resp.status == 200
@@ -144,8 +158,7 @@ async def test_text_chat_includes_local_wiki_when_memory_warms():
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview",
-         "messages": [{"role": "user", "content": "hi"}]},
+        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "hi"}]},
         session_id="wiki-1",
     )
     assert resp.status == 200
@@ -166,11 +179,13 @@ async def test_text_chat_replaces_caller_system_with_composed():
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview",
-         "messages": [
-             {"role": "system", "content": "USER-SUPPLIED-SYS"},
-             {"role": "user", "content": "hi"},
-         ]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [
+                {"role": "system", "content": "USER-SUPPLIED-SYS"},
+                {"role": "user", "content": "hi"},
+            ],
+        },
         session_id="merge-1",
     )
     assert resp.status == 200
@@ -189,12 +204,14 @@ async def test_text_chat_prepends_composed_when_no_caller_system():
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview",
-         "messages": [
-             {"role": "user", "content": "hi"},
-             {"role": "assistant", "content": "hey"},
-             {"role": "user", "content": "how are you?"},
-         ]},
+        {
+            "model": "joyai-vl-interaction-preview",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hey"},
+                {"role": "user", "content": "how are you?"},
+            ],
+        },
         session_id="nosys-1",
     )
     assert resp.status == 200
@@ -219,8 +236,7 @@ async def test_text_chat_skips_compose_when_no_prompt_and_no_memory():
 
     resp = await _post_json(
         adapter,
-        {"model": "joyai-vl-interaction-preview",
-         "messages": [{"role": "user", "content": "hi"}]},
+        {"model": "joyai-vl-interaction-preview", "messages": [{"role": "user", "content": "hi"}]},
         session_id="empty-1",
     )
     assert resp.status == 200

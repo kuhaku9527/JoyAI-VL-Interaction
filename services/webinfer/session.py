@@ -54,9 +54,7 @@ class SessionMixin:
                 except RuntimeError:
                     pass  # not in async context; warmup is lazy on first recall
                 else:
-                    state._memory_warmup_task = asyncio.ensure_future(
-                        self._memory_warmup(state)
-                    )
+                    state._memory_warmup_task = asyncio.ensure_future(self._memory_warmup(state))
             LOGGER.info(
                 "Created session %s (output=%s light=%s debug_input=%s frames=%s)",
                 session_id,
@@ -71,10 +69,7 @@ class SessionMixin:
     def _cleanup_expired_sessions(self) -> list[SessionState]:
         now = time.time()
         timeout = self.config.session_timeout_seconds
-        expired = [
-            sid for sid, s in self.sessions.items()
-            if now - s.last_access > timeout
-        ]
+        expired = [sid for sid, s in self.sessions.items() if now - s.last_access > timeout]
         expired_states = []
         for sid in expired:
             state = self.sessions.pop(sid, None)
@@ -137,7 +132,9 @@ class SessionMixin:
         Path(state.session_light_out_dir).mkdir(parents=True, exist_ok=True)
 
         if self.config.save_debug_inputs:
-            state.debug_input_dir = Path(os.path.join(save_root, f"input_{session_ts}_{model_name}"))
+            state.debug_input_dir = Path(
+                os.path.join(save_root, f"input_{session_ts}_{model_name}")
+            )
             state.debug_input_dir.mkdir(parents=True, exist_ok=True)
 
     async def handle_models(self, request: web.Request) -> web.Response:
@@ -192,15 +189,17 @@ class SessionMixin:
     async def handle_prompts_active(self, request: web.Request) -> web.Response:
         del request
         paths = self.active_character_prompt_paths()
-        return web.json_response({
-            "ok": True,
-            "enabled": self.config.character_prompts_enabled,
-            "extra_paths": list(self.config.character_prompt_paths),
-            "files": paths,
-            "cache_size": len(self._system_prompt_cache),
-            "last_mtime": self._character_prompt_mtime,
-            "language": self.config.language,
-        })
+        return web.json_response(
+            {
+                "ok": True,
+                "enabled": self.config.character_prompts_enabled,
+                "extra_paths": list(self.config.character_prompt_paths),
+                "files": paths,
+                "cache_size": len(self._system_prompt_cache),
+                "last_mtime": self._character_prompt_mtime,
+                "language": self.config.language,
+            }
+        )
 
     async def handle_prompts_reload(self, request: web.Request) -> web.Response:
         del request
@@ -209,12 +208,14 @@ class SessionMixin:
         except Exception as exc:
             LOGGER.exception("character prompt reload failed")
             return _openai_error_response(f"reload failed: {exc}", status=500)
-        return web.json_response({
-            "ok": True,
-            "reloaded_files": self.active_character_prompt_paths(),
-            "profile_count": len(profiles),
-            "enabled": self.config.character_prompts_enabled,
-        })
+        return web.json_response(
+            {
+                "ok": True,
+                "reloaded_files": self.active_character_prompt_paths(),
+                "profile_count": len(profiles),
+                "enabled": self.config.character_prompts_enabled,
+            }
+        )
 
     def _session_output_path(self, state: SessionState, light: bool) -> Optional[Path]:
         if light:
@@ -438,10 +439,7 @@ class SessionMixin:
         debug_dir = state.debug_input_dir or self.config.debug_input_dir
         if not debug_dir:
             return None
-        path = (
-            Path(debug_dir)
-            / f"{sanitize_output_name(state.session_id)}__{stem}.json"
-        )
+        path = Path(debug_dir) / f"{sanitize_output_name(state.session_id)}__{stem}.json"
         record = copy.deepcopy(record)
         record.setdefault("saved_at", datetime.now().isoformat(timespec="seconds"))
         record.setdefault("session_id", state.session_id)

@@ -16,6 +16,7 @@ from live_adapter import StreamingInferAdapter
 
 class _StubMemoryClient:
     """Bare-bones stand-in for MemoryStoreClient used by the live adapter."""
+
     def __init__(self, blocks=None, push_log=None):
         self._blocks = blocks or []
         self._push_log = push_log if push_log is not None else []
@@ -110,6 +111,7 @@ async def test_push_skips_when_disabled():
         @property
         def is_enabled(self):
             return False
+
     stub = DisabledStub()
     a = _make_adapter(stub)
     state = _make_state()

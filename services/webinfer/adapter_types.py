@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
 from config import reset_chunk_state
-
 from prompt_constants import DEFAULT_SYSTEM_PROMPT_EN
 
 LOGGER = logging.getLogger("streaming_infer_adapter")

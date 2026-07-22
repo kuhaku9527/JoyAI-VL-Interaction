@@ -78,9 +78,7 @@ class InferLoopMixin:
         valid_roles = {"system", "user", "assistant"}
         for index, message in enumerate(messages):
             if not isinstance(message, dict):
-                return _openai_error_response(
-                    f"messages[{index}] must be a dict", status=400
-                )
+                return _openai_error_response(f"messages[{index}] must be a dict", status=400)
             role = message.get("role")
             if role not in valid_roles:
                 return _openai_error_response(
@@ -89,7 +87,7 @@ class InferLoopMixin:
                 )
             content = message.get("content")
             if isinstance(content, list):
-                for part_index, part in enumerate(content):
+                for _, part in enumerate(content):
                     if isinstance(part, dict) and part.get("type") in {"image_url", "image"}:
                         return _openai_error_response(
                             "image content not allowed on /v1/text/chat; use /v1/chat/completions for multimodal",
@@ -158,13 +156,9 @@ class InferLoopMixin:
         composed_system = (self._build_memory_prompt(state) or "").strip()
 
         # Resolve any caller-supplied system message into a flat list.
-        caller_messages = [
-            dict(m) for m in api_messages if m.get("role") != "system"
-        ]
+        caller_messages = [dict(m) for m in api_messages if m.get("role") != "system"]
         if composed_system:
-            http_messages = (
-                [{"role": "system", "content": composed_system}] + caller_messages
-            )
+            http_messages = [{"role": "system", "content": composed_system}] + caller_messages
         else:
             http_messages = caller_messages
 
@@ -219,7 +213,9 @@ class InferLoopMixin:
         state = self.get_session(session_id)
         async with state.lock:
             try:
-                result = await self._handle_chat_payload(state, payload, request, client=client, model_name=model_name)
+                result = await self._handle_chat_payload(
+                    state, payload, request, client=client, model_name=model_name
+                )
             except web.HTTPException:
                 raise
             except Exception as exc:
@@ -245,7 +241,9 @@ class InferLoopMixin:
 
         ctx = SimpleNamespace()
         ctx.t_start = t_start
-        await self._chat_payload_resolve_frames(state, request, payload, messages, client, model_name, ctx)
+        await self._chat_payload_resolve_frames(
+            state, request, payload, messages, client, model_name, ctx
+        )
         if ctx.forward_result is not None:
             return ctx.forward_result
 
@@ -267,7 +265,9 @@ class InferLoopMixin:
         """Resolve image references -> frame paths and parse/format time ranges."""
         image_refs = _extract_all_image_refs(messages, request, payload)
         if not image_refs:
-            ctx.forward_result = await self._forward_text_only(payload, client=client, model_name=model_name)
+            ctx.forward_result = await self._forward_text_only(
+                payload, client=client, model_name=model_name
+            )
             return
 
         turn_count = len(state.predictions) + 1
@@ -314,13 +314,12 @@ class InferLoopMixin:
     async def _chat_payload_advance_chunk(self, state: SessionState, ctx: SimpleNamespace) -> None:
         """Commit due async summaries, then handle chunk boundary / qa archive / flush / carry-over."""
         await self._commit_required_async_summaries(
-            state, state.turn_count, non_blocking=True,
+            state,
+            state.turn_count,
+            non_blocking=True,
         )
 
-        if (
-            self.config.chunk > 0
-            and state.current_chunk["turn_count"] >= self.config.chunk
-        ):
+        if self.config.chunk > 0 and state.current_chunk["turn_count"] >= self.config.chunk:
             self._execute_pending_qa_archive(state)
             carry_response_records = []
             if self.config.keep_qa_history and state.current_query_text:
@@ -346,10 +345,7 @@ class InferLoopMixin:
                     before_time_sec=qa_cutoff,
                 )
             await self._flush_chunk(state, use_async_summary=self._async_summary_enabled())
-            if (
-                self._async_summary_enabled()
-                and state.async_summary_segment["turn_count"] > 0
-            ):
+            if self._async_summary_enabled() and state.async_summary_segment["turn_count"] > 0:
                 carry = copy.deepcopy(state.async_summary_segment)
                 carry_frames = carry["frame_count"]
                 carry_turns = carry["turn_count"]
@@ -419,9 +415,7 @@ class InferLoopMixin:
             "frame_time_ranges": list(state.current_chunk["frame_time_ranges"]),
         }
 
-        is_forced_silence = (
-            self.config.force_silence_before_query and not state.current_query_text
-        )
+        is_forced_silence = self.config.force_silence_before_query and not state.current_query_text
         inference_start = None
         inference_time = 0.0
         chunk_start_model_input_path = None
@@ -451,20 +445,26 @@ class InferLoopMixin:
             internal_messages, prefix_content = self._build_main_internal_messages(state)
             api_messages = self._build_cached_api_messages(state, internal_messages)
             generation_kwargs = self._main_generation_kwargs(payload)
-            http_messages = self._build_main_http_messages(
-                api_messages, session_state=state
-            )
+            http_messages = self._build_main_http_messages(api_messages, session_state=state)
             # DEBUG v0.2: print first message roles + system content length
             try:
-                roles = [m.get('role') for m in http_messages]
-                sys_lens = [len(m.get('content') or '') for m in http_messages if m.get('role') == 'system']
-                LOGGER.info('DEBUG v0.2 http_messages roles=%s sys_content_lengths=%s', roles, sys_lens)
+                roles = [m.get("role") for m in http_messages]
+                sys_lens = [
+                    len(m.get("content") or "") for m in http_messages if m.get("role") == "system"
+                ]
+                LOGGER.info(
+                    "DEBUG v0.2 http_messages roles=%s sys_content_lengths=%s", roles, sys_lens
+                )
                 if state._memory_block_cache:
-                    LOGGER.info('DEBUG v0.2 cache blocks=%d first_id=%s', len(state._memory_block_cache), state._memory_block_cache[0].get('block_id'))
+                    LOGGER.info(
+                        "DEBUG v0.2 cache blocks=%d first_id=%s",
+                        len(state._memory_block_cache),
+                        state._memory_block_cache[0].get("block_id"),
+                    )
                 else:
-                    LOGGER.info('DEBUG v0.2 cache empty (warmed=%s)', state._memory_warmed.is_set())
+                    LOGGER.info("DEBUG v0.2 cache empty (warmed=%s)", state._memory_warmed.is_set())
             except Exception as e:
-                LOGGER.warning('DEBUG v0.2 failed: %s', e)
+                LOGGER.warning("DEBUG v0.2 failed: %s", e)
             turn_model_input_record = build_model_input_record(
                 chunk_index=state.chunk_index,
                 messages=http_messages,
@@ -515,7 +515,9 @@ class InferLoopMixin:
         ctx.t_prompt_build_end = t_prompt_build_end
         ctx.t_inference_end = t_inference_end
 
-    def _chat_payload_finalize(self, state: SessionState, model_name: str, ctx: SimpleNamespace) -> dict[str, Any]:
+    def _chat_payload_finalize(
+        self, state: SessionState, model_name: str, ctx: SimpleNamespace
+    ) -> dict[str, Any]:
         """Parse response, assemble prediction/timing, and package the final result."""
         self._execute_pending_qa_archive(state)
 
@@ -523,9 +525,7 @@ class InferLoopMixin:
         if response_payload and state.current_query_text:
             state.current_chunk["response_records"].append((ctx.time_range, response_payload))
 
-        state.current_chunk["messages"].append(
-            {"role": "assistant", "content": ctx.generated_text}
-        )
+        state.current_chunk["messages"].append({"role": "assistant", "content": ctx.generated_text})
         if self._async_summary_enabled():
             state.async_summary_segment["messages"].append(
                 {"role": "assistant", "content": ctx.generated_text}
@@ -563,10 +563,14 @@ class InferLoopMixin:
             "adapter_total_ms": round((t_end - ctx.t_start) * 1000, 1),
         }
         if not ctx.is_forced_silence:
-            adapter_timing["prompt_build_ms"] = round((ctx.t_prompt_build_end - ctx.t_prompt_build_start) * 1000, 1)
+            adapter_timing["prompt_build_ms"] = round(
+                (ctx.t_prompt_build_end - ctx.t_prompt_build_start) * 1000, 1
+            )
             adapter_timing["vllm_inference_ms"] = round(ctx.inference_time * 1000, 1)
             adapter_timing["post_process_ms"] = round((t_end - ctx.t_inference_end) * 1000, 1)
-            adapter_timing["pre_inference_ms"] = round((ctx.t_prompt_build_start - ctx.t_start) * 1000, 1)
+            adapter_timing["pre_inference_ms"] = round(
+                (ctx.t_prompt_build_start - ctx.t_start) * 1000, 1
+            )
 
         if not ctx.is_forced_silence:
             LOGGER.info(
@@ -601,17 +605,27 @@ class InferLoopMixin:
         summarizer_timing = {}
         if state.mid_term_history:
             last_mid = state.mid_term_history[-1]
-            summarizer_timing["last_mid_term_ms"] = round(last_mid.get("inference_time", 0) * 1000, 1)
+            summarizer_timing["last_mid_term_ms"] = round(
+                last_mid.get("inference_time", 0) * 1000, 1
+            )
             summarizer_timing["last_mid_term_chunk"] = last_mid.get("chunk_index")
             if last_mid.get("barrier_wait_time") is not None:
-                summarizer_timing["barrier_wait_ms"] = round(last_mid["barrier_wait_time"] * 1000, 1)
+                summarizer_timing["barrier_wait_ms"] = round(
+                    last_mid["barrier_wait_time"] * 1000, 1
+                )
         if state.long_term_history:
             last_long = state.long_term_history[-1]
-            summarizer_timing["last_long_term_ms"] = round(last_long.get("inference_time", 0) * 1000, 1)
+            summarizer_timing["last_long_term_ms"] = round(
+                last_long.get("inference_time", 0) * 1000, 1
+            )
         result["streamingharness"]["summarizer_timing"] = summarizer_timing
         result["streamingharness"]["memory"] = {
             "mid_term_summaries": [
-                {"chunk_index": e["chunk_index"], "frame_range": e["frame_range"], "summary_text": e["summary_text"]}
+                {
+                    "chunk_index": e["chunk_index"],
+                    "frame_range": e["frame_range"],
+                    "summary_text": e["summary_text"],
+                }
                 for e in state.mid_term_summaries
             ],
             "long_term_memory": state.memory_state.get("long_term_memory", ""),

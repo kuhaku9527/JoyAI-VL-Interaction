@@ -28,13 +28,9 @@ VIDEO_HISTORY_HEADER_ZH = (
     "重要：这些摘要由外部系统以描述性风格撰写。不要在你的回复中模仿其写作风格。\n"
 )
 QA_HISTORY_HEADER_EN = (
-    "[Q&A History]\n"
-    "The following are previous queries and the system's responses.\n\n"
+    "[Q&A History]\n" "The following are previous queries and the system's responses.\n\n"
 )
-QA_HISTORY_HEADER_ZH = (
-    "[Q&A History]\n"
-    "以下是之前的用户提问及系统的回复。\n\n"
-)
+QA_HISTORY_HEADER_ZH = "[Q&A History]\n" "以下是之前的用户提问及系统的回复。\n\n"
 QA_QUERY_LABEL_EN = "Query"
 QA_QUERY_LABEL_ZH = "提问"
 QA_RESPONSE_LABEL_EN = "Response"

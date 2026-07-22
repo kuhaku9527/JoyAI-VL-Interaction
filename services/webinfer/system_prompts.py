@@ -225,7 +225,9 @@ def _clip_memory_blocks(blocks, language):
     return _MEMORY_HEADER_EN + "\n" + body + "\n"
 
 
-def compose_system_prompt_with_memory(base, character_prompts=None, language="en", memory_blocks=None):
+def compose_system_prompt_with_memory(
+    base, character_prompts=None, language="en", memory_blocks=None
+):
     """Compose system prompt, appending a [Local Wiki] block at the end.
 
     Empty / falsy memory_blocks degrades to compose_system_prompt semantics

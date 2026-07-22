@@ -84,11 +84,9 @@ class MemoryStoreClient:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         enabled: bool = True,
     ) -> None:
-        self.base_url = (
-            base_url
-            or os.environ.get("MEMORY_STORE_URL")
-            or DEFAULT_BASE_URL
-        ).rstrip("/")
+        self.base_url = (base_url or os.environ.get("MEMORY_STORE_URL") or DEFAULT_BASE_URL).rstrip(
+            "/"
+        )
         self.timeout_s = float(timeout_s)
         self.enabled = bool(enabled)
         # We avoid eagerly opening the client so a misconfigured URL does not
