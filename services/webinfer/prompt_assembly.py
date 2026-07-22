@@ -8,7 +8,7 @@ assembly, and generation-kwargs helpers previously on ``StreamingInferAdapter``.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from adapter_types import SessionState
 from io_utils import _extract_extra_body, _internal_message_to_openai
@@ -121,7 +121,7 @@ class PromptAssemblyMixin:
         self._system_prompt_cache[key] = composed
         return composed
 
-    def _build_memory_prompt(self, session_state: Optional[SessionState]) -> str:
+    def _build_memory_prompt(self, session_state: SessionState | None) -> str:
         """Return system prompt with optional memory blocks appended.
 
         Fast path: when the session has no memory blocks cached, this
@@ -239,7 +239,7 @@ class PromptAssemblyMixin:
         self,
         api_messages: list[dict[str, Any]],
         *,
-        session_state: Optional[SessionState] = None,
+        session_state: SessionState | None = None,
         max_total_chars: int = 0,
     ) -> list[dict[str, Any]]:
         """Build the OpenAI chat-completions payload for the main model.

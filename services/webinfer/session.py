@@ -16,7 +16,7 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from adapter_types import SessionState
 from aiohttp import web
@@ -217,7 +217,7 @@ class SessionMixin:
             }
         )
 
-    def _session_output_path(self, state: SessionState, light: bool) -> Optional[Path]:
+    def _session_output_path(self, state: SessionState, light: bool) -> Path | None:
         if light:
             root = state.session_light_out_dir or self.config.light_out_dir
         else:
@@ -227,7 +227,7 @@ class SessionMixin:
         safe_session = sanitize_output_name(state.session_id)
         return Path(root) / "live" / f"{safe_session}.json"
 
-    def _session_debug_input_dir(self, state: SessionState) -> Optional[Path]:
+    def _session_debug_input_dir(self, state: SessionState) -> Path | None:
         if state.debug_input_dir:
             return state.debug_input_dir
         if not self.config.debug_input_dir:
@@ -316,10 +316,10 @@ class SessionMixin:
 
     def _write_session_outputs_sync(
         self,
-        output_path: Optional[Path],
-        light_output_path: Optional[Path],
-        full_result: Optional[dict[str, Any]],
-        light_result: Optional[dict[str, Any]],
+        output_path: Path | None,
+        light_output_path: Path | None,
+        full_result: dict[str, Any] | None,
+        light_result: dict[str, Any] | None,
     ) -> None:
         if light_output_path and light_result:
             self._write_json_file(light_output_path, light_result)
@@ -435,7 +435,7 @@ class SessionMixin:
         state: SessionState,
         record: dict[str, Any],
         stem: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         debug_dir = state.debug_input_dir or self.config.debug_input_dir
         if not debug_dir:
             return None
@@ -452,7 +452,7 @@ class SessionMixin:
         turn_count: int,
         time_range: str,
         model_input_record: dict[str, Any],
-    ) -> Optional[str]:
+    ) -> str | None:
         if not (state.debug_input_dir or self.config.debug_input_dir):
             return None
         if state.chunk_index in state.chunk_start_input_saved:
@@ -474,8 +474,8 @@ class SessionMixin:
         state: SessionState,
         stage: str,
         index: int,
-        record: Optional[dict[str, Any]],
-    ) -> Optional[str]:
+        record: dict[str, Any] | None,
+    ) -> str | None:
         if not record:
             return None
         return self._save_live_debug_input(

@@ -32,7 +32,10 @@ def test_none_archived_in_chunk_does_not_raise():
                 "query": "what is in the frame?",
                 "query_time": "2026-07-14T00:00:00",
                 "responses": [
-                    ["2026-07-14T00:00:01", {"prediction": "hi", "decision": "response"}]
+                    [
+                        "2026-07-14T00:00:01",
+                        {"prediction": "hi", "decision": "response"},
+                    ]
                 ],
                 "archived_in_chunk": None,
                 "text_path": True,

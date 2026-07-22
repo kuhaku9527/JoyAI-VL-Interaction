@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 from aiohttp import web
 from io_utils import _file_url_to_path
@@ -31,7 +31,7 @@ def _request_session_id(request: web.Request, payload: dict[str, Any]) -> str:
 def _extract_time_range_from_request(
     request: web.Request,
     payload: dict[str, Any],
-) -> Optional[str]:
+) -> str | None:
     candidates = (
         request.headers.get("x-frame-time-range"),
         request.headers.get("x-streaming-time-range"),
@@ -59,7 +59,7 @@ def _extract_first_image_ref(
     messages: list[dict[str, Any]],
     request: web.Request,
     payload: dict[str, Any],
-) -> Optional[dict[str, str]]:
+) -> dict[str, str] | None:
     local_path = _extract_local_image_path_from_request(request, payload)
     if local_path:
         return {"kind": "path", "value": local_path}
@@ -141,7 +141,7 @@ def _extract_time_ranges_from_request(
 def _extract_local_image_path_from_request(
     request: web.Request,
     payload: dict[str, Any],
-) -> Optional[str]:
+) -> str | None:
     candidates = (
         request.headers.get("x-local-image-path"),
         request.headers.get("x-frame-image-path"),

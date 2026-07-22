@@ -39,13 +39,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install ruff
-        run: pip install ruff==0.6.9
+        run: pip install ruff==0.15.22
       - name: Ruff lint (scoped to services/webinfer)
         # `--extend-ignore` adds to the repo-wide [tool.ruff.lint] select set
         # in pyproject.toml; it only suppresses the decorative historical-debt
         # rules measured in the enabling PR. Real-bug rules (F/E402/I/B/C4/SIM)
         # stay active.
-        run: ruff check services/webinfer --extend-ignore RUF001,RUF003,UP007,D101,D102,D103,D205,D401,RUF005,RUF013,SIM105,SIM108
+        # UP007 was dropped: the Optional[X] -> X | None debt (86 sites) was
+        # burned, so the rule no longer fires. RUF059/RUF046/RUF022 are new
+        # decorative rules introduced by ruff 0.15.22 and are not real bugs.
+        run: ruff check services/webinfer --extend-ignore RUF001,RUF003,D101,D102,D103,D205,D401,RUF005,RUF013,SIM105,SIM108,RUF059,RUF046,RUF022
       - name: Ruff format check (scoped to services/webinfer)
         run: ruff format --check services/webinfer
 

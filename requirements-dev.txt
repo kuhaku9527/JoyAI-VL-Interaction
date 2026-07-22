@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------------------
+# Dev tooling pins — single source of truth for lint / format version.
+#
+# Why this file exists
+# --------------------
+# CI (.github/workflows/quality.yml) and pre-commit (.pre-commit-config.yaml)
+# both pin `ruff==0.15.22`. This is the single, authoritative version so local
+# dev (`pip install -r requirements-dev.txt`) matches CI exactly — "green
+# locally" means "green in CI", no signal split.
+#
+# Why 0.15.22 (and not staying on 0.6.9)
+# ---------------------------------------
+# ruff 0.6.9's `optional-to-union` (UP007) does NOT flag `Optional[X]` when a
+# file uses `from __future__ import annotations` — and webinfer does, in every
+# module. So 0.6.9 was silently green on ~86 `Optional[X]` annotations. ruff
+# 0.15.22 flags them as UP045 regardless, which is why a bare `pip install -U
+# ruff` exploded with 86 errors. We burned the debt (see git history:
+# `Optional[X]`/`Union[X,Y]` -> `X | None`/`X | Y`) and pinned 0.15.22 so the
+# gate is green AND meaningful.
+#
+# Keep all three in lock-step when bumping ruff:
+#   1. requirements-dev.txt   (this file)
+#   2. .github/workflows/quality.yml   (the `pip install ruff==...` line)
+#   3. .pre-commit-config.yaml         (the `rev: v...` line)
+# ---------------------------------------------------------------------------
+ruff==0.15.22
