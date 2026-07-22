@@ -81,9 +81,7 @@ def load_settings_from_env() -> Settings:
     return Settings(
         upstream_url=env_value("ASR_UPSTREAM_URL", default=DEFAULT_UPSTREAM_URL),
         model=env_value("ASR_MODEL", default=MODEL_NAME),
-        sample_rate=int(
-            env_value("ASR_SAMPLE_RATE", default=str(DEFAULT_SAMPLE_RATE))
-        ),
+        sample_rate=int(env_value("ASR_SAMPLE_RATE", default=str(DEFAULT_SAMPLE_RATE))),
         request_timeout=float(
             env_value("ASR_REQUEST_TIMEOUT", default=str(DEFAULT_TIMEOUT_SECONDS))
         ),
@@ -333,9 +331,7 @@ async def run_smoke_test(args: argparse.Namespace) -> int:
             response = payload.get("asr_response") or {}
             event_type = response.get("event_type")
             if event_type in {"IS_FINAL", "IS_END"}:
-                hypothesis = (
-                    response.get("recognition_result", {}).get("hypothesis") or [{}]
-                )[0]
+                hypothesis = (response.get("recognition_result", {}).get("hypothesis") or [{}])[0]
                 print(hypothesis.get("text", ""))
                 return 0
             if payload.get("code", 0) != 0:

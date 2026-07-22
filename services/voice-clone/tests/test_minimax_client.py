@@ -117,12 +117,10 @@ def test_zero_shot_synthesize_raises_on_minimax_error():
     cc = _reload()
     c = cc.MiniMaxClient(api_key="sk-cp-fake", group_id="2073018417979330937")
     c._client = _FakeClient(
-        post_responses=[
-            _FakeResp({"base_resp": {"status_code": 1004, "status_msg": "login fail"}})
-        ]
+        post_responses=[_FakeResp({"base_resp": {"status_code": 1004, "status_msg": "login fail"}})]
     )
 
-    with pytest.raises(RuntimeError, match="1004.*login fail"):
+    with pytest.raises(RuntimeError, match=r"1004.*login fail"):
         asyncio.run(
             _collect(c.zero_shot_synthesize("BT ready.", "minimax_man_33333", streaming=False))
         )

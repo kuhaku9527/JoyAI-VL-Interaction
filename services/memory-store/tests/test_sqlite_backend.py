@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """SqliteBackend tests (spec §D-7, ~6 tests)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -8,8 +9,9 @@ from memory_store.backends import get_backend
 from memory_store.models import MemoryBlock, RecallFilter
 
 
-def _block(content: str, session_id: str = "s1", score: float = 1.0,
-           created_at: datetime | None = None) -> MemoryBlock:
+def _block(
+    content: str, session_id: str = "s1", score: float = 1.0, created_at: datetime | None = None
+) -> MemoryBlock:
     return MemoryBlock(
         block_id="",
         session_id=session_id,
@@ -33,11 +35,14 @@ async def test_push_and_recall_roundtrip():
 
 async def test_recall_filters_by_min_score():
     backend = get_backend()
-    await backend.push("sess-A", [
-        _block("highly relevant payload", score=0.95),
-        _block("borderline payload", score=0.5),
-        _block("low relevance payload", score=0.1),
-    ])
+    await backend.push(
+        "sess-A",
+        [
+            _block("highly relevant payload", score=0.95),
+            _block("borderline payload", score=0.5),
+            _block("low relevance payload", score=0.1),
+        ],
+    )
     blocks = await backend.recall("payload", top_k=10, min_score=0.4, flt=None)
     assert all(b.score >= 0.4 for b in blocks)
     contents = [b.content for b in blocks]
@@ -58,11 +63,14 @@ async def test_recall_warmup_returns_recent_blocks():
     backend = get_backend()
     old = datetime.now() - timedelta(hours=2)
     new = datetime.now()
-    await backend.push("sess-A", [
-        _block("old block", created_at=old),
-        _block("new block", created_at=new),
-        _block("newest block", created_at=new + timedelta(seconds=1)),
-    ])
+    await backend.push(
+        "sess-A",
+        [
+            _block("old block", created_at=old),
+            _block("new block", created_at=new),
+            _block("newest block", created_at=new + timedelta(seconds=1)),
+        ],
+    )
     flt = RecallFilter(session_ids=["sess-A"])
     blocks = await backend.recall("__warmup__", top_k=2, min_score=0.0, flt=flt)
     assert len(blocks) == 2
@@ -81,10 +89,13 @@ async def test_recall_warmup_respects_top_k():
 async def test_recall_filters_by_created_after():
     backend = get_backend()
     cutoff = datetime.now()
-    await backend.push("sess-A", [
-        _block("old", created_at=cutoff - timedelta(days=1)),
-        _block("new", created_at=cutoff + timedelta(seconds=1)),
-    ])
+    await backend.push(
+        "sess-A",
+        [
+            _block("old", created_at=cutoff - timedelta(days=1)),
+            _block("new", created_at=cutoff + timedelta(seconds=1)),
+        ],
+    )
     flt = RecallFilter(created_after=cutoff)
     blocks = await backend.recall("__warmup__", top_k=10, min_score=0.0, flt=flt)
     assert {b.content for b in blocks} == {"new"}

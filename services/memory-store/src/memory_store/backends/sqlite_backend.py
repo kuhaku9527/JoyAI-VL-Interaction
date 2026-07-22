@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """SqliteBackend (spec §D-5)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +8,6 @@ import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 from ..models import MemoryBlock, RecallFilter
 
@@ -65,14 +65,14 @@ class SqliteBackend:
     def name(self) -> str:
         return "sqlite"
 
-    async def push(self, session_id: str, blocks: List[MemoryBlock]) -> int:
+    async def push(self, session_id: str, blocks: list[MemoryBlock]) -> int:
         if not blocks:
             return 0
         async with self._lock:
             await asyncio.to_thread(self._push_sync, session_id, blocks)
         return len(blocks)
 
-    def _push_sync(self, session_id: str, blocks: List[MemoryBlock]) -> None:
+    def _push_sync(self, session_id: str, blocks: list[MemoryBlock]) -> None:
         cur = self._conn.cursor()
         for b in blocks:
             bid = b.block_id or uuid.uuid4().hex
@@ -96,8 +96,8 @@ class SqliteBackend:
         query: str,
         top_k: int,
         min_score: float,
-        flt: Optional[RecallFilter],
-    ) -> List[MemoryBlock]:
+        flt: RecallFilter | None,
+    ) -> list[MemoryBlock]:
         async with self._lock:
             return await asyncio.to_thread(self._recall_sync, query, top_k, min_score, flt)
 
@@ -106,10 +106,10 @@ class SqliteBackend:
         query: str,
         top_k: int,
         min_score: float,
-        flt: Optional[RecallFilter],
-    ) -> List[MemoryBlock]:
+        flt: RecallFilter | None,
+    ) -> list[MemoryBlock]:
         limit = max(int(top_k), 1)
-        session_ids: Optional[List[str]] = flt.session_ids if flt else None
+        session_ids: list[str] | None = flt.session_ids if flt else None
         created_after = flt.created_after if flt else None
 
         def _apply_post_filters(rows):
@@ -119,7 +119,10 @@ class SqliteBackend:
                     continue
                 if session_ids is not None and r["session_id"] not in session_ids:
                     continue
-                if created_after is not None and datetime.fromisoformat(r["created_at"]) < created_after:
+                if (
+                    created_after is not None
+                    and datetime.fromisoformat(r["created_at"]) < created_after
+                ):
                     continue
                 out.append(r)
                 if len(out) >= limit:
@@ -128,7 +131,9 @@ class SqliteBackend:
 
         if query == "__warmup__":
             cur = self._conn.cursor()
-            cur.execute("SELECT * FROM memory_blocks ORDER BY created_at DESC LIMIT ?", (limit * 4,))
+            cur.execute(
+                "SELECT * FROM memory_blocks ORDER BY created_at DESC LIMIT ?", (limit * 4,)
+            )
             rows = cur.fetchall()
             return [self._row_to_block(r) for r in _apply_post_filters(rows)]
 
