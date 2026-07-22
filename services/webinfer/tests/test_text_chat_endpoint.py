@@ -147,8 +147,10 @@ def _make_adapter(scripted: list[str]) -> tuple[Any, _StubAsyncOpenAI]:
 
 class _StreamProtocol:
     """Minimal protocol stub aiohttp.streams.StreamReader needs to feed_data."""
+
     def resume_reading(self, *args, **kwargs):
         pass
+
     def pause_reading(self, *args, **kwargs):
         pass
 
@@ -160,6 +162,7 @@ def _post_json(adapter: Any, body: dict[str, Any], session_id=None) -> Any:
     feed it.
     """
     from aiohttp import streams
+
     raw = json.dumps(body).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if session_id:
@@ -167,14 +170,12 @@ def _post_json(adapter: Any, body: dict[str, Any], session_id=None) -> Any:
     loop = asyncio.new_event_loop()
     stream = streams.StreamReader(
         protocol=_StreamProtocol(),
-        limit=2 ** 16,
+        limit=2**16,
         loop=loop,
     )
     stream.feed_data(raw)
     stream.feed_eof()
-    request = make_mocked_request(
-        "POST", "/v1/text/chat", headers=headers, payload=stream
-    )
+    request = make_mocked_request("POST", "/v1/text/chat", headers=headers, payload=stream)
 
     async def _run():
         return await adapter.handle_text_chat(request)

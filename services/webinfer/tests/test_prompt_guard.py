@@ -3,6 +3,7 @@
 The guard exists to keep requests inside the llama-server -c context
 window. These tests pin the trim algorithm + the max-chars formula.
 """
+
 from __future__ import annotations
 
 import sys
@@ -73,10 +74,10 @@ def test_trim_does_nothing_when_within_budget():
 def test_trim_drops_oldest_user_assistant_turns_until_under_budget():
     msgs = [
         _msg("system", "sys"),
-        _msg("user", "u" * 500),       # big old turn
+        _msg("user", "u" * 500),  # big old turn
         _msg("assistant", "a" * 500),
-        _msg("user", "u" * 50),         # recent
-        _msg("assistant", "a" * 50),    # recent
+        _msg("user", "u" * 50),  # recent
+        _msg("assistant", "a" * 50),  # recent
     ]
     out, removed = la._trim_messages_to_ctx(msgs, max_total_chars=200, min_recent=2)
     assert removed == 2

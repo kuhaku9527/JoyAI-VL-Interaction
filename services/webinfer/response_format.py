@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import logging
-import re
 import time
 import uuid
 from typing import Any, Optional
@@ -13,6 +12,7 @@ from aiohttp import web
 from time_ranges import _parse_start_second
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
 
 def normalize_model_output(text: str) -> str:
     raw = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -43,7 +43,7 @@ def extract_response_payload(text: str) -> Optional[str]:
     normalized = normalize_model_output(text)
     if not normalized.startswith("</response>"):
         return None
-    payload = normalized[len("</response>"):].strip()
+    payload = normalized[len("</response>") :].strip()
     return payload or None
 
 
@@ -80,7 +80,7 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
             delegation_idx = idx
             delegation_tag = tag
     if delegation_idx is not None:
-        tail = text[delegation_idx + len(delegation_tag):].strip()
+        tail = text[delegation_idx + len(delegation_tag) :].strip()
         return "delegation", "", tail or None
 
     # No delegation tag: fall back to the earliest of response / silence.
@@ -92,7 +92,7 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, Optional[str]]:
     if earliest is None:
         return "response", text, None
     _, marker = earliest
-    tail = text[earliest[0] + len(marker):].strip()
+    tail = text[earliest[0] + len(marker) :].strip()
     if marker == "</silence>":
         return "silence", "", None
     # </response>
@@ -206,7 +206,8 @@ def _chat_completion_response(
                 "finish_reason": "stop",
             }
         ],
-        "usage": usage or {
+        "usage": usage
+        or {
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "total_tokens": 0,
