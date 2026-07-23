@@ -80,9 +80,13 @@ jobs:
       - name: Ruff format check (scoped to services/background-agent)
         run: ruff format --check services/background-agent
       - name: Ruff lint (scoped to services/webui Python)
-        run: ruff check services/webui
+        # Run from services/webui so ruff resolves webui's OWN [tool.ruff.lint]
+        # config (line-length=100, target py310) instead of the repo-root config.
+        working-directory: services/webui
+        run: ruff check .
       - name: Ruff format check (scoped to services/webui Python)
-        run: ruff format --check services/webui
+        working-directory: services/webui
+        run: ruff format --check .
 
   package-smoke:
     runs-on: ubuntu-latest
