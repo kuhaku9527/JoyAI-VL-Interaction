@@ -43,6 +43,10 @@ HERMES_GATEWAY_HOST = os.environ.get("HERMES_GATEWAY_HOST", "127.0.0.1")
 HERMES_GATEWAY_PORT = int(os.environ.get("HERMES_GATEWAY_PORT", "8642"))
 HERMES_GATEWAY_URL = f"http://{HERMES_GATEWAY_HOST}:{HERMES_GATEWAY_PORT}"
 
+# memory-store (Local Wiki source). Recall-only; any failure is non-blocking so
+# the hermes gateway simply falls back to live web search.
+MEMORY_STORE_URL = os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8996").rstrip("/")
+
 # Concurrency guard. We do not want the shim to drown the hermes-agent gateway.
 _run_semaphore = asyncio.Semaphore(max(1, DEFAULT_MAX_CONCURRENT_RUNS))
 
@@ -129,7 +133,8 @@ async def solve(request: SolveRequest) -> SolveResponse:
     )
     frames = _limit_frames(request.frames)
 
-    prompt = _build_prompt(request, max_subagents)
+    local_wiki = await _enrich_with_memory(request.question)
+    prompt = _build_prompt(request, max_subagents, local_wiki=local_wiki)
     user_content = _frames_to_content(prompt, frames)
 
     body = {
@@ -187,7 +192,7 @@ async def solve(request: SolveRequest) -> SolveResponse:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _build_prompt(request: SolveRequest, max_subagents: int) -> str:
+def _build_prompt(request: SolveRequest, max_subagents: int, *, local_wiki: str = "") -> str:
     """Build the user-facing system-of-instructions block.
 
     Kept byte-for-byte equivalent to the original codex_api prompt so the
@@ -225,6 +230,42 @@ Delegated question:
 Recent frame metadata:
 {frame_context}
 """
+    if local_wiki:
+        prompt += (
+            f"\n[Local Wiki]\n{local_wiki}\n"
+            "(优先用本地资料，无关时才用 web search)\n"
+        )
+    return prompt
+
+
+async def _enrich_with_memory(question: str) -> str:
+    """Recall local wiki blocks from memory-store before delegating to web search.
+
+    Fails open: any error, empty result, or missing service returns "" so the
+    hermes gateway simply falls back to live web search. Never blocks the solve.
+    """
+    if not question:
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{MEMORY_STORE_URL}/v1/blocks/recall",
+                json={"query": question, "top_k": 5, "min_score": 0.4},
+            )
+            if resp.status_code >= 400:
+                return ""
+            payload = resp.json()
+            blocks = payload.get("blocks") if isinstance(payload, dict) else None
+            if not blocks:
+                return ""
+            lines = [
+                f"- {b['content']}"
+                for b in blocks
+                if isinstance(b, dict) and b.get("content")
+            ]
+            return "\n".join(lines)
+    except Exception:
+        return ""
 
 
 def _frames_to_content(prompt: str, frames: list[FrameInput]) -> list[dict[str, Any]]:

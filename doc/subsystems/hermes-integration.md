@@ -2,6 +2,7 @@
 
 > 状态：**P0 落地 + 闭环（v3.28）**。`prompts/bt-7274.txt` 加 Delegation Protocol 章节、`jarvis_session.py::_make_llm_callback` 调 `BackgroundModelService.handle_foreground_response` 触发 `</delegation>` → shim(8079) → gateway(8642) → MiniMax M2 + web_extract → `background_result_ready` WS 广播。E2E 烟测：BT-7274 4-case 行为符合预期 + 真实查 Cyberpunk 螳螂帮攻略 11s 拿到 MiniMax 返回。
 > 配套文档：`doc/jarvis-mode.md` §6 + `doc/tech-local.md §3.6` + `services/background-agent/hermes_api/`。
+> **2026-07-23 更新**：[Local Wiki] 已落地（shim 委派前先 recall memory-store）；Hermes 本体/配置位置统一为 **`D:\Workspace\hermes-data`**（前 agent 曾误用 `$LOCALAPPDATA\hermes` 并改坏环境，见 §11）。
 
 ---
 
@@ -78,7 +79,7 @@ payload = {
 
 | 维度 | Hermes | BT-7274 (我们) | 规则 |
 | - | - | - | - |
-| **存储** | `~/.hermes/memories/` | `memory-store` 服务 | **不共享** |
+| **存储** | `D:\Workspace\hermes-data\memories\` | `memory-store` 服务（:8996） | **不共享** |
 | **命名空间** | MEMORY.md / USER.md | `bt-7274:*` | **不交叉** |
 | **用户偏好** | Hermes 用户的偏好 | BT-7274 用户的偏好 | **各管各的** |
 | **对话历史** | Hermes 自己的 | BT-7274 自己的 | **不共享** |
@@ -109,8 +110,8 @@ payload = {
 **shim 启动**：
 ```python
 # services/background-agent/hermes_api/main.py
-HERMES_GATEWAY = os.getenv("HERMES_GATEWAY_URL", "http://127.0.0.1:8642")
-HERMES_GATEWAY_KEY = os.getenv("HERMES_GATEWAY_KEY", "")
+HERMES_API_URL = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642/v1")
+HERMES_API_KEY = os.getenv("HERMES_API_KEY") or os.getenv("API_SERVER_KEY", "")
 ```
 
 **shim 转发**：
@@ -118,12 +119,12 @@ HERMES_GATEWAY_KEY = os.getenv("HERMES_GATEWAY_KEY", "")
 async def solve(req: SolveRequest) -> SolveResponse:
     # ✅ shim 只转发，不解析 provider
     resp = await httpx.AsyncClient().post(
-        f"{HERMES_GATEWAY}/v1/chat/completions",
+        f"{HERMES_API_URL}/chat/completions",
         json={
-            "model": "auto",  # 委托给 hermes gateway 解析
+            "model": "hermes-agent",  # 委托给 hermes gateway 解析
             "messages": [{"role": "user", "content": req.question}],
         },
-        headers={"Authorization": f"Bearer {HERMES_GATEWAY_KEY}"},
+        headers={"Authorization": f"Bearer {HERMES_API_KEY}"} if HERMES_API_KEY else {},
         timeout=300,
     )
     return parse_response(resp)
@@ -187,8 +188,10 @@ class SolveResponse(BaseModel):
 ## 5. 启动顺序
 
 ```text
-[1] 启动 hermes gateway（hermes 自己的命令）
-    $ hermes gateway  # 监听 8642
+[1] 启动 hermes gateway（统一 HOME=D:\Workspace\hermes-data）
+    # 推荐用封装脚本（已修正到 D:\Workspace\hermes-data）：
+    pwsh services/background-agent/scripts/start-hermes-gateway.ps1
+    # 或手动：hermes gateway  # 监听 8642（需先 set HERMES_HOME=D:\Workspace\hermes-data）
 [2] 配置 provider
     $ hermes model    # 选 OpenAI/Anthropic/OpenRouter/...
 [3] 启动 hermes_api shim（我们的服务）
@@ -223,7 +226,7 @@ class SolveResponse(BaseModel):
 ## 7. Hermes-agent 配置文件位置
 
 ```
-~/.hermes/
+D:\Workspace\hermes-data\
 ├── config.yaml     # Settings (model, terminal, TTS, compression, etc.)
 ├── .env            # API keys and secrets
 ├── auth.json       # OAuth provider credentials (Nous Portal, etc.)
@@ -235,7 +238,7 @@ class SolveResponse(BaseModel):
 └── logs/           # Logs (errors.log, gateway.log)
 ```
 
-**我们的 shim 不读这个目录**——只通过 hermes gateway 的 OpenAI 兼容 API 通信。
+**我们的 shim 不读这个目录**——只通过 hermes gateway 的 OpenAI 兼容 API 通信（`D:\Workspace\hermes-data` 是 Hermes 真 HOME，与 `$LOCALAPPDATA\hermes` 无关）。
 
 ---
 
@@ -259,6 +262,25 @@ class SolveResponse(BaseModel):
 
 ---
 
+## 11. ⚠️ 历史事故：前 agent 未按文档执行（2026-07-23 只读审计）
+
+> 本会话对 `D:\Workspace\` 全程**只读**（未创建/修改任何文件），仅核实现状。
+
+**问题**：之前有 agent 未按本文档与 `start-hermes-gateway.ps1` 执行，把 Hermes 环境/配置搞乱。只读审计实证：
+
+1. **启动器丢失**：`D:\Workspace\hermes-data\bin\` 里**没有活跃 `hermes.cmd`**，只剩 `hermes.CMD.backup-via-hermesbat` 与 `hermes.CMD.bak.20260715_012052` 两个备份；真实 CLI exe 在 `D:\Workspace\hermes-agent\venv\Scripts\hermes.exe`。
+2. **HOME 被改错**：上述备份内容把 `HERMES_HOME` 指向**陈旧的 `C:\Users\22186\AppData\Local\hermes`**，并用 `D:\anaconda3\envs\hermes_cli\Scripts\hermes.exe`——与当前 venv（`D:\Workspace\hermes-agent\venv\Scripts\hermes.exe`）不一致。
+3. **真 HOME 是 `D:\Workspace\hermes-data`**：含 `memories/ skills/ sessions/ logs/ SOUL.md state.db config.yaml .env`（即 Hermes 实际运行态）。
+4. **`.env` 无 gateway auth key**：`D:\Workspace\hermes-data\.env` 含各 provider key（MINIMAX_API_KEY 等）但**无 `API_SERVER_KEY`/`HERMES_API_KEY`**，故 gateway 以 auth-disabled 运行（与 shim 契约一致：shim 仅在 key 存在时发 `Authorization`）。
+
+**已修正（本会话）**：
+- `start-hermes-gateway.ps1`：HERMES_HOME 固定 `D:\Workspace\hermes-data`；候选启动器优先 `bin\hermes.cmd`，缺失时回退到真实 exe `D:\Workspace\hermes-agent\venv\Scripts\hermes.exe` 与 `gateway-service\Hermes_Gateway.cmd`；整体加载 `D:\Workspace\hermes-data\.env`。
+- 本文档 §2.2/§2.4/§5/§7 全部把 Hermes 位置统一为 `D:\Workspace\hermes-data`。
+
+**待处理（D:\Workspace 写入，不在本会话范围）**：把 `hermes.cmd` 恢复进 `D:\Workspace\hermes-data\bin\`（从 `.bak`/`.backup` 还原并核对 venv python），否则脚本会走 exe 兜底路径。
+
+---
+
 ## 10. 变更记录
 
 | 日期 | 版本 | 变更 | 作者 |
@@ -266,3 +288,4 @@ class SolveResponse(BaseModel):
 | 2026-07-09 | v1.0 | 初版：Hermes-agent 严格隔离方案 | Codex |
 | 2026-07-13 | v3.27 | 落地接入：`$env:LOCALAPPDATA\hermes\bin\hermes.cmd` wrapper（venv python → `python -m hermes_cli.main`）解决 `bin\hermes.cmd` 不存在的问题；`Start-Hermes` 用 `API_SERVER_HOST/PORT/KEY` env；`services\background-agent\background-agent.env` 与 `services\scripts\run-windows.env` 同步 `HERMES_API_KEY`；gateway `/health` 200 OK、`/v1/models` 返回 `hermes-agent`、shim `/health` 透出 `hermes_gateway:200`；smoke 调用 `/v1/solve` 返回中文"烟测通过。" | Codex |
 | 2026-07-13 | v3.28 | 闭环触发：`prompts/bt-7274.txt` 加 **Delegation Protocol (P-D)** 章节（外部查才触发、tag 必须结尾、foreground 短句、self-contained 问题、3 个中英示例）；`jarvis_session.py::_make_llm_callback` 在 broadcast 后调 `BackgroundModelService.handle_foreground_response(text, metrics)`，从 `sessions[session_id]["background_service"]` 拿实例。E2E：4-case 行为烟测（chitchat/已知识 → 不触发、外查/天气/cyberpunk → 触发并自动改写）+ 真实查询 11s 拿到 MiniMax M2 整理后的攻略。不破坏 hermes env：`HERMES_API_KEY` env 文件不动，shim/gateway 用同 key 由 env 注入 | Codex |
+| 2026-07-23 | v3.29 | Hermes 位置统一为 D:\Workspace\hermes-data（修正前 agent 环境污染）；[Local Wiki] 委派前 recall 落地进 hermes_api shim；psql 复用记忆路线取消（ADR-001，避免污染 hermes 原记忆） | Architect |
