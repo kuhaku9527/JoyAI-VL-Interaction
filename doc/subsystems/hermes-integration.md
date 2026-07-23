@@ -170,18 +170,35 @@ hermes model --provider openrouter --model anthropic/claude-sonnet-4.6
 
 ```python
 # /v1/solve 端点
+class FrameInput(BaseModel):
+    image_url: str                       # JPEG data URL（必填）
+    timestamp: float | None = None       # 帧时间戳（可选）
+    timestamp_kind: str | None = None    # 时间戳类型（可选）
+    pts: int | None = None               # 演示时间戳（可选）
+
 class SolveRequest(BaseModel):
-    question: str                    # 用户的具体问题
-    context: Optional[dict] = None   # 上下文（可选，shim 内部用）
+    session_id: str                      # 会话 ID（必填）
+    task_id: str                         # 任务 ID（必填）
+    question: str                        # 用户的具体问题（必填）
+    foreground_text: str = ""            # 前台文本（可选）
+    frames: list[FrameInput] = []        # 多模态分帧输入（可选）
+    max_subagents: int | None = None     # 子代理上限（可选）
+    timeout_seconds: float | None = None # 超时秒数（可选）
 
 class SolveResponse(BaseModel):
-    status: str                      # "success" / "failed"
-    summary: str                     # 提取 <summary>...</summary>
-    tool_calls: list[dict] = []      # 工具调用记录（可选）
-    error: Optional[str] = None      # 错误信息
+    status: Literal["completed", "failed", "timeout"]  # 处理状态
+    text: str                            # 结果文本（取代旧 summary 字段）
+    thread_id: str | None = None         # 后台线程 ID（可选）
+    usage: dict[str, Any] | None = None  # token 用量统计（可选）
+    duration_ms: float                   # 处理耗时（毫秒，必填）
+    events_digest: dict[str, Any] = {}   # 事件摘要（可选，默认空）
+    error: str | None = None             # 错误信息（可选）
 ```
 
-**契约完全不变**——webui 端 0 修改。
+> **契约已演进（非「完全不变」）**：shim 契约已演进为多模态/分帧结构（见上）。
+> webui 端须按上述**实际字段**对接；旧文档描述的 `context` / `summary` / `tool_calls`
+> 字段已不存在，请勿再依赖。
+
 
 ---
 

@@ -163,20 +163,23 @@ Response:
       "hit_count": 3,
       "last_hit_at": "2026-07-09T10:00:00Z"
     }
-  ],
-  "meta_prompt": "【历史对话摘要】\n- 前 5 轮：...",
-  "took_ms": 47
+  ]
 }
 ```
 
+> **实现状态（2026-07-23 对齐审计）**：`RecallResponse` 实际**只有 `blocks` 一个字段**（`models.py:43-44`），`recall_blocks` 仅返回 `RecallResponse(blocks=blocks)`。旧文档示例中的 `meta_prompt` / `took_ms` 当前**未返回**（属规划中/未实现字段），请勿在对接代码中依赖。
+
 ### 3.3 其他端点
 
-| Method | Path | 用途 |
-| - | - | - |
-| `GET` | `/v1/blocks/{id}` | 单块查询（调试 / UI） |
-| `DELETE` | `/v1/sessions/{sid}` | 会话清理（用户手动） |
-| `POST` | `/v1/external/sync` | 外部库（obsidian）全量重建索引 |
-| `GET` | `/v1/health` | 健康检查（启动时） |
+> **实现状态（2026-07-23 对齐审计）**：memory-store 当前**仅实现** `POST /v1/blocks/push`、`POST /v1/blocks/recall`、`GET /health` 三个端点。下表中的 `GET /v1/blocks/{id}`、`DELETE /v1/sessions/{sid}`、`POST /v1/external/sync` 三项**尚未实现（规划中，v0.3+）**，仅作为路线图保留，下游**切勿**假定其已可用。注意健康检查路由为 `/health`（非 `/v1/health`）。
+
+| Method | Path | 用途 | 状态 |
+| - | - | - | - |
+| `GET` | `/v1/blocks/{id}` | 单块查询（调试 / UI） | ⚠️ 未实现（规划中，v0.3+） |
+| `DELETE` | `/v1/sessions/{sid}` | 会话清理（用户手动） | ⚠️ 未实现（规划中，v0.3+） |
+| `POST` | `/v1/external/sync` | 外部库（obsidian）全量重建索引 | ⚠️ 未实现（规划中，v0.3+） |
+| `GET` | `/health` | 健康检查（启动时） | ✅ 已实现（路由为 `/health`，非 `/v1/health`） |
+
 
 ## 4. 集成点
 
