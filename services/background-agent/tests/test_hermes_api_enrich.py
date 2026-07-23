@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import httpx
 import pytest
-
 from hermes_api import main as hapi
 
 
@@ -28,7 +27,9 @@ class _FakeResponse:
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
             raise httpx.HTTPStatusError(
-                f"{self.status_code}", request=None, response=None  # type: ignore[arg-type]
+                f"{self.status_code}",
+                request=None,
+                response=None,  # type: ignore[arg-type]
             )
 
     def json(self) -> dict:
@@ -42,7 +43,7 @@ class _FakeClient:
         self._response = response
         self._capture = capture
 
-    async def __aenter__(self) -> "_FakeClient":
+    async def __aenter__(self) -> _FakeClient:
         return self
 
     async def __aexit__(self, *exc) -> bool:
