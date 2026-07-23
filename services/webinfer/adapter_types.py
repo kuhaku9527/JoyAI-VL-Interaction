@@ -46,6 +46,7 @@ class AdapterConfig:
     use_prompt_as_query: bool = True
     force_silence_before_query: bool = True
     keep_qa_history: bool = True
+    qa_history_window: int = 12  # 0 = 禁用(旧无界行为)；保留最近 N 轮问答
     normalize_output: bool = True
     enable_summarizer: bool = True
     summarizer_model: str = "/tmp/models/Qwen3-VL-4B-Instruct"
@@ -70,6 +71,7 @@ class AdapterConfig:
     long_term_repetition_penalty: float = 1.1
     long_term_presence_penalty: float = 0.0
     long_term_memory_window: int = 40
+    long_term_memory_max_tokens: int = 1800  # 0 = 禁用；重建 long_term_memory 的累计 token 预算
     request_timeout_seconds: float = 300.0
     session_timeout_seconds: float = 3600.0
     out_dir: str | None = None

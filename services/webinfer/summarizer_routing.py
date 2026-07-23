@@ -188,16 +188,33 @@ class SummarizerRoutingMixin:
         state.long_term_history.append(long_term_entry)
 
         window = int(self.config.long_term_memory_window or 0)
-        if window > 0 and len(state.long_term_history) > window:
-            dropped_count = len(state.long_term_history) - window
-            del state.long_term_history[:dropped_count]
-            state.memory_state["long_term_memory"] = "\n\n".join(
+        token_budget = int(self.config.long_term_memory_max_tokens or 0)
+
+        def _rebuild_long_term_memory() -> str:
+            return "\n\n".join(
                 entry["compressed_text"].rstrip()
                 for entry in state.long_term_history
                 if entry.get("compressed_text")
             )
-            token_count = self.summarizer.estimate_tokens(state.memory_state["long_term_memory"])
-            long_term_entry["token_count_after_slide"] = token_count
+
+        trimmed = False
+        if window > 0 and len(state.long_term_history) > window:
+            del state.long_term_history[: len(state.long_term_history) - window]
+            trimmed = True
+        if token_budget > 0:
+            while (
+                len(state.long_term_history) > 1
+                and self.summarizer.estimate_tokens(_rebuild_long_term_memory()) > token_budget
+            ):
+                del state.long_term_history[0]
+                trimmed = True
+        if trimmed:
+            state.memory_state["long_term_memory"] = _rebuild_long_term_memory()
+
+        # Always recompute so token_count is defined for the LOGGER line below
+        # (original only set it inside the window>0 branch → NameError when window=0).
+        token_count = self.summarizer.estimate_tokens(state.memory_state["long_term_memory"])
+        long_term_entry["token_count_after_slide"] = token_count
 
         state.mid_term_summaries.clear()
         LOGGER.info(
