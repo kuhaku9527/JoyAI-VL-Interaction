@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File start-joyai.ps1 -Stop
 
 ### C. 文档回写
 
-- `doc/jarvis-mode.md` §14.2 已经在，文档够；
+- `doc/subsystems/jarvis-mode.md` §14.2 已经在，文档够；
 - `README.md` / `README.zh-CN.md` 顶部加 "How to stop everything" 章节
 - `start-joyai.ps1 -Stop` 的等价命令写到两个 README
 

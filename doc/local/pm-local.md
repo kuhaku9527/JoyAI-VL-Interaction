@@ -596,7 +596,7 @@ voice_clone_api (8985) → MiniMax Rapid Clone API（10s 样本，99% 相似）
 
 ## 23. Jarvis 模式（2026-07-08 重大更新）
 
-> 详细产品设计：`doc/jarvis-mode.md`（26KB）
+> 详细产品设计：`doc/subsystems/jarvis-mode.md`（26KB）
 > 技术实现：`doc/asr-streaming.md`
 > 使用指南：`doc/gaming-mode.md`（已升级为 Jarvis 模式）
 
@@ -609,7 +609,7 @@ voice_clone_api (8985) → MiniMax Rapid Clone API（10s 样本，99% 相似）
 
 | 决策点 | 选择 | 理由 |
 | - | - | - |
-| 唤醒词 | **"bt"**（自训 KWS v4 已上线，见 `jarvis-mode.md §2.4`） | 3 字 + 强中文特征 + 避开"bt"单字误识别 |
+| 唤醒词 | **"bt"**（自训 KWS v4 已上线，见 `doc/subsystems/jarvis-mode.md §2.4`） | 3 字 + 强中文特征 + 避开"bt"单字误识别 |
 | KWS 引擎 | **sherpa-onnx KWS** | 开源免费、0 网络、1MB 轻量 |
 | 对话期 ASR | **sherpa-onnx 流式** | 0 成本 + 0 网络 + 流式首字 200-400ms |
 | 结束词 | **"行/明白/了解/ok/好的"** | 5 个明确、互不冲突、与肯定结束语义对应 |
@@ -667,7 +667,7 @@ KWS_LISTENING → WAKE_DETECTED → DIALOG_ACTIVE ⇄ TTS_PAUSED
 ### 23.7 新增代码 / 文档
 
 **新增**：
-- `doc/jarvis-mode.md`（26KB，产品设计）
+- `doc/subsystems/jarvis-mode.md`（26KB，产品设计）
 - `services/asr/jarvis/kws.py`（KWS 引擎）
 - `services/asr/jarvis/asr.py`（流式 ASR 引擎）
 - `services/common/log_with_timestamp.py`（时间戳日志）

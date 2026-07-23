@@ -61,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File stop-joyai.ps1 -DryRun
 powershell -ExecutionPolicy Bypass -File start-joyai.ps1 -Stop
 ```
 
-详见 [doc/jarvis-mode.md §14](doc/jarvis-mode.md) 与 [doc/adr/0004-service-lifecycle.md](doc/adr/0004-service-lifecycle.md)。
+详见 [doc/subsystems/jarvis-mode.md §14](doc/subsystems/jarvis-mode.md) 与 [doc/adr/0004-service-lifecycle.md](doc/adr/0004-service-lifecycle.md)。
 
 ## 🔥 最新动态
 
@@ -102,7 +102,7 @@ python D:\AI\envs\joyai-main\python.exe services\scripts\sync-docs.py `
   --version v3.4 `
   --change "一句话描述这次改了什么" `
   --delivered services\webui\src\joy_interaction_webui\jarvis_mode.py `
-  --affected doc\jarvis-mode.md `
+  --affected doc/subsystems/jarvis-mode.md `
   --affected doc\adr\0003-llm-reply-panel.md
 ```
 

@@ -61,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File stop-joyai.ps1 -DryRun
 powershell -ExecutionPolicy Bypass -File start-joyai.ps1 -Stop
 ```
 
-详见 [doc/jarvis-mode.md §14](doc/jarvis-mode.md) 与 [doc/adr/0004-service-lifecycle.md](doc/adr/0004-service-lifecycle.md)。
+详见 [doc/subsystems/jarvis-mode.md §14](doc/subsystems/jarvis-mode.md) 与 [doc/adr/0004-service-lifecycle.md](doc/adr/0004-service-lifecycle.md)。
 
 ## 🔥 News
 

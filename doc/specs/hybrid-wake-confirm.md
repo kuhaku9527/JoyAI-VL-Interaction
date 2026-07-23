@@ -88,5 +88,5 @@ Tests: `test_hybrid_wake_no_pre_confirm_drain.py` pins inline tap, no pre-confir
 ## Out of Scope
 
 - Replacing the v4 KWS model or retraining v5.
-- Changing the wake word to a longer phrase (deferred — see doc/jarvis-mode.md §14.11 future work).
+- Changing the wake word to a longer phrase (deferred — see doc/subsystems/jarvis-mode.md §14.11 future work).
 - Adding a second confirmation stage (LLM-side semantic confirmation). Only ASR text matching is in scope.
