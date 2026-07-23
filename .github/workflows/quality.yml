@@ -127,3 +127,24 @@ jobs:
           node-version: "20"
       - run: npm ci
       - run: npm run lint
+
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [memory-store, background-agent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          cd services/${{ matrix.service }}
+          pip install --upgrade pip
+          pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
+      - name: Run pytest
+        run: |
+          cd services/${{ matrix.service }}
+          python -m pytest -o asyncio_mode=auto -q
