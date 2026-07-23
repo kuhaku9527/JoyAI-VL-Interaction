@@ -157,6 +157,13 @@ class MemoryIOMixin:
                 {"prediction": clean_text, "decision": decision}
             )
 
+        # Bound qa_history the same way long_term_history is bounded (upstream PR #25
+        # root cause 1): without this, every session eventually overflows the main
+        # model context window regardless of max_model_len.
+        window = int(self.config.qa_history_window or 0)
+        if window > 0 and len(qa_history) > window:
+            del qa_history[: len(qa_history) - window]
+
     def _execute_pending_qa_archive(self, state: SessionState) -> None:
         if state._pending_qa_archive is None:
             return

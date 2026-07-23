@@ -116,6 +116,12 @@ def parse_args() -> AdapterConfig:
         default=not _env_bool("KEEP_QA_HISTORY", True),
     )
     parser.add_argument(
+        "--qa-history-window",
+        type=int,
+        default=_env_int("QA_HISTORY_WINDOW", 12),
+        help="Max recent Q&A pairs kept in memory_state['qa_history'] (0 = unbounded/legacy).",
+    )
+    parser.add_argument(
         "--no-normalize-output",
         action="store_true",
         default=not _env_bool("NORMALIZE_OUTPUT", True),
@@ -242,6 +248,12 @@ def parse_args() -> AdapterConfig:
         "--long-term-memory-window",
         type=int,
         default=_env_int("LONG_TERM_MEMORY_WINDOW", 40),
+    )
+    parser.add_argument(
+        "--long-term-memory-max-tokens",
+        type=int,
+        default=_env_int("LONG_TERM_MEMORY_MAX_TOKENS", 1800),
+        help="Cumulative token budget for rebuilt long_term_memory text (0 = disable).",
     )
     parser.add_argument(
         "--request-timeout-seconds",
@@ -417,6 +429,7 @@ def parse_args() -> AdapterConfig:
         use_prompt_as_query=not args.no_prompt_as_query,
         force_silence_before_query=args.force_silence_before_query,
         keep_qa_history=not args.no_qa_history,
+        qa_history_window=args.qa_history_window,
         normalize_output=not args.no_normalize_output,
         enable_summarizer=not args.disable_summarizer,
         summarizer_model=args.summarizer_model,
@@ -441,6 +454,7 @@ def parse_args() -> AdapterConfig:
         long_term_repetition_penalty=args.long_term_repetition_penalty,
         long_term_presence_penalty=args.long_term_presence_penalty,
         long_term_memory_window=args.long_term_memory_window,
+        long_term_memory_max_tokens=args.long_term_memory_max_tokens,
         request_timeout_seconds=args.request_timeout_seconds,
         out_dir=out_dir,
         light_out_dir=light_out_dir,
