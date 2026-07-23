@@ -13,7 +13,7 @@ sync-docs.py - keep DELIVERY.md / 00-main-direction.md in sync after code change
     --change "MiniMax Token Plan 接入（半落地）..." ^
     --delivered "services/webui/src/joy_interaction_webui/jarvis_mode.py" ^
     --affected "doc/adr/0003-llm-reply-panel.md" ^
-    --affected "doc/jarvis-mode.md §13.1"
+    --affected "doc/subsystems/jarvis-mode.md §13.1"
 
 不做的事：
   - 不自动改 ADR / 章节正文（每张表/每节措辞差异太大）

@@ -874,7 +874,7 @@ JOYAI_PRIVACY_TIER=voice_cloud   # all_local | voice_cloud | all_cloud
 
 ## 16. Jarvis 模式（2026-07-08）
 
-> 详细产品设计：`doc/jarvis-mode.md`（26KB）
+> 详细产品设计：`doc/subsystems/jarvis-mode.md`（26KB）
 > 技术实现：`doc/asr-streaming.md`
 > 改动代码：
 > - `services/asr/jarvis/kws.py`（KWS 引擎，~80 行）
@@ -904,7 +904,7 @@ JOYAI_PRIVACY_TIER=voice_cloud   # all_local | voice_cloud | all_cloud
 
 1. 装 sherpa-onnx Win 预编译（5 分钟）
 2. 下载 KWS 模型 + 流式 ASR 模型（10 分钟）
-3. ~~训练 "bt 在吗" KWS（30 分钟，录 50 句）~~ → **v4 自训已落地 2026-07-10**（"bt" 2 token，详见 `jarvis-mode.md §2.4`）|
+3. ~~训练 "bt 在吗" KWS（30 分钟，录 50 句）~~ → **v4 自训已落地 2026-07-10**（"bt" 2 token，详见 `doc/subsystems/jarvis-mode.md §2.4`）|
 4. 上传参考音频到 voice_clone_api（5 分钟）
 5. 跑 `generate_event_audio.py` 生成 wake/goodbye（2 分钟）
 6. 复制 error.wav 到 prompts/bt/events/（1 分钟）
@@ -1062,7 +1062,7 @@ sequenceDiagram
 
 - `doc/memory-architecture.md`（v3.1 完整设计）
 - `doc/pm-local.md` §25（P2 决策落地）
-- `doc/jarvis-mode.md`（状态机，记忆层下游）
+- `doc/subsystems/jarvis-mode.md`（状态机，记忆层下游）
 
 ---
 

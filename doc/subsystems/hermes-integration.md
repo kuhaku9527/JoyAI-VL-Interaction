@@ -1,7 +1,7 @@
 # Hermes-agent 集成（严格隔离）
 
 > 状态：**P0 落地 + 闭环（v3.28）**。`prompts/bt-7274.txt` 加 Delegation Protocol 章节、`jarvis_session.py::_make_llm_callback` 调 `BackgroundModelService.handle_foreground_response` 触发 `</delegation>` → shim(8079) → gateway(8642) → MiniMax M2 + web_extract → `background_result_ready` WS 广播。E2E 烟测：BT-7274 4-case 行为符合预期 + 真实查 Cyberpunk 螳螂帮攻略 11s 拿到 MiniMax 返回。
-> 配套文档：`doc/jarvis-mode.md` §6 + `doc/tech-local.md §3.6` + `services/background-agent/hermes_api/`。
+> 配套文档：`doc/subsystems/jarvis-mode.md` §6 + `doc/tech-local.md §3.6` + `services/background-agent/hermes_api/`。
 > **2026-07-23 更新**：[Local Wiki] 已落地（shim 委派前先 recall memory-store）；Hermes 本体/配置位置统一为 **`D:\Workspace\hermes-data`**（前 agent 曾误用 `$LOCALAPPDATA\hermes` 并改坏环境，见 §11）。
 
 ---
@@ -255,7 +255,7 @@ D:\Workspace\hermes-data\
 
 ## 9. 关联文档
 
-- `doc/jarvis-mode.md §6`（决策 token `</delegate>` 触发）
+- `doc/subsystems/jarvis-mode.md §6`（决策 token `</delegate>` 触发）
 - `doc/tech-local.md §3.6`（shim 实现）
 - `services/background-agent/hermes_api/main.py`（代码）
 - 外部：https://hermes-agent.nousresearch.com/docs/

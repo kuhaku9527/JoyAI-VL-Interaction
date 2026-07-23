@@ -9,7 +9,7 @@
 > | 主方向 / 设计原则 / v3.2 路线图 | [../00-main-direction.md](../00-main-direction.md) |
 > | API 化（云端 TTS / LLM / 声音克隆） | [../api-optimization.md](../api-optimization.md) |
 > | MiniMax Token Plan 调研 | [../token-plan-comparison.md](../token-plan-comparison.md) |
-> | Jarvis 唤醒 + 全双工 + EXIT_WORDS | [../jarvis-mode.md](../jarvis-mode.md) |
+> | Jarvis 唤醒 + 全双工 + EXIT_WORDS | [../subsystems/jarvis-mode.md](../subsystems/jarvis-mode.md) |
 > | KWS 唤醒 + 流式 ASR 技术 | [../asr-streaming.md](../asr-streaming.md) |
 > | 屏幕捕获（getDisplayMedia） | [../screen-capture.md](../screen-capture.md) |
 > | Hermes 严格隔离 | [../hermes-integration.md](../hermes-integration.md) |
@@ -24,7 +24,7 @@
 > - §21 推荐供应商 → `api-optimization.md §13 / §13.4`
 > - §23 声音克隆 7 天保活 → `api-optimization.md §14 / §14.5-§14.8`
 > - §19.7-§19.8 决策项 + 不变结论 → `api-optimization.md §17 / §18`
-> - Jarvis 模式 / P2 记忆 / 屏幕捕获 / Hermes 隔离 / voice-clone §9 → 已分别在 `jarvis-mode.md` / `memory-architecture.md` / `screen-capture.md` / `hermes-integration.md` / `voice-clone.md` 中
+> - Jarvis 模式 / P2 记忆 / 屏幕捕获 / Hermes 隔离 / voice-clone §9 → 已分别在 `doc/subsystems/jarvis-mode.md` / `memory-architecture.md` / `screen-capture.md` / `hermes-integration.md` / `voice-clone.md` 中
 
 # Tech技术文档
 
@@ -34,7 +34,7 @@
 
 
 
-> 详细产品设计：`doc/jarvis-mode.md`（26KB）
+> 详细产品设计：`doc/subsystems/jarvis-mode.md`（26KB）
 
 > 技术实现：`doc/asr-streaming.md`
 
@@ -414,7 +414,7 @@ sequenceDiagram
 
 - `doc/pm-local.md` §25（P2 决策落地）
 
-- `doc/jarvis-mode.md`（状态机，记忆层下游）
+- `doc/subsystems/jarvis-mode.md`（状态机，记忆层下游）
 
 
 
@@ -1038,7 +1038,7 @@ async def solve(req: SolveRequest) -> SolveResponse:
 
 
 
-> 详细产品设计：`doc/jarvis-mode.md`（26KB）
+> 详细产品设计：`doc/subsystems/jarvis-mode.md`（26KB）
 
 > 技术实现：`doc/asr-streaming.md`
 
@@ -1184,7 +1184,7 @@ KWS_LISTENING → WAKE_DETECTED → DIALOG_ACTIVE ⇄ TTS_PAUSED
 
 
 
-- `doc/jarvis-mode.md`（26KB，产品设计）
+- `doc/subsystems/jarvis-mode.md`（26KB，产品设计）
 
 - `services/asr/jarvis/kws.py`（KWS 引擎）
 

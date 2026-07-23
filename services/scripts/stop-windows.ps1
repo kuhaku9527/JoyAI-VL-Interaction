@@ -43,7 +43,7 @@ $PortMap = [ordered]@{
     "webinfer"          = 8070
     "background-agent"  = 8079
     "webui"             = 8099
-    # voice-ui removed 2026-07-12: see jarvis-mode.md v3.4
+    # voice-ui removed 2026-07-12: see doc/subsystems/jarvis-mode.md v3.4
     "hermes-gateway"    = 8642
     "voice-clone"       = 8985
     "cosyvoice"         = 8991
