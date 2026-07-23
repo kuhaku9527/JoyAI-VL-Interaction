@@ -208,7 +208,7 @@ def _build_prompt(request: SolveRequest, max_subagents: int, *, local_wiki: str 
             f"- Frame {index}: timestamp={timestamp} kind={timestamp_kind} pts={pts}"
         )
     frame_context = "\n".join(frame_lines) if frame_lines else "- No recent frames were provided."
-    return f"""You are the background solver for a real-time video assistant.
+    prompt = f"""You are the background solver for a real-time video assistant.
 
 Use Chinese by default for user-facing prose unless the user explicitly asks otherwise.
 Use live web search when current or external information is useful.
@@ -233,7 +233,7 @@ Recent frame metadata:
     if local_wiki:
         prompt += (
             f"\n[Local Wiki]\n{local_wiki}\n"
-            "(优先用本地资料，无关时才用 web search)\n"
+            "(优先用本地资料, 无关时才用 web search)\n"
         )
     return prompt
 
