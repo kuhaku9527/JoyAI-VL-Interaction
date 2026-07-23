@@ -8,7 +8,7 @@
 | architecture.md / .zh-CN.md    | v1 设计                           | 同上                                       |
 | getting_started.md / .zh-CN.md | v1 入门                           | 见仓库根 `../../README.md`                |
 | rtsp_streaming.md / .zh-CN.md  | 未实现                            | `../../services/webui/src/joy_interaction_webui/rtsp_track.py` 占位，禁止据此实施 |
-| troubleshooting.md / .zh-CN.md | 早期问题库                        | 问题查 `../jarvis-mode.md` / `../specs/2026-07-13-current-state.md` |
+| troubleshooting.md / .zh-CN.md | 早期问题库                        | 问题查 `doc/subsystems/jarvis-mode.md` / `../specs/2026-07-13-current-state.md` |
 
 **规则**：
 1. 本目录不进新人入门路径。

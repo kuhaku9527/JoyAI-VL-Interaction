@@ -2,7 +2,7 @@
 
 > **历史交付快照**：本文主体记录 2026-07-06 的初版 11 进程/CosyVoice 方案，不是当前启动规范。
 > **当前链路（2026-07-12）**：`7060` 本地社区量化 LLM/VLM + `8070` webinfer + `8099` WebUI + `8985` MiniMax TTS/声音克隆；KWS/ASR 在 WebUI 内本地运行。
-> 当前操作以 `doc/00-main-direction.md`、`doc/architecture-local.md`、`doc/jarvis-mode.md` 和 `start-joyai.ps1` 为准。
+> 当前操作以 `doc/00-main-direction.md`、`doc/architecture-local.md`、`doc/subsystems/jarvis-mode.md` 和 `start-joyai.ps1` 为准。
 
 ---
 
@@ -193,11 +193,11 @@ cd services
 | 2026-07-10 | v1.4 | KWS v4 自训落地（t 唤醒词，FAR 2% / recall 49%）；jarvis 状态机代码集成 | Codex |
 | 2026-07-12 | v3.3 | **MiniMax Token Plan 接入（半落地）**：声音克隆走 speech-2.8-hd + voice_id minimax_man_33333 跑通（链路测试 wav 见 services/.logs/bt_persona_roundtrip.wav 类产物）；webinfer BT-7274 persona 视觉链路验证（llm_inference=948ms，prompt_tokens=511 含 character_profile）；jarvis_mode.py 结构性修复（class 范围被 0-indent helper 切断 → helper 模块级化 + 字段归位，rom_env AttributeError 消除）。**未消除**：
 un-windows.env 凭证配置未沉淀 / v3.2 #2 收尾未做 / v3.2 #4 全链路 e2e 仍是 ⚠️ 状态 | Codex |
-| 2026-07-12 | v3.4 | **放弃 voice-ui 薄壳（错误方向）**；直接改 webui 索引：删除重复 `<html><head><body>` 块 + 重复 `llmReplySection` + 重复状态徽章（index.html 12,679 → 8,985 行）；新增 `POST /api/tts/synthesize` 代理 voice_clone_api 并把 PCM16 包成 WAV；曾新增 `id="llmTestSendBtn"` 文本测试按钮（v3.9 已删除并入纸飞机）+ `id="btTtsPlayer"` 自动播放 audio；WS `llm_reply` 触发 TTS 链路；17/17 测试绿；详见 `doc/jarvis-mode.md` §14 / `doc/00-main-direction.md` §3 / §4.0 | Codex |
+| 2026-07-12 | v3.4 | **放弃 voice-ui 薄壳（错误方向）**；直接改 webui 索引：删除重复 `<html><head><body>` 块 + 重复 `llmReplySection` + 重复状态徽章（index.html 12,679 → 8,985 行）；新增 `POST /api/tts/synthesize` 代理 voice_clone_api 并把 PCM16 包成 WAV；曾新增 `id="llmTestSendBtn"` 文本测试按钮（v3.9 已删除并入纸飞机）+ `id="btTtsPlayer"` 自动播放 audio；WS `llm_reply` 触发 TTS 链路；17/17 测试绿；详见 `doc/subsystems/jarvis-mode.md` §14 / `doc/00-main-direction.md` §3 / §4.0 | Codex |
 ---
 
-| 2026-07-13 | v3.24 | Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路 （受影响：`doc\jarvis-mode.md`; `doc\architecture-local.md`; `doc\adr\0004-service-lifecycle.md`；改动文件：-） | Codex |
-| 2026-07-13 | v3.25 | **memory-store v0.1 skeleton（落地 v3.2 #3 P2 记忆持久化骨架）**：新增 `services/memory-store/`（SqliteBackend + FTS5 BM25、Psql/Obsidian 占位 `NotImplementedError`），端口 8996，端点 `/v1/blocks/push` `POST`、`/v1/blocks/recall` `POST`、`/health` `GET`、`/v1/backends` `GET`；schema 留 score / last_hit_at / hit_count 字段（runtime 默认，recency decay 不在 v0.1）；16/16 测试通过；不影响 `live_adapter.py`（ADR 0005 D 锁定 v0.1 范围）。**前端 vlm-history CSS 修复**：`services/webui/.../static/index.html` 1563 行附近覆盖 `.result-text.vlm-history-shell { min-height:0 }` + `:has(#vlmHistoryEmpty:not([style*='display: none']))` 240px empty-state 兜底 + `.vlm-history { max-height: min(60dvh, 560px) }`，解决空 vlm-history 残留 120px strip 与「对话可见但框不长大」。**生命周期扩**：`run-windows.ps1` 加 `$P.MemoryStore` + `Start-MemoryStore`（env opt-in `JOYAI_ENABLE_MEMORY_STORE=1` 默认 false，避免 v3.x 启动回归）；`stop-joyai.ps1` PortMap 加 8996。受影响：`doc/jarvis-mode.md` §15、`doc/00-main-direction.md` §4 + §4.0、`doc/specs/memory-store-skeleton-spec.md` 落地、`doc/adr/0005-memory-store-start.md` 实施。改动文件：`services/memory-store/**`、`services/scripts/run-windows.ps1`、`stop-joyai.ps1`、`services/webui/.../static/index.html` | Codex |
+| 2026-07-13 | v3.24 | Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路 （受影响：`doc/subsystems/jarvis-mode.md`; `doc\architecture-local.md`; `doc\adr\0004-service-lifecycle.md`；改动文件：-） | Codex |
+| 2026-07-13 | v3.25 | **memory-store v0.1 skeleton（落地 v3.2 #3 P2 记忆持久化骨架）**：新增 `services/memory-store/`（SqliteBackend + FTS5 BM25、Psql/Obsidian 占位 `NotImplementedError`），端口 8996，端点 `/v1/blocks/push` `POST`、`/v1/blocks/recall` `POST`、`/health` `GET`、`/v1/backends` `GET`；schema 留 score / last_hit_at / hit_count 字段（runtime 默认，recency decay 不在 v0.1）；16/16 测试通过；不影响 `live_adapter.py`（ADR 0005 D 锁定 v0.1 范围）。**前端 vlm-history CSS 修复**：`services/webui/.../static/index.html` 1563 行附近覆盖 `.result-text.vlm-history-shell { min-height:0 }` + `:has(#vlmHistoryEmpty:not([style*='display: none']))` 240px empty-state 兜底 + `.vlm-history { max-height: min(60dvh, 560px) }`，解决空 vlm-history 残留 120px strip 与「对话可见但框不长大」。**生命周期扩**：`run-windows.ps1` 加 `$P.MemoryStore` + `Start-MemoryStore`（env opt-in `JOYAI_ENABLE_MEMORY_STORE=1` 默认 false，避免 v3.x 启动回归）；`stop-joyai.ps1` PortMap 加 8996。受影响：`doc/subsystems/jarvis-mode.md` §15、`doc/00-main-direction.md` §4 + §4.0、`doc/specs/memory-store-skeleton-spec.md` 落地、`doc/adr/0005-memory-store-start.md` 实施。改动文件：`services/memory-store/**`、`services/scripts/run-windows.ps1`、`stop-joyai.ps1`、`services/webui/.../static/index.html` | Codex |
 
 | 2026-07-13 | v3.27 | **Screen Capture 接入 + hermes-agent 端到端**：(a) `static/screen_capture.js` 去 ES module 改全局 + ImageCapture fallback、`static/index.html` 加 Screen Capture tab + screenControls、`server.py` `websocket_handler` 加 `elif t == "frame"`（base64 → PIL → `vlm_service.process_frame` → `get_session_callback` 广播 vlm_response）；79/79 webui 测试通过、模拟帧 ~5.5s 拿到 llama-server 回复。(b) hermes-gateway(8642) + background-agent shim(8079) 接入：补 `$env:LOCALAPPDATA\hermes\bin\hermes.cmd` wrapper（venv python → `python -m hermes_cli.main`），`Start-Hermes` 用 `API_SERVER_HOST/PORT/KEY` env；`background-agent.env` + `scripts/run-windows.env` 同步 `HERMES_API_KEY`；gateway `/health` 200、shim `/health` 透出 `hermes_gateway:200`，smoke `/v1/solve` 返回中文"烟测通过。"(prompt_tokens=24157/5.9s)。受影响：`doc/00-main-direction.md` §4 + §4.0、`doc/screen-capture.md` §0+§11、`doc/hermes-integration.md` §0+§10；改动文件：`services/webui/src/joy_interaction_webui/static/{screen_capture.js,index.html}`、`services/webui/src/joy_interaction_webui/server.py`、`services/background-agent/background-agent.env`、`services/scripts/run-windows.env` | Codex |
 
@@ -410,7 +410,7 @@ un-windows.env 凭证配置未沉淀 / v3.2 #2 收尾未做 / v3.2 #4 全链路 
 
 ## 14. Jarvis 模式（v3.0 重大更新，2026-07-08）
 
-> 详细产品设计：`doc/jarvis-mode.md`（26KB）
+> 详细产品设计：`doc/subsystems/jarvis-mode.md`（26KB）
 > 完整变更：`doc/pm-local.md §23` + `doc/tech-local.md §16` + `doc/asr-streaming.md`（重写）
 
 ### 14.1 核心变化
@@ -555,7 +555,7 @@ payload = {
 
 - `doc/screen-capture.md` 新建（9.3KB）
 - `doc/hermes-integration.md` 新建（10.5KB）
-- 现有文档清理与整合：合并到 `jarvis-mode.md` / `tech-local.md` / `pm-local.md`
+- 现有文档清理与整合：合并到 `doc/subsystems/jarvis-mode.md` / `tech-local.md` / `pm-local.md`
 
 ### 16.4 决策项（已拍板）
 

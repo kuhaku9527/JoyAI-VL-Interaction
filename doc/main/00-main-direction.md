@@ -26,7 +26,7 @@
 | 1 | 主方向 | `00-main-direction.md`（本文档） / `api-optimization.md` |
 | 2 | 调研 | `token-plan-comparison.md` / `lightweight-replacement.md` |
 | 3 | 本地化部署（**降级方案**） | `pm-local.md` / `tech-local.md` / `architecture-local.md` |
-| 4 | 子系统 | `jarvis-mode.md` / `asr-streaming.md` / `screen-capture.md` / `hermes-integration.md` / `voice-clone.md` / `memory-architecture.md` |
+| 4 | 子系统 | `doc/subsystems/jarvis-mode.md` / `asr-streaming.md` / `screen-capture.md` / `hermes-integration.md` / `voice-clone.md` / `memory-architecture.md` |
 | 5 | 交付与历史 | `../DELIVERY.md` / `deprecated/`（上游残留） |
 | 6 | 用户向使用指南 | `gaming-mode.md` |
 
@@ -44,14 +44,14 @@
 | **Hermes 严格隔离** | shim 只做协议转换；不传 system / 不传 BT-7274 上下文 / 不读 hermes 内部配置 / shim 不维护 provider（用户用 `hermes model` 切换） | `hermes-integration.md` |
 | **记忆可插拔** | 后端可换 psql / sqlite-vec；命名空间 `lore:*` `wiki:*` 区分游戏预置 vs 实时写入 | `memory-architecture.md` |
 | **屏幕捕获** | `getDisplayMedia` 替代 RTSP（`displaySurface:"window"`、1fps、无音频） | `screen-capture.md` |
-| **Jarvis 模式** | 唤醒词 **"bt"**（自训 KWS v4 已上线）+ EXIT_WORDS `{行, 明白, 了解, ok, 好的}` + 全双工 + 事件预录音频 | `jarvis-mode.md` |
+| **Jarvis 模式** | 唤醒词 **"bt"**（自训 KWS v4 已上线）+ EXIT_WORDS `{行, 明白, 了解, ok, 好的}` + 全双工 + 事件预录音频 | `doc/subsystems/jarvis-mode.md` |
 | **错误日志规范** | 报错写日志，**不** TTS 读出；每条日志带服务名 + 时间戳 | `tech-local.md` |
 | **服务时间戳日志** | 每次服务启动新建时间戳日志文件（PID + 时间戳文件名） | `tech-local.md` |
-| **预录音频** | wake.wav / goodbye.wav / error.wav 集中在 `prompts/bt/events/` | `jarvis-mode.md` |
-| **退出词 = 肯定词** | 不需要额外说"拜拜/再见"；用"行/明白/了解/ok/好的"作为对话结束信号 | `jarvis-mode.md` |
-| **LLM 回复可见** | webui 不再另起右上角回复面板；中间 `VLM Output Info` / `id="resultTextContent"` 是单一对话面，`Pilot` / `BT-7274` 对话进入 `vlmHistory` 渲染，避免“DOM 有内容但外层 display:none” | `doc/jarvis-mode.md` §14 |
-| **webui 文本直达 LLM（无需视频）** | webui 加 `id="llmTestSendBtn"` 按钮 + `id="btTtsPlayer"` audio 元素；点击 → POST `/api/llm/message`（同当前 WebSocket `sessionId`）→ WS `llm_reply` → 写入 `vlmHistory/resultTextContent` → 前端 fetch `/api/tts/synthesize` 播放 WAV；文本测试跳过状态机内置 TTS，避免 MiniMax 双合成 | `doc/jarvis-mode.md` §14 |
-| **语音对话可观测** | Jarvis ASR 定稿后广播 `pilot_utterance` WS 事件，前端先显示 Pilot 文本，再显示 LLM 回复；后续 KWS→ASR→LLM→TTS 测试可直接从中间框观察链路 | `doc/jarvis-mode.md` §14 |
+| **预录音频** | wake.wav / goodbye.wav / error.wav 集中在 `prompts/bt/events/` | `doc/subsystems/jarvis-mode.md` |
+| **退出词 = 肯定词** | 不需要额外说"拜拜/再见"；用"行/明白/了解/ok/好的"作为对话结束信号 | `doc/subsystems/jarvis-mode.md` |
+| **LLM 回复可见** | webui 不再另起右上角回复面板；中间 `VLM Output Info` / `id="resultTextContent"` 是单一对话面，`Pilot` / `BT-7274` 对话进入 `vlmHistory` 渲染，避免“DOM 有内容但外层 display:none” | `doc/subsystems/jarvis-mode.md` §14 |
+| **webui 文本直达 LLM（无需视频）** | webui 加 `id="llmTestSendBtn"` 按钮 + `id="btTtsPlayer"` audio 元素；点击 → POST `/api/llm/message`（同当前 WebSocket `sessionId`）→ WS `llm_reply` → 写入 `vlmHistory/resultTextContent` → 前端 fetch `/api/tts/synthesize` 播放 WAV；文本测试跳过状态机内置 TTS，避免 MiniMax 双合成 | `doc/subsystems/jarvis-mode.md` §14 |
+| **语音对话可观测** | Jarvis ASR 定稿后广播 `pilot_utterance` WS 事件，前端先显示 Pilot 文本，再显示 LLM 回复；后续 KWS→ASR→LLM→TTS 测试可直接从中间框观察链路 | `doc/subsystems/jarvis-mode.md` §14 |
 
 ---
 
@@ -64,22 +64,22 @@
 | 1 | **API 化**（TTS / 声音克隆 / LLM 云端化；ASR 已固定本地） | **P0** | 设计完整 | 大 | `api-optimization.md` |
 | 2 | **MiniMax Token Plan 接入** | **P0** | 半落地（凭证 + 模型就绪） | 中 | `token-plan-comparison.md` + `voice-clone.md` §13 |
 | 3 | **P2 记忆持久化** | P1 | **落地（v0.2 hooks，2026-07-13 v3.26）** → 见 §4.0 | 中 | `memory-architecture.md` + `specs/memory-store-skeleton-spec.md` |
-| 4 | **Jarvis 状态机主循环** | P1 | 设计完整 | 大 | `jarvis-mode.md` |
-| ~~5~~ | ~~**KWS 训练**（`"bt 在吗"`）~~ | ~~P2~~ | ~~预训练实测 0/7 命中，待自训~~ → **v4 已落地 2026-07-10** | ~~中~~ | `jarvis-mode.md §2.4`（自训 FAR 2% / recall 49%）|
+| 4 | **Jarvis 状态机主循环** | P1 | 设计完整 | 大 | `doc/subsystems/jarvis-mode.md` |
+| ~~5~~ | ~~**KWS 训练**（`"bt 在吗"`）~~ | ~~P2~~ | ~~预训练实测 0/7 命中，待自训~~ → **v4 已落地 2026-07-10** | ~~中~~ | `doc/subsystems/jarvis-mode.md §2.4`（自训 FAR 2% / recall 49%）|
 | 6 | **Codex fallback**（hermes 不可用时） | P2 | 文档完整 | 小 | `hermes-integration.md` |
 
 ### §4.0 已落地的 v3.2 项（2026-07-10 更新）
 
-- **#5 KWS 自训**（2026-07-10 完成）：唤醒词 `bt`（自训 v4 model），部署 `D:\AI\models\sherpa-onnx\models\kws\bt-zai-ma\`，FAR 2% / recall 49%（Jarvis 包装层）。详见 `jarvis-mode.md §2.4`。
+- **#5 KWS 自训**（2026-07-10 完成）：唤醒词 `bt`（自训 v4 model），部署 `D:\AI\models\sherpa-onnx\models\kws\bt-zai-ma\`，FAR 2% / recall 49%（Jarvis 包装层）。详见 `doc/subsystems/jarvis-mode.md §2.4`。
 - **#2 MiniMax Token Plan 接入**（2026-07-12 半落地）：声音克隆走云端 `speech-2.8-hd`，voice_id `minimax_man_33333` 已建（MiniMax Token Plan 凭证 + GroupId `<your_minimax_group_id>`），BT-7274 persona 链路测试通过（`vllm_inference=948ms`，prompt_tokens=511 含 character_profile）。**未消除**：`run-windows.env` 凭证沉淀 + 全链路 e2e 收尾待办。详见 `doc/voice-clone.md` §13。
-- **#4 webui 文本直达链路（v3.7 已落地）+ jarvis 状态机主循环（部分）**（2026-07-12）：放弃 services/voice-ui 薄壳思路（错误方向）；webui 直接扩：清理重复 html/head/body + 重复状态徽章 + 右上角冗余 `llmReplySection`，统一使用中间 `VLM Output Info` / `resultTextContent` 作为对话面。v3.7 起 `Pilot` / `BT-7274` 对话进入 `vlmHistory` 渲染，语音 ASR 定稿通过 `pilot_utterance` 可见；文本测试模式避免 MiniMax 双 TTS 合成。DevTools 实测：点击 LLM → /api/llm/message 200 → 中间框显示 Pilot + BT-7274 → /api/tts/synthesize 200 → audio blob 播放完成。jarvis 完整 KWS→ASR→LLM→TTS→EXIT 全链路 e2e 仍待联调（jarvis-mode.md §13 自标 ⚠️）。详见 doc/jarvis-mode.md §14。
+- **#4 webui 文本直达链路（v3.7 已落地）+ jarvis 状态机主循环（部分）**（2026-07-12）：放弃 services/voice-ui 薄壳思路（错误方向）；webui 直接扩：清理重复 html/head/body + 重复状态徽章 + 右上角冗余 `llmReplySection`，统一使用中间 `VLM Output Info` / `resultTextContent` 作为对话面。v3.7 起 `Pilot` / `BT-7274` 对话进入 `vlmHistory` 渲染，语音 ASR 定稿通过 `pilot_utterance` 可见；文本测试模式避免 MiniMax 双 TTS 合成。DevTools 实测：点击 LLM → /api/llm/message 200 → 中间框显示 Pilot + BT-7274 → /api/tts/synthesize 200 → audio blob 播放完成。jarvis 完整 KWS→ASR→LLM→TTS→EXIT 全链路 e2e 仍待联调（doc/subsystems/jarvis-mode.md §13 自标 ⚠️）。详见 doc/subsystems/jarvis-mode.md §14。
 - #1 API 化（主路径云端化）/ #3 记忆持久化 / #4 jarvis 全链路 e2e 仍待落地。
 
 - **v3.24**（2026-07-13）：Jarvis短期上下文、MiniMax-only与7060/8070/8099/8985统一启动链路（详见 DELIVERY.md §7 v3.24）。
 - **#3 memory-store v0.1 skeleton（2026-07-13 v3.25）**：`services/memory-store/` 落地 SqliteBackend + FTS5 BM25（Psql/Obsidian `NotImplementedError` 占位），端口 8996，端点 `/v1/blocks/push|recall` + `/health` + `/v1/backends`；16/16 测试通过；不影响 `live_adapter.py`。详见 `doc/specs/memory-store-skeleton-spec.md` + `doc/adr/0005-memory-store-start.md`。后续 v0.2 才把钩子接到 webinfer `live_adapter.py`。
 - **#3 memory-store v0.2 hooks（2026-07-13 v3.26）**：services/webinfer/live_adapter.py 落地 5 处钩子——get_session fire-and-forget warmup、_session_cleanup_loop 与 handle_reset end-of-session push（pushed 字段回执）、_build_main_http_messages 经 _build_memory_prompt 注入 [Local Wiki] / [本地知识库] 上下文、handle_health 暴露 memory_store 健康字段、on_cleanup 调用 stop_background_tasks 关闭 httpx pool；新增 memory_store_client.py + system_prompts.compose_system_prompt_with_memory；27/27 webinfer 测试通过（含 _memory_warmup / _memory_recall / _memory_push / _build_memory_prompt）。--no-memory-store 可关闭，fail-soft 永不阻塞主请求路径。详见 memory-architecture.md §6 + specs/memory-store-skeleton-spec.md D-9。
 - **#1 Screen Capture + #6 hermes-agent 接入（2026-07-13 v3.27）**：(a) `static/screen_capture.js` 去 ES module 改全局 (`window.startScreenCapture / stopScreenCapture / isScreenCapturing`)，新增 fallback 走 `<video>` + drawImage 应对 ImageCapture 不可用；`static/index.html` Video Source 加 Screen Capture tab + `screenControls` div，start()/stop() 加 `inputSource === 'screen'` 分支；`server.py` `websocket_handler` 加 `elif t == "frame"`（base64 → PIL → `vlm_service.process_frame` → `get_session_callback` 广播 vlm_response）；79/79 webui 测试通过，模拟帧端到端 5.5s 拿到 llama-server 回复。(b) hermes-gateway(8642) + background-agent shim(8079) 接入链路打通：补 `$env:LOCALAPPDATA\hermes\bin\hermes.cmd` wrapper（venv python → `python -m hermes_cli.main`），`Start-Hermes` 用 `API_SERVER_HOST/PORT/KEY` env，`background-agent.env` + `scripts/run-windows.env` 同步 `HERMES_API_KEY`；/health（gateway 200/shim 200） + /v1/solve smoke test 返回中文"烟测通过。"(prompt_tokens=24157/5.9s)；详见 `screen-capture.md` §11 + `hermes-integration.md` §11。
-- **#1 delegation 触发闭环（2026-07-13 v3.28）**：`prompts/bt-7274.txt` 加 **Delegation Protocol (P-D)** 章节，明示 `</delegation>` 用法（外部查才触发、Tag 必须结尾、background 短句、问题要 self-contained）+ 3 个中英示例；`jarvis_session.py::_make_llm_callback` 在广播 `llm_reply` 之后顺手调 `BackgroundModelService.handle_foreground_response(text, metrics)`，将 `</delegation>` 拆出来 POST `/v1/solve` → shim → hermes → `background_result_ready` WS 广播。LLM 4-case 烟测：chitchat/已知识 → 不触发，`RTX 5060 Ti 显存基准` / `今天天气` / `Cyberpunk 螳螂帮 boss` → 触发并将英文问题自动改写为中文 self-contained 任务。端到端 e2e：`Scanning external sources.</delegation> 查 Cyberpunk 2077 螳螂帮 boss` → 11s 后 `background_result_ready` 拿到 MiniMax M2 + web_extract 整理后的攻略（含 Royce boss、掉落、支线）。79/79 webui 测试通过。详见 `jarvis-mode.md` §13.2 + `hermes-integration.md` §10。
+- **#1 delegation 触发闭环（2026-07-13 v3.28）**：`prompts/bt-7274.txt` 加 **Delegation Protocol (P-D)** 章节，明示 `</delegation>` 用法（外部查才触发、Tag 必须结尾、background 短句、问题要 self-contained）+ 3 个中英示例；`jarvis_session.py::_make_llm_callback` 在广播 `llm_reply` 之后顺手调 `BackgroundModelService.handle_foreground_response(text, metrics)`，将 `</delegation>` 拆出来 POST `/v1/solve` → shim → hermes → `background_result_ready` WS 广播。LLM 4-case 烟测：chitchat/已知识 → 不触发，`RTX 5060 Ti 显存基准` / `今天天气` / `Cyberpunk 螳螂帮 boss` → 触发并将英文问题自动改写为中文 self-contained 任务。端到端 e2e：`Scanning external sources.</delegation> 查 Cyberpunk 2077 螳螂帮 boss` → 11s 后 `background_result_ready` 拿到 MiniMax M2 + web_extract 整理后的攻略（含 Royce boss、掉落、支线）。79/79 webui 测试通过。详见 `doc/subsystems/jarvis-mode.md` §13.2 + `hermes-integration.md` §10。
 ### §4.1 优先级说明
 
 - **P0（必须）**：v3.2 的核心交付物，决定项目是否进入"产品形态"

@@ -51,9 +51,9 @@
 
 | ADR 决策 | 状态 | 证据 |
 |---|---|---|
-| **A. 保证可见**（CSS `display:block` + 8px 圆角徽章 + 状态变更高亮 1s） | ✅ 已落地 | `services/webui/src/joy_interaction_webui/static/index.html` `llm-reply-section` + `.service-badge`（jarvis-mode.md §13.1 "WebUI 加 LLM/TTS/KWS 服务状态徽章 + LLM 回复面板"对应） |
+| **A. 保证可见**（CSS `display:block` + 8px 圆角徽章 + 状态变更高亮 1s） | ✅ 已落地 | `services/webui/src/joy_interaction_webui/static/index.html` `llm-reply-section` + `.service-badge`（doc/subsystems/jarvis-mode.md §13.1 "WebUI 加 LLM/TTS/KWS 服务状态徽章 + LLM 回复面板"对应） |
 | **B. LLM 服务元数据**（`/api/llm/status?session_id=` 返回 model / ttfb_ms / connected） | ✅ 已落地 | `services/webui/src/joy_interaction_webui/server.py` `llm_status` handler + `setup_jarvis_routes` 注册 `/api/llm/status` |
-| **C. LLM 流式增量**（`JARVIS_LLM_STREAMING=true` → SSE → 逐 token 推 `llm_reply_delta`） | ⚠️ 部分落地：env flag + server.py 框架已就位；test_llm_stream_broadcast.py 尚未补全 | jarvis-mode.md 自标 "⚠️ 待全链路 e2e（流式 ASR export 修复 P4 子代理）" 仍是真 |
+| **C. LLM 流式增量**（`JARVIS_LLM_STREAMING=true` → SSE → 逐 token 推 `llm_reply_delta`） | ⚠️ 部分落地：env flag + server.py 框架已就位；test_llm_stream_broadcast.py 尚未补全 | doc/subsystems/jarvis-mode.md 自标 "⚠️ 待全链路 e2e（流式 ASR export 修复 P4 子代理）" 仍是真 |
 
 ## 后果
 

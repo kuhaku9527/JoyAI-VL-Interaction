@@ -2,7 +2,7 @@
 
 > 状态：**P1 核心已落地**。KWS v4 + 状态机骨架已部署，待全链路 e2e 验证。
 > - **2026-07-10**：唤醒词 "bt"（自训 KWS v4），JarvisStateMachine 已集成 KWS + 流式 ASR 代码改动完成。
-> 配套文档：`doc/jarvis-mode.md`（产品设计）+ `doc/asr-streaming.md`（技术实现）。
+> 配套文档：`doc/subsystems/jarvis-mode.md`（产品设计）+ `doc/asr-streaming.md`（技术实现）。
 
 ---
 
@@ -201,7 +201,7 @@ python -m services.asr.jarvis.kws test_wake.wav
 
 ## 7. 关联文档
 
-- `doc/jarvis-mode.md`（产品设计）**必读**
+- `doc/subsystems/jarvis-mode.md`（产品设计）**必读**
 - `doc/asr-streaming.md`（技术实现）
 - `doc/voice-clone.md`（声音克隆）
 - `doc/api-optimization.md`（API 选型）
