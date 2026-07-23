@@ -10,6 +10,15 @@ htmlcov/
 build/
 dist/
 
+# Workspace-local cache (workspace-isolation convention: agent/tool caches only
+# inside the working tree, never spill to D:/Cache, D:/tmp, etc.).
+.cache/
+
+# Agent-internal state (memory/skills/tmp under .workbuddy) and runtime PID dirs
+# — local-only, never belong in VCS.
+.workbuddy/
+services/.pids/
+
 # Local virtual environments
 .venv/
 venv/
