@@ -7,6 +7,7 @@ real flow), which makes the standard WAIT_ASR_CONFIRM pattern match fail. We
 recover by running the captured PCM through a fresh-stream KWS probe before
 giving up.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,7 @@ for _p in (str(REPO), str(WEBUI_SRC)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from joy_interaction_webui.jarvis_mode import JarvisState, JarvisStateMachine
+from joy_interaction_webui.jarvis_mode import JarvisState, JarvisStateMachine  # noqa: E402
 
 
 class FakeKWS:

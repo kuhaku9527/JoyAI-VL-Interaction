@@ -1,4 +1,3 @@
-
 """TTS bridge for streaming VLM text responses as browser-playable PCM audio."""
 
 import asyncio

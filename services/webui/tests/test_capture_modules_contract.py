@@ -14,11 +14,11 @@ This test pins the public API surface. If a future refactor drops
 one of these functions, the test fails and the sidebar handler for
 that source breaks visibly.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
-
 
 WEBUI_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static"
@@ -39,7 +39,9 @@ def test_capture_webcam_exposes_public_api():
     ):
         assert fn in src, "missing " + fn + " in capture_webcam.js"
     assert "window.localStream" not in src, "capture_webcam.js must not export localStream"
-    assert "function startWebcam(" not in src, "capture_webcam.js must not define legacy startWebcam"
+    assert "function startWebcam(" not in src, (
+        "capture_webcam.js must not define legacy startWebcam"
+    )
 
 
 def test_capture_rtsp_exposes_public_api():
@@ -84,7 +86,7 @@ def test_modules_do_not_share_globals():
 def test_index_html_loads_all_three_capture_modules():
     html = _read("index.html")
     for name in ("capture_webcam.js", "capture_rtsp.js", "screen_capture.js"):
-        needle = chr(34)  # double quote
+        chr(34)  # double quote
         if chr(34) + name + chr(34) not in html and ("./" + name) not in html:
             raise AssertionError("index.html must <script src=...> load " + name)
 

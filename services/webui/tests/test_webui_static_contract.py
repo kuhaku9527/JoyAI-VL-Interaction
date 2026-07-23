@@ -1,9 +1,9 @@
 """Static regression checks for the browser-only BT send path."""
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
-
 
 WEBUI_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static" / "index.html"
@@ -14,7 +14,9 @@ def _index_html() -> str:
 
 
 def _function_body(html: str, name: str) -> str:
-    match = re.search(rf"(?:async\s+)?function {name}\([^)]*\) \{{(?P<body>.*?)\n        \}}", html, re.S)
+    match = re.search(
+        rf"(?:async\s+)?function {name}\([^)]*\) \{{(?P<body>.*?)\n        \}}", html, re.S
+    )
     assert match, f"missing function {name}"
     return match.group("body")
 
@@ -142,11 +144,14 @@ def test_no_legacy_floating_llm_reply_panel():
 
 
 def test_browser_asr_is_warmed_on_startup():
-    server_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "server.py").read_text(encoding="utf-8")
+    server_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "server.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "async def warm_browser_asr()" in server_py
     assert "await asyncio.to_thread(_get_inproc_asr)" in server_py
     assert "browser_asr_warmup_task" in server_py
+
 
 def test_bt_listening_shows_mic_level_and_device():
     html = _index_html()
@@ -184,14 +189,16 @@ def test_bt_mic_gain_change_handler_is_not_nested_in_listen_click():
     gain_index = html.index("const btMicGainSelectEl = document.getElementById('btMicGainSelect');")
     click_index = html.index("btListenBtn.addEventListener('click'")
     assert gain_index < click_index
-    click_to_send = html[click_index:html.index("promptSendBtn.addEventListener('click'", click_index)]
+    click_to_send = html[
+        click_index : html.index("promptSendBtn.addEventListener('click'", click_index)
+    ]
     assert "btMicGainSelectEl.addEventListener('change'" not in click_to_send
-
 
 
 # =====================================================================
 # v3.35 paper-plane multimodal: text + current video frame to LLM
 # =====================================================================
+
 
 def test_paper_plane_has_capture_frame_helper():
     """v3.35: index.html exposes captureBtFrameB64() helper that snapshots
@@ -225,17 +232,19 @@ def test_paper_plane_sends_image_b64_to_llm_endpoint():
     assert "text: text" in body
 
 
-
 def test_server_llm_message_accepts_image_b64():
     """v3.35: /api/llm/message reads optional image_b64 and forwards it to
     the jarvis state machine. Large payloads (>= 3MB base64) are dropped
     so the request stays bounded.
     """
-    server_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "server.py").read_text(encoding="utf-8")
+    server_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "server.py").read_text(
+        encoding="utf-8"
+    )
     assert "async def llm_message(request):" in server_py
 
     # Find the llm_message function block (up to next top-level def).
     import re
+
     m = re.search(
         r"async def llm_message\(request\):(?P<body>.*?)(?=^def |^async def )",
         server_py,
@@ -254,7 +263,9 @@ def test_jarvis_send_to_llm_supports_multimodal():
     """v3.35: _send_to_llm accepts image_b64 and shapes the user message as
     a multimodal content array (text + image_url) when provided.
     """
-    jarvis_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "jarvis_mode.py").read_text(encoding="utf-8")
+    jarvis_py = (WEBUI_ROOT / "src" / "joy_interaction_webui" / "jarvis_mode.py").read_text(
+        encoding="utf-8"
+    )
 
     idx = jarvis_py.index("async def _send_to_llm(")
     next_def = jarvis_py.index("async def _stream_tts", idx)
@@ -265,4 +276,19 @@ def test_jarvis_send_to_llm_supports_multimodal():
     assert "data:image/jpeg;base64," in body
     assert chr(34) + "type" + chr(34) + ": " + chr(34) + "text" + chr(34) in body
     # text-only fall-back branch is preserved (else clause)
-    assert "messages.append({" + chr(34) + "role" + chr(34) + ": " + chr(34) + "user" + chr(34) + ", " + chr(34) + "content" + chr(34) + ": text})" in jarvis_py
+    assert (
+        "messages.append({"
+        + chr(34)
+        + "role"
+        + chr(34)
+        + ": "
+        + chr(34)
+        + "user"
+        + chr(34)
+        + ", "
+        + chr(34)
+        + "content"
+        + chr(34)
+        + ": text})"
+        in jarvis_py
+    )

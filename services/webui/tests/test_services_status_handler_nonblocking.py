@@ -10,6 +10,7 @@ so the handler returns in O(slowest probe) instead of O(sum of probes).
 This test monkey-patches each probe to sleep 0.3s and asserts that the
 handler returns in well under the serial 1.2s baseline.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -75,7 +75,9 @@ def test_services_status_runs_probes_in_parallel(monkeypatch):
     resp, elapsed = asyncio.run(_run())
     # Serial execution would be ~1.2s. Parallel must be comfortably under
     # 2*SLOW with executor scheduling overhead.
-    assert elapsed < SLOW * 2, f"handler blocked too long: {elapsed:.3f}s (expected < {SLOW * 2:.3f}s)"
+    assert elapsed < SLOW * 2, (
+        f"handler blocked too long: {elapsed:.3f}s (expected < {SLOW * 2:.3f}s)"
+    )
     body = json.loads(resp.text)
     assert set(body.keys()) == {"llm", "summary", "tts", "asr"}
     for slot, item in body.items():

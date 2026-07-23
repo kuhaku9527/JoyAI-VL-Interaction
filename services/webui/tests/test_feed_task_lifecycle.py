@@ -1,4 +1,5 @@
 """Tests for diagnostic feed task lifecycle."""
+
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +7,6 @@ import sys
 import time
 import wave
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -17,6 +17,7 @@ for _p in (str(REPO), str(WEBUI_SRC)):
 
 def _make_wav(path: Path, seconds: int = 6, rate: int = 16000) -> None:
     import struct
+
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
