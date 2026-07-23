@@ -10,7 +10,11 @@
   else the parent shell):
     HERMES_GATEWAY_HOST    (default 127.0.0.1)
     HERMES_GATEWAY_PORT    (default 8642)
-    HERMES_API_KEY / API_SERVER_KEY  (auto-read from ``$env:LOCALAPPDATA\hermes\.env``)
+    HERMES_API_KEY / API_SERVER_KEY  (auto-read from ``D:\Workspace\hermes-data\.env``)
+
+  Canonical hermes home is ``D:\Workspace\hermes-data`` (NOT ``$env:LOCALAPPDATA\hermes``
+  nor ``~/.hermes`` — a prior agent rewrote the launcher and pointed HERMES_HOME at a
+  stale path, corrupting the env; this script pins HERMES_HOME back to the canonical dir).
 
   Optional:
     API_SERVER_CORS_ORIGINS (default http://127.0.0.1:8079, the shim port)
@@ -19,21 +23,31 @@
 [CmdletBinding()]
 param(
     [string]$RepoRoot = (Resolve-Path "$PSScriptRoot\..\..\..").Path,
-    [string]$HermesHome = $env:HERMES_HOME,
+    [string]$HermesHome = "D:\Workspace\hermes-data",
     [switch]$NoProbe
 )
 
 $ErrorActionPreference = "Stop"
 
+# Pin the canonical hermes home. A prior agent rewrote the launcher and set
+# HERMES_HOME to the stale ``C:\Users\<user>\AppData\Local\hermes``; we force the
+# project-canonical ``D:\Workspace\hermes-data`` so the gateway uses the right
+# config.yaml / .env / state.db.
+$env:HERMES_HOME = $HermesHome
+
 # ---------------------------------------------------------------------------
-# Locate hermes CLI. The official PowerShell installer drops it in
-# $env:LOCALAPPDATA\hermes\bin\hermes.cmd; honour that first, then fall back
-# to whatever is on PATH.
+# Locate hermes CLI. Canonical launcher is ``$HermesHome\bin\hermes.cmd``.
+# As of 2026-07-23 a read-only audit found only ``.bak``/``.backup`` copies in
+# that bin dir (prior-agent corruption), so we fall back to the real CLI exe
+# discovered during the audit, then to PATH.
 # ---------------------------------------------------------------------------
 $candidate = @(
-    (Join-Path $env:LOCALAPPDATA "hermes\bin\hermes.cmd")
-    (Get-Command "hermes.cmd" -ErrorAction SilentlyContinue)?.Source
-    (Get-Command "hermes" -ErrorAction SilentlyContinue)?.Source
+    (Join-Path $HermesHome "bin\hermes.cmd")
+    (Join-Path $HermesHome "bin\hermes.exe")
+    "D:\Workspace\hermes-agent\venv\Scripts\hermes.exe"
+    (Join-Path $HermesHome "gateway-service\Hermes_Gateway.cmd")
+    ((Get-Command "hermes.cmd" -ErrorAction SilentlyContinue) | ForEach-Object { $_.Source })
+    ((Get-Command "hermes" -ErrorAction SilentlyContinue) | ForEach-Object { $_.Source })
 ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 if (-not $candidate) {
@@ -73,21 +87,34 @@ if (-not $env:API_SERVER_CORS_ORIGINS) { $env:API_SERVER_CORS_ORIGINS = "http://
 if (-not $env:API_SERVER_HOST) { $env:API_SERVER_HOST = $gatewayHost }
 if (-not $env:API_SERVER_PORT) { $env:API_SERVER_PORT = $gatewayPort }
 
-# Try to load the API key from the canonical hermes dotenv if the caller
-# did not provide one.
-if (-not $env:API_SERVER_KEY -and -not $env:HERMES_API_KEY) {
-    $hermesEnvPath = Join-Path $env:LOCALAPPDATA "hermes\.env"
-    if (Test-Path $hermesEnvPath) {
-        $apiServerKey = Select-String -Path $hermesEnvPath -Pattern '^API_SERVER_KEY\s*=' -CaseSensitive:$false |
-            ForEach-Object { ($_ -split '=', 2)[1].Trim().Trim('"').Trim("'") } |
-            Select-Object -First 1
-        if ($apiServerKey) { $env:API_SERVER_KEY = $apiServerKey }
+# Load the canonical hermes dotenv (D:\Workspace\hermes-data\.env) wholesale so the
+# gateway subprocess inherits all provider keys (MINIMAX_API_KEY, etc.) and any
+# API_SERVER_KEY / HERMES_API_KEY if present. The audit found the .env carries
+# provider keys but no API_SERVER_KEY, so the gateway runs auth-disabled — that
+# matches the shim contract (the shim only sends HERMES_API_KEY when set).
+$hermesEnvPath = Join-Path $HermesHome ".env"
+if (Test-Path $hermesEnvPath) {
+    Get-Content $hermesEnvPath | ForEach-Object {
+        $line = $_.Trim()
+        if (-not $line -or $line.StartsWith("#")) { return }
+        $eq = $line.IndexOf("=")
+        if ($eq -le 0) { return }
+        $name = $line.Substring(0, $eq).Trim()
+        $value = $line.Substring($eq + 1).Trim().Trim('"').Trim("'")
+        $existing = Get-Item "env:$name" -ErrorAction SilentlyContinue
+        if (-not [string]::IsNullOrEmpty($name) -and ($existing -and -not [string]::IsNullOrEmpty($existing.Value))) {
+            # keep an explicitly-set parent-shell value; otherwise adopt the dotenv value
+            return
+        }
+        if (-not [string]::IsNullOrEmpty($name)) {
+            Set-Item -Path "Env:$name" -Value $value
+        }
     }
 }
 
-if (-not $env:API_SERVER_KEY) {
-    Write-Warning "API_SERVER_KEY is empty. The hermes gateway will run with auth disabled."
-    Write-Warning "Set it in `$env:LOCALAPPDATA\hermes\.env or pass it in via the parent shell."
+if (-not $env:API_SERVER_KEY -and -not $env:HERMES_API_KEY) {
+    Write-Warning "API_SERVER_KEY / HERMES_API_KEY is empty. The hermes gateway will run with auth disabled."
+    Write-Warning "Set it in $HermesHome\.env or pass it in via the parent shell."
 }
 
 # ---------------------------------------------------------------------------
@@ -104,7 +131,10 @@ if (Test-Path $pidFile) {
 }
 
 $logFile = Join-Path $PSScriptRoot "hermes_gateway.log"
-$argList = @("gateway")
+# The gateway-service\Hermes_Gateway.cmd is itself the gateway launcher, so it
+# takes no "gateway" subcommand; the canonical hermes.cmd / hermes.exe do.
+$isGatewayCmd = $candidate -like "*\gateway-service\Hermes_Gateway.cmd"
+$argList = if ($isGatewayCmd) { @() } else { @("gateway") }
 
 Write-Host "Starting hermes gateway on ${gatewayHost}:${gatewayPort} (log: $logFile)"
 $proc = Start-Process `
