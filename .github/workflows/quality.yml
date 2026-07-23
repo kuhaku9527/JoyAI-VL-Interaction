@@ -32,6 +32,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Allow deterministic manual dispatch. This repo has empirically shown that
+  # pull_request/push events can occasionally fail to enqueue Actions runs
+  # (stale refs/pull cache on force-pushed branches); workflow_dispatch is a
+  # reliable fallback to trigger the gate via the REST API.
+  workflow_dispatch:
 
 jobs:
   ruff:
@@ -133,7 +138,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [memory-store, background-agent]
+        service: [memory-store, background-agent, webinfer]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -143,7 +148,15 @@ jobs:
         run: |
           cd services/${{ matrix.service }}
           pip install --upgrade pip
-          pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
+          if [ "${{ matrix.service }}" = "webinfer" ]; then
+            # webinfer declares its runtime + dev deps in its own pyproject;
+            # install editable so the suite imports the checked-out source
+            # (aiohttp, aiohttp-cors, Pillow, openai, httpx, pytest,
+            # pytest-asyncio) rather than the shared lightweight set below.
+            pip install -e ".[dev]"
+          else
+            pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
+          fi
       - name: Run pytest
         run: |
           cd services/${{ matrix.service }}
