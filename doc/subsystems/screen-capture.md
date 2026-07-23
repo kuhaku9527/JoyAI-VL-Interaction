@@ -2,7 +2,7 @@
 # 屏幕捕获方案（getDisplayMedia）
 
 > 状态：**P0 落地（v3.27 + v3.33 + v3.33.1 + v3.34）**。v3.27 webui + webinfer 端到端跑通：模拟帧 ~5.5s 拿到 llama-server 回复；v3.33 在此之上加本地预览（仅覆盖大 Start 按钮路径）；v3.33.1 把 v3.33 的本地预览逻辑补到 `screenStartBtn`（Video Source 面板里的小 Start 按钮）——这条路径用户实际在用，没补上时视频框一直黑屏；v3.34 治本 502（`live_adapter.py` prompt guard）：视觉链路 + 三层记忆 + 多轮对话会让 prompt 暴涨到 50k+ tokens 撞 llama-server `n_ctx` 硬限爆 502，webinfer 调大 `main_ctx_tokens=16384` + 加 `max_total_chars` 裁剪。
-> 配套文档：`doc/jarvis-mode.md`（产品）+ `doc/tech-local.md §3.7`（实现）。
+> 配套文档：`doc/subsystems/jarvis-mode.md`（产品）+ `doc/tech-local.md §3.7`（实现）。
 
 ---
 
@@ -346,7 +346,7 @@ ffmpeg -f gdigrab -i title="Game Window" -r 1 -f image2pipe -vcodec mjpeg
 
 ## 10. 关联文档
 
-- `doc/jarvis-mode.md`（产品形态）
+- `doc/subsystems/jarvis-mode.md`（产品形态）
 - `doc/tech-local.md §3.7`（实现细节）
 - `doc/pm-local.md §9`（路线图）
 

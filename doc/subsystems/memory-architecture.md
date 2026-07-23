@@ -372,7 +372,7 @@ class MemoryBackend(Protocol):
 - `doc/tech-local.md` §16（Jarvis 模式）+ §P2 章节（待补）
 - `doc/pm-local.md` §23 + §P2 章节（待补）
 - `doc/gaming-mode.md` §8（让 Hermes 委派查攻略的升级版）
-- `doc/jarvis-mode.md`（唤醒 + EXIT_WORDS 状态机，记忆层是其下游）
+- `doc/subsystems/jarvis-mode.md`（唤醒 + EXIT_WORDS 状态机，记忆层是其下游）
 - `doc/lightweight-replacement.md` §2（bge-m3 与 whisper.cpp 同源）
 - `services/background-agent/hermes_api/main.py`（[Local Wiki] 委派前 recall memory-store）
 

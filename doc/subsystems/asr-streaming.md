@@ -1,15 +1,15 @@
 # ASR 流式化 + KWS 唤醒（Jarvis 模式技术实现）
 
-> 状态：**P1 KWS + 状态机骨架已落地，待流式 ASR + 全链路 e2e**。配套 `doc/jarvis-mode.md`（产品设计）。
+> 状态：**P1 KWS + 状态机骨架已落地，待流式 ASR + 全链路 e2e**。配套 `doc/subsystems/jarvis-mode.md`（产品设计）。
 > - **2026-07-10**：自训 KWS v4 已部署（"bt" 唤醒词，FAR 2% / recall 49%），Jarvis 状态机已集成代码改动完成。
 > - **未完成**：test_jarvis_state_machine.py 全链路 e2e 验证、sherpa-onnx 流式 export-onnx-streaming.py 修复。
 > 触发：原项目"持续 ASR 监听"既浪费算力又易误识别；Jarvis 模式 = 唤醒 KWS + 流式 ASR。
 
 ---
 
-## 0. 与 jarvis-mode.md 的分工
+## 0. 与 doc/subsystems/jarvis-mode.md 的分工
 
-- **`doc/jarvis-mode.md`**：产品形态、状态机、唤醒词、EXIT_WORDS、事件响应
+- **`doc/subsystems/jarvis-mode.md`**：产品形态、状态机、唤醒词、EXIT_WORDS、事件响应
 - **`doc/asr-streaming.md`**（本文）：技术实现层——KWS 引擎选型、流式 ASR 调参、API 桥接、性能调优
 
 ---
@@ -74,7 +74,7 @@ Expand-Archive "$env:TEMP\sherpa.zip" -DestinationPath "D:\AI\models\sherpa-onnx
 - 不同语调（陈述 / 疑问 / 略上扬）
 - 存为 WAV 16kHz mono，每段一个文件
 
-> v4 训练集（2026-07-10 已落地）：`D:\AI\data\kws\bt-zai-ma\positive\bt_segments\` 53 段正样本 + `negative\` 200 段负样本，详见 `jarvis-mode.md §2.4`。
+> v4 训练集（2026-07-10 已落地）：`D:\AI\data\kws\bt-zai-ma\positive\bt_segments\` 53 段正样本 + `negative\` 200 段负样本，详见 `doc/subsystems/jarvis-mode.md §2.4`。
 ```
 
 **训练流程**（使用 sherpa-onnx 训练工具）：
@@ -332,7 +332,7 @@ Browser → jarvis_mode → jarvis_kws / jarvis_asr → 状态机 → 文本
 
 > "每轮服务（测试）启动就开始新 logs，以免混杂在一起"
 
-**实施**：见 `doc/jarvis-mode.md §7`。
+**实施**：见 `doc/subsystems/jarvis-mode.md §7`。
 
 **关键原则**：
 - 错误**只日志**（`logger.error`），**不读出**（不调 TTS 念给用户）

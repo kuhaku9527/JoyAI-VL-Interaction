@@ -415,7 +415,7 @@ VOLCANO_TTS_VOICE_ID=BV001_streaming
 | **P1-B 故障转移框架** | 通用 fallback wrapper（API → 本地） | ~150 行 Python | 失败重试次数 / 切换策略 |
 | **P1-C UI 状态显示** | webui 端加 provider 状态条 | ~30 行 Python | 显示当前 TTS/CLONE 来源 |
 | **P1-D run-windows.ps1 加启动项** | 拉 secret 注入 | ~50 行 PS1 | env 模板 |
-| ~~**P1-E KWS 训练数据采集**~~ | ~~录 50 句 "bt 在吗" + 训练 sherpa-onnx KWS~~ → **v4 已落地 2026-07-10** | ~~30 分钟人声~~ | `jarvis-mode.md §2.4` |
+| ~~**P1-E KWS 训练数据采集**~~ | ~~录 50 句 "bt 在吗" + 训练 sherpa-onnx KWS~~ → **v4 已落地 2026-07-10** | ~~30 分钟人声~~ | `doc/subsystems/jarvis-mode.md §2.4` |
 | P3-A 云端 ASR 备选（按需）| asr_adapter 加 `stream_via_aliyun`（仅视频回看用）| ~200 行 Python | API key / 隐私档 |
 
 **总计**：~700 行 Python + 50 行 PS1 + 1 个新 doc（本文件）。
@@ -551,7 +551,7 @@ UI 在启动时弹一个一次性选择，写入 `~\.joyai\privacy.json`：
 4. 写 services/tts/http_synthesizer.py + 协议桥（半天）
 5. 写 services/voice-clone/cloud_clone.py voice_clone_api 扩展（半天）
 6. 改 tts_adapter.py dispatch 逻辑（半天）
-7. ~~录 50 句 "bt 在吗" + 训练 sherpa-onnx KWS~~ → **v4 已落地（详见 jarvis-mode.md §2.4），从实施步骤移走** |
+7. ~~录 50 句 "bt 在吗" + 训练 sherpa-onnx KWS~~ → **v4 已落地（详见 doc/subsystems/jarvis-mode.md §2.4），从实施步骤移走** |
 8. 改 run-windows.env.example + run-windows.ps1（1 小时）
 9. 改 webui 加 provider 状态条（1 小时）
 10. 端到端测试：本地 + API + fallback 三档（半天）
@@ -766,7 +766,7 @@ SHERPA_ONNX_MODEL_DIR=...        # ASR 本地（不参与声音克隆）
 
 ## 15. ASR 选型最终修订（2026-07-08）
 
-> 详细产品设计见 `doc/jarvis-mode.md`，技术实现见 `doc/asr-streaming.md`。
+> 详细产品设计见 `doc/subsystems/jarvis-mode.md`，技术实现见 `doc/asr-streaming.md`。
 
 **与 §2 / §13 的差异**：
 
