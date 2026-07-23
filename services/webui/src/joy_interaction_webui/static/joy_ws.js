@@ -134,7 +134,7 @@
         } catch (e) {
             console.error('[ws-connect] installLlmReplyHandler failed:', e);
         }
-        // Belt-and-suspenders retry if first install didn't take (jarvis-mode.md §14.4 / v3.5).
+        // Belt-and-suspenders retry if first install didn't take (doc/subsystems/jarvis-mode.md §14.4 / v3.5).
         if (!ws.__llmReplyHookInstalled) {
             try { installLlmReplyHandler(ws); } catch (e) { console.error('[ws-connect] retry installLlmReplyHandler failed:', e); }
         }
