@@ -7,7 +7,7 @@ the per-session Jarvis state machine) plus a helper invoked from
 * ``GET  /api/jarvis/status?session_id=...`` -- snapshot of state machine
 * ``POST /api/jarvis/force_state`` -- manually move the state machine
   (used by the UI to skip KWS while the pre-trained model is not yet
-  accurate; see ``doc/jarvis-mode.md`` v3.2 P2 notes)
+  accurate; see ``doc/subsystems/jarvis-mode.md`` v3.2 P2 notes)
 * ``POST /api/jarvis/stop`` -- tear down the Jarvis session for a given
   webui session (called on peer-connection close)
 

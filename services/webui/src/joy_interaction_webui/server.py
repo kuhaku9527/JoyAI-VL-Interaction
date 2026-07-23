@@ -23,7 +23,7 @@ import uuid
 # websocket_handler writes to one dict while notify_session_llm_reply reads
 # from the other, silently dropping every LLM reply.
 # Aliasing __main__ under the dotted name makes downstream `from .server import ...`
-# resolve to the SAME module instance. See doc/jarvis-mode.md changelog v3.22.
+# resolve to the SAME module instance. See doc/subsystems/jarvis-mode.md changelog v3.22.
 if __name__ == "__main__":
     sys.modules.setdefault("joy_interaction_webui.server", sys.modules["__main__"])
 from collections import defaultdict
