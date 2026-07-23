@@ -1,10 +1,9 @@
-
 """Background agent delegation for long-running or high-risk VLM questions."""
 
 import asyncio
 import base64
-import io
 import html
+import io
 import json
 import logging
 import os
@@ -12,9 +11,9 @@ import re
 import time
 import uuid
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Optional
 
 import httpx
 from PIL import Image
@@ -68,7 +67,9 @@ BACKGROUND_SUMMARIZER_MODEL = os.environ.get(
     "BACKGROUND_SUMMARIZER_MODEL",
     os.environ.get("SUMMARIZER_MODEL", "/tmp/models/Qwen3-VL-4B-Instruct"),
 )
-BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS = float(os.environ.get("BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS", "60"))
+BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS = float(
+    os.environ.get("BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS", "60")
+)
 BACKGROUND_SUMMARIZER_MAX_TOKENS = int(os.environ.get("BACKGROUND_SUMMARIZER_MAX_TOKENS", "256"))
 BACKGROUND_FRAME_MULTIPLIER = 2
 BACKGROUND_DEFAULT_FOREGROUND_FPS = 1.0
@@ -90,6 +91,7 @@ def _env_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() not in {"0", "false", "no", "off"}
+
 
 _THINK_BLOCK_RE = re.compile(
     r"<(?:think|thinking|reasoning)[^>]*>[\s\S]*?</(?:think|thinking|reasoning)>",
@@ -148,7 +150,6 @@ def clean_delegation_question_for_display(question: str) -> str:
     return value.strip()
 
 
-
 def _looks_like_user_echo(question: str, user_prompt: str = "") -> bool:
     """Heuristic: reject delegation questions that look like a verbatim echo of
     the user prompt. Triggered on small LLMs that emit `</delegation>` followed
@@ -164,9 +165,11 @@ def _looks_like_user_echo(question: str, user_prompt: str = "") -> bool:
         return True
     if len(qn) < 4 or len(upn) < 8:
         return False
-    ngrams = {qn[i:i+4] for i in range(len(qn) - 3)}
+    ngrams = {qn[i : i + 4] for i in range(len(qn) - 3)}
     hits = sum(1 for ng in ngrams if ng in upn)
     return hits / len(ngrams) >= 0.7
+
+
 def _is_internal_question_marker_only(question: str) -> bool:
     value = str(question or "").strip()
     if not value:
@@ -210,12 +213,12 @@ class DelegationRequest:
 @dataclass
 class BackgroundFrame:
     image: Image.Image
-    timestamp: Optional[float] = None
-    timestamp_kind: Optional[str] = None
-    pts: Optional[int] = None
+    timestamp: float | None = None
+    timestamp_kind: str | None = None
+    pts: int | None = None
 
 
-def parse_delegation(text: str, user_prompt: str = "") -> Optional[DelegationRequest]:
+def parse_delegation(text: str, user_prompt: str = "") -> DelegationRequest | None:
     """Extract foreground response text and delegated question from model output."""
     if not text:
         return None
@@ -257,7 +260,7 @@ def parse_delegation(text: str, user_prompt: str = "") -> Optional[DelegationReq
     )
 
 
-def _parse_internal_background_call(text: str) -> Optional[DelegationRequest]:
+def _parse_internal_background_call(text: str) -> DelegationRequest | None:
     tag = "<|background_call|>"
     tag_index = text.find(tag)
     if tag_index < 0:
@@ -287,7 +290,7 @@ def _parse_internal_background_call(text: str) -> Optional[DelegationRequest]:
     )
 
 
-def _extract_json_object(text: str) -> Optional[dict]:
+def _extract_json_object(text: str) -> dict | None:
     decoder = json.JSONDecoder()
     value = str(text or "").strip()
     if not value:
@@ -307,7 +310,7 @@ def _extract_json_object(text: str) -> Optional[dict]:
 def build_background_handoff_summary(
     question: str,
     result: str,
-    rich: Optional[dict] = None,
+    rich: dict | None = None,
     *,
     max_chars: int = BACKGROUND_HANDOFF_MAX_CHARS,
 ) -> str:
@@ -329,7 +332,9 @@ def build_background_handoff_summary(
 
     html_text = rich.get("html") if isinstance(rich, dict) else ""
     if html_text:
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", html_text, flags=re.IGNORECASE | re.DOTALL)
+        title_match = re.search(
+            r"<title[^>]*>(.*?)</title>", html_text, flags=re.IGNORECASE | re.DOTALL
+        )
         title = html.unescape(title_match.group(1)).strip() if title_match else ""
         parts.append(
             "后台产物: 静态 HTML/网页预览"
@@ -388,21 +393,21 @@ class BackgroundModelService:
     def __init__(
         self,
         session_id: str,
-        notify_callback: Optional[Callable[[dict], None]] = None,
+        notify_callback: Callable[[dict], None] | None = None,
         api_base: str = BACKGROUND_AGENT_API_URL,
         model: str = BACKGROUND_MODEL_NAME,
         max_subagents: int = BACKGROUND_MAX_SUBAGENTS,
-        api_key: Optional[str] = None,
-        wire_api: Optional[str] = None,
-        reasoning_effort: Optional[str] = None,
-        disable_response_storage: Optional[bool] = None,
-        max_tokens: Optional[int] = None,
+        api_key: str | None = None,
+        wire_api: str | None = None,
+        reasoning_effort: str | None = None,
+        disable_response_storage: bool | None = None,
+        max_tokens: int | None = None,
         timeout_seconds: float = BACKGROUND_TIMEOUT_SECONDS,
         summarizer_api_base: str = BACKGROUND_SUMMARIZER_API_BASE,
         summarizer_model: str = BACKGROUND_SUMMARIZER_MODEL,
         summarizer_timeout_seconds: float = BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS,
         frame_multiplier: int = BACKGROUND_FRAME_MULTIPLIER,
-        max_frames: Optional[int] = None,
+        max_frames: int | None = None,
         foreground_fps: float = BACKGROUND_DEFAULT_FOREGROUND_FPS,
         resize_long_edge: int = BACKGROUND_FRAME_RESIZE_LONG_EDGE,
         jpeg_quality: int = BACKGROUND_FRAME_JPEG_QUALITY,
@@ -419,7 +424,9 @@ class BackgroundModelService:
         self._legacy_disable_response_storage = disable_response_storage
         self._legacy_max_tokens = max_tokens
         self.timeout_seconds = float(timeout_seconds)
-        self.summarizer_api_base = str(summarizer_api_base or BACKGROUND_SUMMARIZER_API_BASE).rstrip("/")
+        self.summarizer_api_base = str(
+            summarizer_api_base or BACKGROUND_SUMMARIZER_API_BASE
+        ).rstrip("/")
         self.summarizer_model = str(summarizer_model or BACKGROUND_SUMMARIZER_MODEL)
         self.summarizer_timeout_seconds = max(1.0, float(summarizer_timeout_seconds))
         self.frame_multiplier = max(1, int(frame_multiplier))
@@ -434,10 +441,10 @@ class BackgroundModelService:
         self._active_tasks: set[asyncio.Task] = set()
         self._closed = False
         self._task_sequence = 0
-        self._last_cached_frame_time: Optional[float] = None
+        self._last_cached_frame_time: float | None = None
         self._resize_frame_buffer()
 
-    def _normalize_max_frames(self, value: Optional[int]) -> Optional[int]:
+    def _normalize_max_frames(self, value: int | None) -> int | None:
         if value is None:
             return None
         try:
@@ -476,7 +483,10 @@ class BackgroundModelService:
         return 1.0 / self._background_fps()
 
     def _target_frame_count(self) -> int:
-        return min(max(1, int(self.max_frame_count or BACKGROUND_DEFAULT_MAX_FRAMES)), BACKGROUND_MAX_FRAME_LIMIT)
+        return min(
+            max(1, int(self.max_frame_count or BACKGROUND_DEFAULT_MAX_FRAMES)),
+            BACKGROUND_MAX_FRAME_LIMIT,
+        )
 
     def _resize_frame_buffer(self) -> None:
         maxlen = self._target_frame_count()
@@ -511,11 +521,11 @@ class BackgroundModelService:
     def update_config(
         self,
         *,
-        enabled: Optional[bool] = None,
-        frame_multiplier: Optional[int] = None,
-        max_frames: Optional[int] = None,
-        foreground_fps: Optional[float] = None,
-        resize_long_edge: Optional[int] = None,
+        enabled: bool | None = None,
+        frame_multiplier: int | None = None,
+        max_frames: int | None = None,
+        foreground_fps: float | None = None,
+        resize_long_edge: int | None = None,
     ) -> dict:
         if enabled is not None:
             self.enabled = bool(enabled)
@@ -533,8 +543,8 @@ class BackgroundModelService:
     def update_summary_api(
         self,
         *,
-        api_base: Optional[str] = None,
-        model: Optional[str] = None,
+        api_base: str | None = None,
+        model: str | None = None,
     ) -> dict:
         if api_base:
             self.summarizer_api_base = str(api_base).rstrip("/")
@@ -549,8 +559,8 @@ class BackgroundModelService:
     def set_foreground_sampling(
         self,
         *,
-        process_interval_seconds: Optional[float] = None,
-        frames_per_batch: Optional[int] = None,
+        process_interval_seconds: float | None = None,
+        frames_per_batch: int | None = None,
     ) -> None:
         if process_interval_seconds is None:
             return
@@ -563,7 +573,7 @@ class BackgroundModelService:
             return
         self.foreground_fps = self._normalize_foreground_fps(batch / interval)
 
-    def should_sample_frame(self, wall_time: Optional[float] = None) -> bool:
+    def should_sample_frame(self, wall_time: float | None = None) -> bool:
         if self._closed or not self.enabled:
             return False
         sample_time = float(wall_time if wall_time is not None else time.time())
@@ -576,11 +586,11 @@ class BackgroundModelService:
         self,
         image: Image.Image,
         *,
-        timestamp: Optional[float] = None,
-        timestamp_kind: Optional[str] = None,
-        pts: Optional[int] = None,
-        foreground_frames_per_batch: Optional[int] = None,
-        wall_time: Optional[float] = None,
+        timestamp: float | None = None,
+        timestamp_kind: str | None = None,
+        pts: int | None = None,
+        foreground_frames_per_batch: int | None = None,
+        wall_time: float | None = None,
     ) -> None:
         if self._closed or image is None:
             return
@@ -617,10 +627,10 @@ class BackgroundModelService:
             if long_edge > self.resize_long_edge:
                 scale = self.resize_long_edge / float(long_edge)
                 new_size = (
-                    max(1, int(round(width * scale))),
-                    max(1, int(round(height * scale))),
+                    max(1, round(width * scale)),
+                    max(1, round(height * scale)),
                 )
-                resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+                resampling = getattr(Image, "Resampling", Image).LANCZOS
                 image_copy = image_copy.resize(new_size, resampling)
         return image_copy
 
@@ -633,11 +643,15 @@ class BackgroundModelService:
         try:
             self.notify_callback(payload)
         except Exception:
-            logger.warning("[%s] Failed to send background notification", self.session_id, exc_info=True)
+            logger.warning(
+                "[%s] Failed to send background notification", self.session_id, exc_info=True
+            )
 
-    def handle_foreground_response(self, text: str, metrics: Optional[dict] = None) -> str:
+    def handle_foreground_response(self, text: str, metrics: dict | None = None) -> str:
         """Start background work when a foreground response contains delegation."""
-        delegation = parse_delegation(text, user_prompt=str((metrics or {}).get("user_prompt") or ""))
+        delegation = parse_delegation(
+            text, user_prompt=str((metrics or {}).get("user_prompt") or "")
+        )
         if not delegation:
             return text
         original_question = clean_delegation_question_for_display(
@@ -750,7 +764,9 @@ class BackgroundModelService:
             solve_latency_ms = (time.perf_counter() - start_time) * 1000
             result_payload = self._normalize_background_result(result_payload)
             result = result_payload["text"]
-            summary_text = result_payload.get("summary_text") or result_payload.get("background_summary") or ""
+            summary_text = (
+                result_payload.get("summary_text") or result_payload.get("background_summary") or ""
+            )
             rich = result_payload.get("rich") or extract_rich_content(result)
             rich = ensure_html_artifact(rich, task_id=task_id)
             handoff = summary_text or build_background_handoff_summary(user_question, result, rich)
@@ -832,7 +848,7 @@ class BackgroundModelService:
         task_id: str,
         question: str,
         foreground_text: str,
-        frames: Optional[list[BackgroundFrame]] = None,
+        frames: list[BackgroundFrame] | None = None,
     ) -> dict:
         frames = frames if frames is not None else self._snapshot_frames()
         payload = {
@@ -1045,9 +1061,7 @@ class BackgroundModelService:
     async def cancel_active_requests(self, timeout: float = 2.0) -> int:
         current_task = asyncio.current_task()
         tasks = [
-            task
-            for task in self._active_tasks
-            if task is not current_task and not task.done()
+            task for task in self._active_tasks if task is not current_task and not task.done()
         ]
         if not tasks:
             return 0
@@ -1055,7 +1069,7 @@ class BackgroundModelService:
         logger.info("[%s] Cancelling %s background delegation task(s)", self.session_id, len(tasks))
         for task in tasks:
             task.cancel()
-        done, pending = await asyncio.wait(tasks, timeout=timeout)
+        done, _pending = await asyncio.wait(tasks, timeout=timeout)
         if done:
             await asyncio.gather(*done, return_exceptions=True)
         return len(tasks)
@@ -1078,7 +1092,7 @@ def extract_rich_content(text: str) -> dict:
     return ensure_html_artifact(rich)
 
 
-def ensure_html_artifact(rich: Optional[dict], *, task_id: str = "") -> dict:
+def ensure_html_artifact(rich: dict | None, *, task_id: str = "") -> dict:
     """Persist generated HTML so users can open a fully clickable page."""
     if not isinstance(rich, dict):
         return rich or {}
@@ -1100,7 +1114,7 @@ def ensure_html_artifact(rich: Optional[dict], *, task_id: str = "") -> dict:
     return next_rich
 
 
-def _write_html_artifact(html_text: str, *, task_id: str = "") -> Optional[Path]:
+def _write_html_artifact(html_text: str, *, task_id: str = "") -> Path | None:
     try:
         BACKGROUND_HTML_ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
         safe_task = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(task_id or "").strip()).strip("-")
@@ -1123,14 +1137,20 @@ def extract_html_details(text: str) -> dict:
         return {"html": "", "incomplete": False}
 
     explicit_candidates = []
-    explicit_candidates.extend(_extract_fenced_block_candidates(raw_text, "html", include_unclosed=True))
+    explicit_candidates.extend(
+        _extract_fenced_block_candidates(raw_text, "html", include_unclosed=True)
+    )
 
     for block in _extract_fenced_blocks(raw_text, "json"):
         try:
             parsed = json.loads(block)
         except json.JSONDecodeError:
             continue
-        if isinstance(parsed, dict) and parsed.get("type") == "html" and isinstance(parsed.get("html"), str):
+        if (
+            isinstance(parsed, dict)
+            and parsed.get("type") == "html"
+            and isinstance(parsed.get("html"), str)
+        ):
             explicit_candidates.append({"text": parsed["html"], "incomplete": False})
 
     best = _pick_best_html_candidate(explicit_candidates)
@@ -1143,7 +1163,7 @@ def extract_html_details(text: str) -> dict:
     return {"html": "", "incomplete": False}
 
 
-def _pick_best_html_candidate(candidates: list[dict]) -> Optional[dict]:
+def _pick_best_html_candidate(candidates: list[dict]) -> dict | None:
     best = None
     for candidate in candidates:
         document, incomplete = _normalize_html_document_with_status(
@@ -1161,7 +1181,7 @@ def _pick_best_html_candidate(candidates: list[dict]) -> Optional[dict]:
     return best
 
 
-def extract_bar_chart(text: str) -> Optional[dict]:
+def extract_bar_chart(text: str) -> dict | None:
     raw_text = str(text or "").strip()
     candidates = _extract_fenced_blocks(raw_text, "json")
     if raw_text.startswith("{") and raw_text.endswith("}"):
@@ -1176,7 +1196,11 @@ def extract_bar_chart(text: str) -> Optional[dict]:
             continue
         labels = parsed.get("labels")
         values = parsed.get("values")
-        if not isinstance(labels, list) or not isinstance(values, list) or len(labels) != len(values):
+        if (
+            not isinstance(labels, list)
+            or not isinstance(values, list)
+            or len(labels) != len(values)
+        ):
             continue
         try:
             numeric_values = [float(value) for value in values]
@@ -1247,7 +1271,9 @@ def _normalize_html_document_with_status(
     if not candidate:
         return "", False
 
-    candidate = re.sub(r"^```[ \t]*(?:html)?[ \t]*\r?\n?", "", candidate, flags=re.IGNORECASE).strip()
+    candidate = re.sub(
+        r"^```[ \t]*(?:html)?[ \t]*\r?\n?", "", candidate, flags=re.IGNORECASE
+    ).strip()
     candidate = re.sub(r"\r?\n?```[ \t]*$", "", candidate).strip()
 
     start_matches = [
@@ -1268,7 +1294,7 @@ def _normalize_html_document_with_status(
 
     if re.search(r"<(head|body|main|section|style|div|h1|p)\b", candidate, flags=re.IGNORECASE):
         return (
-            f"<!doctype html>\n<html><head><meta charset=\"UTF-8\"></head><body>{candidate}</body></html>",
+            f'<!doctype html>\n<html><head><meta charset="UTF-8"></head><body>{candidate}</body></html>',
             source_incomplete or _looks_incomplete_html(candidate),
         )
 
@@ -1287,7 +1313,17 @@ def _score_html_candidate(document: str, incomplete: bool) -> int:
         score += 1500
     if _RENDERABLE_FRAGMENT_RE.search(html_text):
         score += 1500
-    score += min(len(re.findall(r"<(?:div|section|main|header|nav|footer|button|h[1-6]|p|li)\b", html_text, flags=re.IGNORECASE)) * 120, 3000)
+    score += min(
+        len(
+            re.findall(
+                r"<(?:div|section|main|header|nav|footer|button|h[1-6]|p|li)\b",
+                html_text,
+                flags=re.IGNORECASE,
+            )
+        )
+        * 120,
+        3000,
+    )
     placeholder_count = html_text.count("...") + html_text.count("…")
     score -= placeholder_count * 3000
     score -= len(re.findall(r">\s*\.\.\.\s*<", html_text)) * 5000

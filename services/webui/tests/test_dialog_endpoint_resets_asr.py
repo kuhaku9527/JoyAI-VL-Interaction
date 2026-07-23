@@ -10,6 +10,7 @@ Fix contract:
   * After endpoint send, ``_asr.start()`` resets the streaming session.
   * Pure-noise / single-character / punctuation-only text is dropped.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -53,7 +54,7 @@ class _RejectingLLM:
 
 
 async def _make_sm(asr: _RecordingASR, llm_capture: list):
-    from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisStateMachine, JarvisState
+    from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisState, JarvisStateMachine
 
     cfg = JarvisConfig.from_env()
 
@@ -72,7 +73,8 @@ async def _make_sm(asr: _RecordingASR, llm_capture: list):
     sm.on_wake = None
     sm.on_goodbye = None
     sm.audio_output = None
-    sm._tts_done = asyncio.Event(); sm._tts_done.set()
+    sm._tts_done = asyncio.Event()
+    sm._tts_done.set()
 
     # Stub _send_to_llm to capture text without making HTTP calls.
     async def fake_send(text, *, stream_tts=True):
@@ -105,11 +107,11 @@ def test_dialog_endpoint_resets_asr_stream():
 def test_dialog_endpoint_drops_garbage_text():
     """Single-char / mojibake / punctuation-only text must NOT be sent to LLM."""
     cases = [
-        "��",          # mojibake (replacement char)
-        "嗯",          # filler only
-        ".",           # punctuation
-        "?",           # punctuation
-        " ",           # whitespace
+        "��",  # mojibake (replacement char)
+        "嗯",  # filler only
+        ".",  # punctuation
+        "?",  # punctuation
+        " ",  # whitespace
     ]
     for stale in cases:
         asr = _RecordingASR(stale_text=stale)
@@ -122,9 +124,7 @@ def test_dialog_endpoint_drops_garbage_text():
         asyncio.run(sm._handle_dialog(b"\x00\x00" * 80))
 
         llm_sent = [c for c in capture if c[0] == "llm"]
-        assert llm_sent == [], (
-            f"garbage text {stale!r} must not reach LLM; got {llm_sent}"
-        )
+        assert llm_sent == [], f"garbage text {stale!r} must not reach LLM; got {llm_sent}"
 
 
 def test_dialog_endpoint_sends_real_utterance():

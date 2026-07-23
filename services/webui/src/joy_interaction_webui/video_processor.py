@@ -19,16 +19,28 @@ Handles video frames, adds text overlays, and manages VLM processing
 """
 
 import asyncio
-import numpy as np
-from PIL import Image
-from aiortc import VideoStreamTrack
-from aiortc.mediastreams import MediaStreamError
-from typing import Optional
 import logging
 import time
+
 import av
+import numpy as np
+from aiortc import VideoStreamTrack
+from aiortc.mediastreams import MediaStreamError
+from PIL import Image
 
 from .vlm_service import VLMService
+
+# Background task registry: keep strong refs to fire-and-forget tasks so they
+# are not garbage-collected before completion (satisfies ruff RUF006).
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_bg(coro):
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return task
+
 
 # Enable swscaler warnings to track hardware acceleration status
 # TODO: Implement hardware-accelerated color space conversion on Jetson using NVMM/VPI
@@ -74,7 +86,7 @@ class VideoProcessorTrack(VideoStreamTrack):
         self.vlm_service = vlm_service
         self.text_callback = text_callback  # Callback to send text updates
         self.background_service = background_service
-        self.last_frame: Optional[np.ndarray] = None
+        self.last_frame: np.ndarray | None = None
         self.frame_count = 0
         self.dropped_frames = 0
         self.first_frame_pts = None  # Track first frame PTS to calculate relative time
@@ -185,7 +197,7 @@ class VideoProcessorTrack(VideoStreamTrack):
 
                     if self.frame_count % 100 == 0:
                         logger.info(
-                            f"Frame conversion times: to_ndarray={1000*(t2-t1):.1f}ms, copy={1000*(t3-t2):.1f}ms"
+                            f"Frame conversion times: to_ndarray={1000 * (t2 - t1):.1f}ms, copy={1000 * (t3 - t2):.1f}ms"
                         )
                     if self.frame_count == 1:
                         logger.info(f"First frame received: {img.shape}")
@@ -210,7 +222,7 @@ class VideoProcessorTrack(VideoStreamTrack):
                             wall_time=now,
                         )
                     if need_conversion:
-                        asyncio.create_task(
+                        _spawn_bg(
                             self.vlm_service.process_frame(
                                 pil_img,
                                 frame_timing_ms=frame_timing_ms,
@@ -223,7 +235,9 @@ class VideoProcessorTrack(VideoStreamTrack):
                             )
                         )
                         self._last_process_time = now
-                        logger.info(f"Frame {self.frame_count}: Sending to VLM (interval={interval_sec}s)")
+                        logger.info(
+                            f"Frame {self.frame_count}: Sending to VLM (interval={interval_sec}s)"
+                        )
             else:
                 # --- Multi-frame batch logic ---
                 sub_interval = interval_sec / frames_per_batch
@@ -243,19 +257,21 @@ class VideoProcessorTrack(VideoStreamTrack):
                         logger.info(f"First frame received: {img.shape}")
 
                     if need_capture:
-                        self._frame_buffer.append({
-                            "image": pil_img,
-                            "timestamp": frame_timestamp,
-                            "timestamp_kind": timestamp_kind,
-                            "timestamp_interval_seconds": interval_sec,
-                            "pts": frame.pts,
-                            "frame_timing_ms": {
-                                "frame_to_ndarray_ms": 1000 * (t2 - t1),
-                                "frame_copy_ms": 1000 * (t3 - t2),
-                                "bgr_to_rgb_pil_ms": 1000 * (t4 - t3),
-                                "pre_vlm_total_ms": 1000 * (t4 - t1),
-                            },
-                        })
+                        self._frame_buffer.append(
+                            {
+                                "image": pil_img,
+                                "timestamp": frame_timestamp,
+                                "timestamp_kind": timestamp_kind,
+                                "timestamp_interval_seconds": interval_sec,
+                                "pts": frame.pts,
+                                "frame_timing_ms": {
+                                    "frame_to_ndarray_ms": 1000 * (t2 - t1),
+                                    "frame_copy_ms": 1000 * (t3 - t2),
+                                    "bgr_to_rgb_pil_ms": 1000 * (t4 - t3),
+                                    "pre_vlm_total_ms": 1000 * (t4 - t1),
+                                },
+                            }
+                        )
                         self._last_sub_capture_time = now
 
                     if background_needs_frame:
@@ -272,9 +288,7 @@ class VideoProcessorTrack(VideoStreamTrack):
                     if len(self._frame_buffer) >= frames_per_batch:
                         batch = list(self._frame_buffer)
                         self._frame_buffer.clear()
-                        asyncio.create_task(
-                            self.vlm_service.process_frame_batch(batch)
-                        )
+                        _spawn_bg(self.vlm_service.process_frame_batch(batch))
                         self._last_process_time = now
                         logger.info(
                             f"Frame {self.frame_count}: Sending {len(batch)} frames to VLM "
@@ -282,7 +296,7 @@ class VideoProcessorTrack(VideoStreamTrack):
                         )
 
             # Get current response (may be old if VLM is still processing)
-            response, is_processing = self.vlm_service.get_current_response()
+            response, _is_processing = self.vlm_service.get_current_response()
 
             # Get metrics
             metrics = self.vlm_service.get_metrics()

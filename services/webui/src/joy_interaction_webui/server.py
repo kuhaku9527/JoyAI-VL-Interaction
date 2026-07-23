@@ -30,20 +30,34 @@ from collections import defaultdict
 
 import aiohttp
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
 
-from .vlm_service import VLMService
-from .audio_processor import MicAudioTrack
 from .asr import setup_asr_routes
-from .tts import setup_tts_routes
-from .jarvis_session import JarvisSessionManager
-from .jarvis_mode import JarvisState
-from .jarvis_routes import setup_jarvis_routes, bind_audio
+from .audio_processor import MicAudioTrack
 from .background_model import BackgroundModelService
+from .jarvis_mode import JarvisState
+from .jarvis_routes import bind_audio, setup_jarvis_routes
+from .jarvis_session import JarvisSessionManager
 from .local_file_server import setup_local_file_routes
+from .tts import setup_tts_routes
+from .vlm_service import VLMService
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+# Background task registry: keep strong refs to fire-and-forget tasks so they
+# are not garbage-collected before completion (satisfies ruff RUF006).
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_bg(coro):
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return task
+
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 relay = MediaRelay()
@@ -65,38 +79,64 @@ session_peer_connections = defaultdict(set)
 # before the scheduler runs the task). See
 # tests/test_send_to_session_actually_awaits.py for the regression test.
 
+
 async def _safe_send_str(ws, message, session_id):
     try:
         await ws.send_str(message)
     except Exception as exc:
         logger.warning("send_to_session: WS send failed for %s: %s", session_id, exc)
 
+
 def send_to_session(session_id, message):
     targets = list(session_websockets.get(session_id, set()))
     if not targets:
         # Common during early LLM startup before browser WS reconnects, log at INFO.
-        logger.info("send_to_session: no WS targets for session %s (total sessions in dict: %d). Message DROPPED: %s", session_id, len(session_websockets), message[:200])
+        logger.info(
+            "send_to_session: no WS targets for session %s (total sessions in dict: %d). Message DROPPED: %s",
+            session_id,
+            len(session_websockets),
+            message[:200],
+        )
         return
     for ws in targets:
         try:
-            asyncio.create_task(_safe_send_str(ws, message, session_id))
+            _spawn_bg(_safe_send_str(ws, message, session_id))
         except RuntimeError as exc:
             logger.error("send_to_session: schedule failed for %s: %s", session_id, exc)
+
 
 def notify_session_json(session_id, payload):
     handle_background_handoff_for_interaction(session_id, payload)
     send_to_session(session_id, json.dumps(payload, ensure_ascii=False))
 
+
 def notify_session_llm_reply(session_id, text, source="jarvis"):
-    payload = {"type": "llm_reply", "text": text or "", "source": source or "jarvis", "ts": time.time()}
+    payload = {
+        "type": "llm_reply",
+        "text": text or "",
+        "source": source or "jarvis",
+        "ts": time.time(),
+    }
     send_to_session(session_id, json.dumps(payload, ensure_ascii=False))
+
 
 def notify_session_pilot_utterance(session_id, text, source="asr"):
-    payload = {"type": "pilot_utterance", "text": text or "", "source": source or "asr", "ts": time.time()}
+    payload = {
+        "type": "pilot_utterance",
+        "text": text or "",
+        "source": source or "asr",
+        "ts": time.time(),
+    }
     send_to_session(session_id, json.dumps(payload, ensure_ascii=False))
 
+
 def notify_session_asr_partial(session_id, text, is_final=False):
-    payload = {"type": "asr_partial", "text": text or "", "is_final": bool(is_final), "ts": time.time()}
+    payload = {
+        "type": "asr_partial",
+        "text": text or "",
+        "is_final": bool(is_final),
+        "ts": time.time(),
+    }
     send_to_session(session_id, json.dumps(payload, ensure_ascii=False))
 
 
@@ -107,19 +147,24 @@ def handle_background_handoff_for_interaction(session_id, payload):
     if not session or not session.get("vlm_service"):
         return
 
+
 def get_session_callback(session_id):
     def callback(text, metrics):
         session = sessions.get(session_id)
         display_text = text
         if session and session.get("background_service"):
-            display_text = session["background_service"].handle_foreground_response(text, metrics=metrics)
+            display_text = session["background_service"].handle_foreground_response(
+                text, metrics=metrics
+            )
         sh = metrics.get("summarizer_history") if isinstance(metrics, dict) else None
         summarizer_timing = sh.get("summarizer_timing") if isinstance(sh, dict) else None
         out = {"type": "vlm_response", "text": display_text, "metrics": metrics}
         if summarizer_timing:
             out["summarizer_timing"] = summarizer_timing
         send_to_session(session_id, json.dumps(out, ensure_ascii=False))
+
     return callback
+
 
 async def _safe_send_str_all(ws, message):
     try:
@@ -127,15 +172,17 @@ async def _safe_send_str_all(ws, message):
     except Exception as exc:
         logger.warning("broadcast_text_update: WS send failed: %s", exc)
 
+
 def broadcast_text_update(text, metrics):
     if not websockets:
         return
     message = json.dumps({"type": "vlm_response", "text": text, "metrics": metrics})
     for ws in list(websockets):
         try:
-            asyncio.create_task(_safe_send_str_all(ws, message))
+            _spawn_bg(_safe_send_str_all(ws, message))
         except RuntimeError as exc:
             logger.error("broadcast_text_update: schedule failed: %s", exc)
+
 
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
@@ -144,15 +191,38 @@ async def websocket_handler(request):
     ws_to_session[ws] = session_id
     session_websockets[session_id].add(ws)
     websockets.add(ws)
-    logger.info("WebSocket client connected. session_id=%s, total clients: %d", session_id, len(websockets))
+    logger.info(
+        "WebSocket client connected. session_id=%s, total clients: %d", session_id, len(websockets)
+    )
     session = get_or_create_session(session_id)
     svc = session["vlm_service"]
     bg_svc = session.get("background_service")
     background_service = bg_svc
     try:
-        await ws.send_json({"type": "status", "text": "Connected to server", "status": "Ready", "session_id": session_id})
+        await ws.send_json(
+            {
+                "type": "status",
+                "text": "Connected to server",
+                "status": "Ready",
+                "session_id": session_id,
+            }
+        )
         from .video_processor import VideoProcessorTrack as _VPT
-        await ws.send_json({"type": "server_config", "model": svc.model, "api_base": svc.api_base, "prompt": svc.prompt, "process_interval": _VPT.process_interval_seconds, "frames_per_batch": _VPT.frames_per_batch, "background_model": (background_service.get_config() if background_service else None), "session_id": session_id})
+
+        await ws.send_json(
+            {
+                "type": "server_config",
+                "model": svc.model,
+                "api_base": svc.api_base,
+                "prompt": svc.prompt,
+                "process_interval": _VPT.process_interval_seconds,
+                "frames_per_batch": _VPT.frames_per_batch,
+                "background_model": (
+                    background_service.get_config() if background_service else None
+                ),
+                "session_id": session_id,
+            }
+        )
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
                 try:
@@ -163,17 +233,35 @@ async def websocket_handler(request):
                     t = data.get("type")
                     if t == "update_prompt":
                         svc.update_prompt(data.get("prompt", ""))
-                        await ws.send_json({"type": "prompt_updated", "prompt": data.get("prompt", "")})
+                        await ws.send_json(
+                            {"type": "prompt_updated", "prompt": data.get("prompt", "")}
+                        )
                     elif t == "update_model":
                         if svc.set_model(data.get("model", "")):
-                            await ws.send_json({"type": "model_updated", "model": data.get("model", "")})
+                            await ws.send_json(
+                                {"type": "model_updated", "model": data.get("model", "")}
+                            )
                     elif t == "update_process_interval":
                         from .video_processor import VideoProcessorTrack
-                        VideoProcessorTrack.process_interval_seconds = float(data.get("process_interval", 1.0))
-                        await ws.send_json({"type": "processing_updated", "process_interval": VideoProcessorTrack.process_interval_seconds})
+
+                        VideoProcessorTrack.process_interval_seconds = float(
+                            data.get("process_interval", 1.0)
+                        )
+                        await ws.send_json(
+                            {
+                                "type": "processing_updated",
+                                "process_interval": VideoProcessorTrack.process_interval_seconds,
+                            }
+                        )
                     elif t == "update_frames_per_batch":
                         from .video_processor import VideoProcessorTrack
-                        await ws.send_json({"type": "frames_per_batch_updated", "frames_per_batch": VideoProcessorTrack.frames_per_batch})
+
+                        await ws.send_json(
+                            {
+                                "type": "frames_per_batch_updated",
+                                "frames_per_batch": VideoProcessorTrack.frames_per_batch,
+                            }
+                        )
                     elif t == "frame":
                         # Screen capture frames shipped via WebSocket (parallel to WebRTC).
                         # Decode base64 JPEG -> PIL Image -> vlm_service.process_frame, then broadcast the
@@ -184,9 +272,16 @@ async def websocket_handler(request):
                         else:
                             try:
                                 from PIL import Image as _PILImage
+
                                 raw = base64.b64decode(payload)
                                 img = _PILImage.open(io.BytesIO(raw)).convert("RGB")
-                                meta = {"source": data.get("source") or "screen", "format": data.get("format") or "jpeg", "width": data.get("width"), "height": data.get("height"), "timestamp": data.get("timestamp")}
+                                meta = {
+                                    "source": data.get("source") or "screen",
+                                    "format": data.get("format") or "jpeg",
+                                    "width": data.get("width"),
+                                    "height": data.get("height"),
+                                    "timestamp": data.get("timestamp"),
+                                }
                                 await svc.process_frame(img, frame_metadata=meta)
                                 response, _ = svc.get_current_response()
                                 metrics = svc.get_metrics()
@@ -197,10 +292,24 @@ async def websocket_handler(request):
                     elif t == "background_request":
                         if background_service and data.get("question"):
                             try:
-                                task_id = background_service.handle_background_request(data["question"], session_id=session_id)
-                                await ws.send_json({"type": "background_request_accepted", "task_id": task_id, "session_id": session_id})
+                                task_id = background_service.handle_background_request(
+                                    data["question"], session_id=session_id
+                                )
+                                await ws.send_json(
+                                    {
+                                        "type": "background_request_accepted",
+                                        "task_id": task_id,
+                                        "session_id": session_id,
+                                    }
+                                )
                             except Exception as exc:
-                                await ws.send_json({"type": "background_result_error", "task_id": "", "error": str(exc)})
+                                await ws.send_json(
+                                    {
+                                        "type": "background_result_error",
+                                        "task_id": "",
+                                        "error": str(exc),
+                                    }
+                                )
                 except Exception as e:
                     logger.error("Error handling client message: %s", e)
             elif msg.type == web.WSMsgType.ERROR:
@@ -209,14 +318,21 @@ async def websocket_handler(request):
         s = session_websockets.get(session_id)
         if s is not None:
             s.discard(ws)
-            if not s: session_websockets.pop(session_id, None)
+            if not s:
+                session_websockets.pop(session_id, None)
         ws_to_session.pop(ws, None)
         websockets.discard(ws)
-        logger.info("WebSocket client disconnected. session_id=%s, total clients: %d", session_id, len(websockets))
+        logger.info(
+            "WebSocket client disconnected. session_id=%s, total clients: %d",
+            session_id,
+            len(websockets),
+        )
     return ws
+
 
 def _probe_llm(llm_api_url):
     import httpx
+
     try:
         with httpx.Client(timeout=2.0) as client:
             resp = client.get(llm_api_url.rstrip("/") + "/models")
@@ -224,20 +340,26 @@ def _probe_llm(llm_api_url):
             try:
                 data = resp.json()
                 models = data.get("data") or []
-                return {"status": "ok", "models": [m.get("id", "") for m in models if isinstance(m, dict)]}
+                return {
+                    "status": "ok",
+                    "models": [m.get("id", "") for m in models if isinstance(m, dict)],
+                }
             except Exception as exc:
                 return {"status": "degraded", "reason": "parse: %s" % exc}
         return {"status": "error", "reason": "http %d" % resp.status_code}
     except Exception as exc:
         return {"status": "error", "reason": str(exc)[:120]}
 
+
 def _probe_tts(tts_api_url):
     # Probe the voice_clone_api ``/health`` endpoint first; if absent,
     # fall back to a GET on ``/v1/synthesize`` (POST-only, so 405 also
     # counts as "endpoint present"). Two short-lived clients per probe
     # to avoid any keep-alive edge cases.
-    import httpx
     from urllib.parse import urlsplit, urlunsplit
+
+    import httpx
+
     parsed = urlsplit(tts_api_url.rstrip("/"))
     service_root = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
     health_url = service_root + "/health" if service_root else None
@@ -254,28 +376,37 @@ def _probe_tts(tts_api_url):
             return {"status": "ok", "endpoint": url, "code": resp.status_code, "note": "POST-only"}
     return {"status": "error", "reason": "unreachable"}
 
+
 def _probe_kws(kws_model_dir):
     from pathlib import Path
+
     p = Path(kws_model_dir)
     if not p.exists():
         return {"status": "missing", "reason": "dir not found: %s" % kws_model_dir}
     matches = list(p.glob("encoder*chunk-*.onnx"))
-    if not matches and all((p / name).exists() for name in ("encoder.onnx", "decoder.onnx", "joiner.onnx")):
+    if not matches and all(
+        (p / name).exists() for name in ("encoder.onnx", "decoder.onnx", "joiner.onnx")
+    ):
         matches = [p / "encoder.onnx"]
     if not matches:
         return {"status": "missing", "reason": "no encoder*.onnx in %s" % kws_model_dir}
     return {"status": "ok", "model": matches[0].name}
 
+
 _LLM_PROBE_CACHE = {"payload": None, "ts": 0.0}
 _LLM_PROBE_TTL_S = 5.0
+
 
 def _now():
     return time.time()
 
+
 def _resolve_service_targets(app):
     from .jarvis_mode import JarvisConfig
+
     cfg = JarvisConfig.from_env()
     return cfg.llm_api_url, cfg.tts_api_url
+
 
 async def llm_status(request):
     llm_url, tts_url = _resolve_service_targets(request.app)
@@ -293,7 +424,11 @@ async def llm_status(request):
     kws_future = loop.run_in_executor(None, _probe_kws, kws_dir) if kws_dir else None
     tts_payload, kws_payload = await asyncio.gather(
         tts_future,
-        kws_future if kws_future is not None else asyncio.sleep(0, result={"status": "missing", "reason": "kws_model_dir not configured"}),
+        kws_future
+        if kws_future is not None
+        else asyncio.sleep(
+            0, result={"status": "missing", "reason": "kws_model_dir not configured"}
+        ),
     )
     overall = "ok"
     for p in (llm_payload, tts_payload, kws_payload):
@@ -302,7 +437,16 @@ async def llm_status(request):
             break
         if p.get("status") == "degraded" and overall == "ok":
             overall = "degraded"
-    return web.json_response({"ts": now, "overall": overall, "llm": {"url": llm_url, **llm_payload}, "tts": {"url": tts_url, **tts_payload}, "kws": {"model_dir": kws_dir, **kws_payload}})
+    return web.json_response(
+        {
+            "ts": now,
+            "overall": overall,
+            "llm": {"url": llm_url, **llm_payload},
+            "tts": {"url": tts_url, **tts_payload},
+            "kws": {"model_dir": kws_dir, **kws_payload},
+        }
+    )
+
 
 async def tts_health(request):
     _llm_url, tts_url = _resolve_service_targets(request.app)
@@ -345,6 +489,7 @@ def build_tts_synthesize_payload(upstream_json: dict) -> bytes:
     Defaults: sample_rate=24000, channels=1 (MiniMax ``speech-2.8-hd`` shape).
     """
     import base64 as _b64
+
     pcm_b64 = upstream_json.get("pcm16_base64")
     if not pcm_b64:
         raise ValueError(
@@ -369,6 +514,7 @@ async def _tts_synthesize_handler(request):
     Returns ``audio/wav`` bytes on 200; 400 on empty text; 502 on upstream error.
     """
     import httpx as _httpx
+
     try:
         data = await request.json()
     except Exception:
@@ -392,18 +538,27 @@ async def _tts_synthesize_handler(request):
             resp = await client.post(tts_api_url, json=body)
     except Exception as exc:
         logger.warning("tts_synthesize: upstream unreachable: %s", exc)
-        return web.json_response({"error": "upstream unreachable", "reason": str(exc)[:120]}, status=502)
+        return web.json_response(
+            {"error": "upstream unreachable", "reason": str(exc)[:120]}, status=502
+        )
     if resp.status_code >= 500:
-        return web.json_response({"error": "upstream error", "status": resp.status_code}, status=502)
+        return web.json_response(
+            {"error": "upstream error", "status": resp.status_code}, status=502
+        )
     try:
         upstream_json = resp.json()
     except Exception as exc:
-        return web.json_response({"error": "upstream non-json", "reason": str(exc)[:120]}, status=502)
+        return web.json_response(
+            {"error": "upstream non-json", "reason": str(exc)[:120]}, status=502
+        )
     try:
         wav = build_tts_synthesize_payload(upstream_json)
     except ValueError as exc:
-        return web.json_response({"error": "upstream payload invalid", "reason": str(exc)[:120]}, status=502)
+        return web.json_response(
+            {"error": "upstream payload invalid", "reason": str(exc)[:120]}, status=502
+        )
     return web.Response(body=wav, content_type="audio/wav")
+
 
 async def llm_message(request):
     try:
@@ -442,20 +597,33 @@ async def llm_message(request):
     task = asyncio.create_task(sm._send_to_llm(text, stream_tts=False, image_b64=image_b64))
     app.setdefault("_llm_tasks", set()).add(task)
     task.add_done_callback(app["_llm_tasks"].discard)
-    return web.json_response({
-        "session_id": session_id,
-        "queued": True,
-        "text_chars": len(text),
-        "image_attached": bool(image_b64),
-    })
+    return web.json_response(
+        {
+            "session_id": session_id,
+            "queued": True,
+            "text_chars": len(text),
+            "image_attached": bool(image_b64),
+        }
+    )
+
+
 def get_or_create_session(session_id):
     api_base = default_vlm_config.get("api_base", "http://127.0.0.1:8070/v1")
     model_name = default_vlm_config.get("model", "streaming-infer-adapter")
     prompt = default_vlm_config.get("prompt")
     vlm = VLMService(api_base=api_base, model=model_name, prompt=prompt)
-    sessions[session_id] = {"vlm_service": vlm, "background_service": BackgroundModelService(session_id=session_id, notify_callback=lambda payload, sid=session_id: notify_session_json(sid, payload), summarizer_api_base=api_base), "show_request_payload": False}
+    sessions[session_id] = {
+        "vlm_service": vlm,
+        "background_service": BackgroundModelService(
+            session_id=session_id,
+            notify_callback=lambda payload, sid=session_id: notify_session_json(sid, payload),
+            summarizer_api_base=api_base,
+        ),
+        "show_request_payload": False,
+    }
     logger.info("Created new session: %s", session_id)
     return sessions[session_id]
+
 
 async def session_cleanup(request):
     session_id = request.query.get("session_id", "").strip()
@@ -469,9 +637,10 @@ async def session_cleanup(request):
         except Exception as e:
             logger.warning("[%s] Error closing websocket: %s", session_id, e)
         finally:
-            websockets.discard(ws); ws_to_session.pop(ws, None)
+            websockets.discard(ws)
+            ws_to_session.pop(ws, None)
     if session_id in rtsp_tracks:
-        rtsp_track, processor_track, frame_task = rtsp_tracks.pop(session_id)
+        rtsp_track, _processor_track, frame_task = rtsp_tracks.pop(session_id)
         try:
             rtsp_track.stop()
         except Exception as e:
@@ -497,7 +666,8 @@ async def session_cleanup(request):
             try:
                 tasks = getattr(vlm, "tasks", set())
                 cancelled_vlm_tasks = len(tasks)
-                for task in tasks: task.cancel()
+                for task in tasks:
+                    task.cancel()
             except Exception as e:
                 logger.warning("[%s] Error cancelling VLM tasks: %s", session_id, e)
         bg_svc = session.get("background_service")
@@ -507,7 +677,17 @@ async def session_cleanup(request):
             except Exception as e:
                 logger.warning("[%s] Error closing background service: %s", session_id, e)
     logger.info("[%s] Session cleanup complete", session_id)
-    return web.json_response({"session_id": session_id, "removed": bool(session), "websockets_closed": len(session_sockets), "peer_connections_closed": len(pcs_for_session), "cancelled_vlm_tasks": cancelled_vlm_tasks, "cancelled_background_tasks": cancelled_background_tasks})
+    return web.json_response(
+        {
+            "session_id": session_id,
+            "removed": bool(session),
+            "websockets_closed": len(session_sockets),
+            "peer_connections_closed": len(pcs_for_session),
+            "cancelled_vlm_tasks": cancelled_vlm_tasks,
+            "cancelled_background_tasks": cancelled_background_tasks,
+        }
+    )
+
 
 async def _drain_mic_audio_track(mic_track, session_id):
     """Continuously consume browser mic frames and feed Jarvis.
@@ -576,32 +756,50 @@ async def offer(request):
     await pc.setRemoteDescription(offer_sdp)
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    return web.Response(content_type="application/json", text=json.dumps({"sdp": pc.localDescription.sdp, "type": pc.localDescription.type, "session_id": session_id}))
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps(
+            {
+                "sdp": pc.localDescription.sdp,
+                "type": pc.localDescription.type,
+                "session_id": session_id,
+            }
+        ),
+    )
+
 
 async def on_startup(app):
     import asyncio
     import os
     import sys
+
     here = os.path.dirname(__file__)
     repo_root = os.path.abspath(os.path.join(here, "..", "..", "..", ".."))
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
     from .jarvis_mode import JarvisConfig
+
     cfg = JarvisConfig.from_env()
     if os.environ.get("JARVIS_ASR_MODEL_DIR"):
         cfg.asr_model_dir = os.environ["JARVIS_ASR_MODEL_DIR"]
     app["jarvis_manager"] = JarvisSessionManager(config=cfg)
+
     async def warm_browser_asr():
         try:
             from .asr import ASR_URL, _get_inproc_asr
+
             if ASR_URL:
                 return
             await asyncio.to_thread(_get_inproc_asr)
             logger.info("Browser ASR in-process fallback warmed")
         except Exception as exc:
             logger.warning("Browser ASR warm-up skipped: %s", exc)
+
     app["browser_asr_warmup_task"] = asyncio.create_task(warm_browser_asr())
-    logger.info("Jarvis session manager initialised (KWS=%s, ASR=%s)", cfg.kws_model_dir, cfg.asr_model_dir)
+    logger.info(
+        "Jarvis session manager initialised (KWS=%s, ASR=%s)", cfg.kws_model_dir, cfg.asr_model_dir
+    )
+
 
 async def on_shutdown(app):
     for ws in list(websockets):
@@ -609,7 +807,7 @@ async def on_shutdown(app):
             await ws.close()
         except Exception:
             pass
-    for session_id, session in list(sessions.items()):
+    for _session_id, session in list(sessions.items()):
         bg_svc = session.get("background_service")
         if bg_svc:
             try:
@@ -622,11 +820,20 @@ async def on_shutdown(app):
         except Exception:
             pass
 
+
 _services_config: dict = {
-    "llm":     {"api_base": "http://127.0.0.1:8070/v1", "model": "streaming-infer-adapter", "api_key": ""},
+    "llm": {
+        "api_base": "http://127.0.0.1:8070/v1",
+        "model": "streaming-infer-adapter",
+        "api_key": "",
+    },
     "summary": {"api_base": "https://api.minimaxi.com/v1", "model": "MiniMax-VL-01", "api_key": ""},
-    "tts":     {"api_base": "http://127.0.0.1:8985/v1/synthesize", "model": "", "api_key": ""},
-    "asr":     {"api_base": "", "model": "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en", "api_key": ""},
+    "tts": {"api_base": "http://127.0.0.1:8985/v1/synthesize", "model": "", "api_key": ""},
+    "asr": {
+        "api_base": "",
+        "model": "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en",
+        "api_key": "",
+    },
 }
 
 
@@ -636,6 +843,7 @@ def _probe_summary(summary_cfg):
     responses (501 / 404 / etc). Anything that returns JSON is "ok".
     """
     import httpx
+
     api_base = (summary_cfg or {}).get("api_base", "").rstrip("/")
     if not api_base:
         return {"ok": False, "reason": "api_base empty"}
@@ -658,6 +866,7 @@ def _probe_asr(asr_cfg):
     model = (asr_cfg or {}).get("model", "")
     if api_base.startswith("http://") or api_base.startswith("https://"):
         import httpx
+
         try:
             with httpx.Client(timeout=2.0) as client:
                 resp = client.get(api_base.rstrip("/") + "/health")
@@ -668,6 +877,7 @@ def _probe_asr(asr_cfg):
             return {"ok": False, "reason": str(exc)[:120]}
     if model:
         from pathlib import Path
+
         p = Path(model)
         if p.exists():
             return {"ok": True, "model_dir": str(p)}
@@ -704,32 +914,39 @@ async def _services_status_handler(request):
     summary_cfg = _services_config.get("summary", {})
     tts_cfg = _services_config.get("tts", {})
     asr_cfg = _services_config.get("asr", {})
-    tts_url = tts_cfg.get("api_base") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+    tts_url = tts_cfg.get("api_base") or os.environ.get(
+        "JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize"
+    )
     # Each probe uses sync httpx with a 2-3s timeout; running them inline
     # would block the aiohttp event loop for up to ~9s. Dispatch them to
     # the default executor and gather so the worst case is the slowest probe.
     loop = asyncio.get_running_loop()
-    llm_future = loop.run_in_executor(None, _probe_llm, llm_cfg.get("api_base", "http://127.0.0.1:8070/v1"))
+    llm_future = loop.run_in_executor(
+        None, _probe_llm, llm_cfg.get("api_base", "http://127.0.0.1:8070/v1")
+    )
     summary_future = loop.run_in_executor(None, _probe_summary, summary_cfg)
     tts_future = loop.run_in_executor(None, _probe_tts, tts_url)
     asr_future = loop.run_in_executor(None, _probe_asr, asr_cfg)
     llm_raw, summary_raw, tts_raw, asr_raw = await asyncio.gather(
         llm_future, summary_future, tts_future, asr_future
     )
-    return web.json_response({
-        "llm": {
-            "ok": llm_raw.get("status") == "ok",
-            "reason": llm_raw.get("reason", ""),
-            "endpoint": llm_cfg.get("api_base", "") + "/models",
-        },
-        "summary": summary_raw,
-        "tts": {
-            "ok": tts_raw.get("status") == "ok",
-            "reason": tts_raw.get("reason", ""),
-            "endpoint": tts_raw.get("endpoint", tts_url),
-        },
-        "asr": asr_raw,
-    })
+    return web.json_response(
+        {
+            "llm": {
+                "ok": llm_raw.get("status") == "ok",
+                "reason": llm_raw.get("reason", ""),
+                "endpoint": llm_cfg.get("api_base", "") + "/models",
+            },
+            "summary": summary_raw,
+            "tts": {
+                "ok": tts_raw.get("status") == "ok",
+                "reason": tts_raw.get("reason", ""),
+                "endpoint": tts_raw.get("endpoint", tts_url),
+            },
+            "asr": asr_raw,
+        }
+    )
+
 
 def _propagate_services_to_runtime():
     """Push the saved llm/summary config into live service instances.
@@ -745,7 +962,7 @@ def _propagate_services_to_runtime():
         model = llm_cfg.get("model")
         api_key = llm_cfg.get("api_key")
         if api_base:
-            for sid, sess in sessions.items():
+            for _sid, sess in sessions.items():
                 vlm = sess.get("vlm_service") if isinstance(sess, dict) else None
                 if vlm and hasattr(vlm, "update_api_settings"):
                     vlm.update_api_settings(api_base=api_base, api_key=api_key)
@@ -757,7 +974,9 @@ def _propagate_services_to_runtime():
     except Exception as exc:
         logger.warning("propagate llm config: %s", exc)
     try:
-        os.environ["JARVIS_TTS_API_URL"] = _services_config.get("tts", {}).get("api_base", "") or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+        os.environ["JARVIS_TTS_API_URL"] = _services_config.get("tts", {}).get(
+            "api_base", ""
+        ) or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
         asr_cfg = _services_config.get("asr", {})
         if asr_cfg.get("model"):
             os.environ["ASR_MODEL_DIR"] = asr_cfg["model"]
@@ -810,13 +1029,17 @@ async def _webinfer_proxy_summarizer_routing(summary_cfg: dict) -> dict:
         "api_key": summary_cfg.get("api_key"),
     }
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as session:
-            async with session.post(base + "/v1/summarizer/route", json=payload) as resp:
-                if resp.status >= 400:
-                    body = await resp.text()
-                    logger.warning("webinfer /v1/summarizer/route returned %d: %s", resp.status, body[:200])
-                    return {"ok": False, "status": resp.status, "body": body[:200]}
-                return await resp.json()
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5.0)) as session,
+            session.post(base + "/v1/summarizer/route", json=payload) as resp,
+        ):
+            if resp.status >= 400:
+                body = await resp.text()
+                logger.warning(
+                    "webinfer /v1/summarizer/route returned %d: %s", resp.status, body[:200]
+                )
+                return {"ok": False, "status": resp.status, "body": body[:200]}
+            return await resp.json()
     except Exception as exc:
         logger.warning("webinfer /v1/summarizer/route unreachable: %s", exc)
         return {"ok": False, "reason": str(exc)[:200]}
@@ -849,11 +1072,14 @@ async def _webinfer_summarizer_route_handler(request):
                     return web.json_response(payload, status=resp.status)
     except Exception as exc:
         logger.warning("webinfer summarizer route proxy failed: %s", exc)
-        return web.json_response({"error": "webinfer unreachable", "reason": str(exc)[:200]}, status=502)
+        return web.json_response(
+            {"error": "webinfer unreachable", "reason": str(exc)[:200]}, status=502
+        )
 
 
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="JoyAI VL Interaction WebUI Server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8099)
@@ -861,8 +1087,6 @@ def main():
     parser.add_argument("--model", default="streaming-infer-adapter")
     parser.add_argument("--api-base", default="http://127.0.0.1:8070/v1")
     args = parser.parse_args()
-
-
 
     default_vlm_config.update({"api_base": args.api_base, "model": args.model, "prompt": None})
 
@@ -919,13 +1143,15 @@ def main():
     images_dir = os.path.join(os.path.dirname(__file__), "static", "images")
     images_dir = os.path.abspath(images_dir)
     if os.path.exists(images_dir):
-        app.router.add_static("/images", images_dir, name="images"); logger.info("Serving static files from: %s", images_dir)
+        app.router.add_static("/images", images_dir, name="images")
+        logger.info("Serving static files from: %s", images_dir)
     else:
         logger.warning("static images directory missing: %s", images_dir)
     favicon_dir = os.path.join(os.path.dirname(__file__), "static", "favicon")
     favicon_dir = os.path.abspath(favicon_dir)
     if os.path.exists(favicon_dir):
-        app.router.add_static("/favicon", favicon_dir, name="favicon"); logger.info("Serving favicon files from: %s", favicon_dir)
+        app.router.add_static("/favicon", favicon_dir, name="favicon")
+        logger.info("Serving favicon files from: %s", favicon_dir)
     else:
         logger.warning("favicon directory missing: %s", favicon_dir)
     # v3.27 missed this: serve the entire static dir at "/" so /screen_capture.js
@@ -936,15 +1162,19 @@ def main():
     # /, /ws, /api/* keep their handlers; only undeclared GETs fall through here.
     static_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
     if os.path.exists(static_root_dir):
-        app.router.add_static("/", static_root_dir, name="static-root", show_index=False, append_version=False)
+        app.router.add_static(
+            "/", static_root_dir, name="static-root", show_index=False, append_version=False
+        )
         logger.info("Serving static root files from: %s", static_root_dir)
     else:
         logger.warning("static root directory missing: %s", static_root_dir)
     test_mode = os.environ.get("JOYAI_TEST_MODE") == "1"
     if not test_mode:
-        app.on_startup.append(on_startup); app.on_shutdown.append(on_shutdown)
+        app.on_startup.append(on_startup)
+        app.on_shutdown.append(on_shutdown)
     if args.no_ssl:
-        logger.warning("SSL disabled with --no-ssl flag"); ssl_context = None
+        logger.warning("SSL disabled with --no-ssl flag")
+        ssl_context = None
     else:
         ssl_context = _build_ssl_context()
     logger.info("Initialized VLM service: model=%s, api_base=%s", args.model, args.api_base)
@@ -952,38 +1182,58 @@ def main():
     print("(Press CTRL+C to quit)")
     web.run_app(app, host=args.host, port=args.port, ssl_context=ssl_context)
 
+
 def _build_ssl_context():
     import ssl
+
     cert = os.path.join(os.path.dirname(__file__), "static", "favicon", "cert.pem")
     key = os.path.join(os.path.dirname(__file__), "static", "favicon", "key.pem")
     if os.path.exists(cert) and os.path.exists(key):
         return ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=cert)
     return None
 
+
 async def _index_handler(request):
     from pathlib import Path
+
     static_dir = Path(os.path.dirname(__file__)) / "static"
     idx = static_dir / "index.html"
     if idx.exists():
         return web.Response(text=idx.read_text(encoding="utf-8"), content_type="text/html")
     return web.Response(text="webui running", content_type="text/plain")
 
+
 async def _models_handler(request):
     return web.json_response({"models": ["joyai-vl-interaction-preview"]})
 
+
 async def _detect_services_handler(request):
-    return web.json_response({"llm": {"url": default_vlm_config.get("api_base")}, "tts": {"url": os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")}, "kws": {"model_dir": os.environ.get("JARVIS_KWS_MODEL_DIR", "D:/AI/models/sherpa-onnx/models/kws/bt-en")}})
+    return web.json_response(
+        {
+            "llm": {"url": default_vlm_config.get("api_base")},
+            "tts": {
+                "url": os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
+            },
+            "kws": {
+                "model_dir": os.environ.get(
+                    "JARVIS_KWS_MODEL_DIR", "D:/AI/models/sherpa-onnx/models/kws/bt-en"
+                )
+            },
+        }
+    )
+
 
 async def _rtsp_start_stub(request):
     return web.json_response({"error": "RTSP not implemented"}, status=501)
 
+
 async def _rtsp_stop_stub(request):
     return web.json_response({"error": "RTSP not implemented"}, status=501)
+
 
 async def _rtsp_status_stub(request):
     return web.json_response({"error": "RTSP not implemented"}, status=501)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-

@@ -12,13 +12,13 @@ Fix contract:
   * Pixel-based ``height`` / ``max-height`` must not be set on the base
     rule (those belong in the narrow-screen media query only).
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 WEBUI_ROOT = Path(__file__).resolve().parents[1]
-
 
 
 INDEX_HTML = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static" / "index.html"
@@ -60,8 +60,7 @@ def test_vlm_history_base_rule_has_no_fixed_pixel_height():
         f".vlm-history base rule must not pin height in pixels (got body: {body!r})"
     )
     assert not re.search(r"^\s*max-height\s*:\s*\d+\s*px", body, re.M), (
-        f".vlm-history base rule must not pin max-height in pixels "
-        f"(got body: {body!r})"
+        f".vlm-history base rule must not pin max-height in pixels (got body: {body!r})"
     )
 
 

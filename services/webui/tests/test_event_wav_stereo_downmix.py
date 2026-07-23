@@ -10,6 +10,7 @@ Fix contract:
   * Use ``nframes / sample_rate`` for duration, not
     ``len(pcm) / (sample_rate * 2)``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -82,8 +83,9 @@ def test_play_event_wav_downmixes_stereo_to_mono():
 
 def test_play_event_wav_reports_correct_duration_for_stereo():
     """Duration log should reflect real wall-clock length, not double-count stereo."""
-    from joy_interaction_webui.jarvis_mode import JarvisStateMachine
     import logging
+
+    from joy_interaction_webui.jarvis_mode import JarvisStateMachine
 
     sm = JarvisStateMachine.__new__(JarvisStateMachine)
     sm.audio_output = None  # take the silent-fallback path
@@ -150,6 +152,6 @@ def test_play_event_wav_mono_unchanged():
         asyncio.run(sm._play_event_wav("mono.wav"))
 
     assert captured["sample_rate"] == 16000
-    assert np.array_equal(
-        np.frombuffer(captured["pcm"], dtype=np.int16), samples
-    ), "mono file bytes must be unchanged"
+    assert np.array_equal(np.frombuffer(captured["pcm"], dtype=np.int16), samples), (
+        "mono file bytes must be unchanged"
+    )

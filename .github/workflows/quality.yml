@@ -55,9 +55,10 @@ jobs:
       # --- Phase 2 expansion: lint the remaining Python services -----------
       # Every package keeps the repo-wide real-bug rules (F/E402/I/B/C4/SIM/
       # N/RUF/UP/D) active; only its decorative historical-debt rules (measured
-      # during the enabling pass) are suppressed via --extend-ignore. webui is
-      # intentionally excluded: its Python suite carries ~250 docstring-debt
-      # violations plus real-bug fixes still in review, tracked as a separate PR.
+      # during the enabling pass) are suppressed via --extend-ignore. webui's
+      # Python suite now carries its own [tool.ruff.lint] config (real-bug rules
+      # enabled, docstring + other decorative debt ignored), so it is linted
+      # directly from its pyproject without CLI --extend-ignore overrides.
       - name: Ruff lint (scoped to services/memory-store)
         run: ruff check services/memory-store --extend-ignore D101,D102,D103,RUF001,SIM105
       - name: Ruff format check (scoped to services/memory-store)
@@ -78,6 +79,10 @@ jobs:
         run: ruff check services/background-agent --extend-ignore D101,D103,D102,D205
       - name: Ruff format check (scoped to services/background-agent)
         run: ruff format --check services/background-agent
+      - name: Ruff lint (scoped to services/webui Python)
+        run: ruff check services/webui
+      - name: Ruff format check (scoped to services/webui Python)
+        run: ruff format --check services/webui
 
   package-smoke:
     runs-on: ubuntu-latest

@@ -12,20 +12,21 @@ Usage (in server.py or background task):
     async for pcm_chunk in mic_frames:
         await jarvis.feed_audio(pcm_chunk)
 """
+
 from __future__ import annotations
 
 import asyncio
-import os
 import logging
 import math
+import os
 import time
 import wave
 from array import array
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable, Optional
 
 logger = logging.getLogger("joyai.jarvis")
 
@@ -38,13 +39,49 @@ EXIT_WORDS = {"行", "明白", "了解", "ok", "好的", "知道了", "谢谢", 
 """Words that signal "I’m done talking" — treated as end-of-conversation signal."""
 
 _GARBAGE_PUNCT_ONLY = {
-    "\u3002", "\u3001", "\uff01", "\uff1f", "\uff1a", "\uff1b",
-    "\u00b7", "\u2026", "\u2014", "\uff5e",
-    "`", "~", "!", "?", ",", ".", ":", ";", "'", "-", "/", "\\",
-    "(", ")", "[", "]", "{", "}", "<", ">",
-    "\u0022", "\u0027", "*", "&", "#", "%", "@", "^", "_", "+", "=",
+    "\u3002",
+    "\u3001",
+    "\uff01",
+    "\uff1f",
+    "\uff1a",
+    "\uff1b",
+    "\u00b7",
+    "\u2026",
+    "\u2014",
+    "\uff5e",
+    "`",
+    "~",
+    "!",
+    "?",
+    ",",
+    ".",
+    ":",
+    ";",
+    "'",
+    "-",
+    "/",
+    "\\",
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    "<",
+    ">",
+    "\u0022",
+    "*",
+    "&",
+    "#",
+    "%",
+    "@",
+    "^",
+    "_",
+    "+",
+    "=",
     " ",
 }
+
 
 def _is_garbage_text(text):
     """True when an ASR utterance is too noisy to forward to the LLM."""
@@ -64,11 +101,6 @@ def _is_garbage_text(text):
     return False
 
 
-
-
-
-
-
 def _load_default_llm_system_prompt() -> str:
     """Read the BT-7274 persona from prompts/bt-7274.txt.
 
@@ -83,10 +115,7 @@ def _load_default_llm_system_prompt() -> str:
         text = ""
     if text:
         return text
-    return (
-        "You are BT-7274, a Pilot's tactical AI assistant. "
-        "Stay in character at all times."
-    )
+    return "You are BT-7274, a Pilot's tactical AI assistant. Stay in character at all times."
 
 
 @dataclass
@@ -158,7 +187,7 @@ class JarvisConfig:
     # TTS (HTTP) — text -> PCM16 via voice_clone_api
     tts_api_url: str = "http://127.0.0.1:8985/v1/synthesize"  # voice_clone_api FastAPI
     tts_voice_id: str = "minimax_man_33333"  # dashboard-cloned BT-7274 voice (2026-07-11); override via JARVIS_TTS_VOICE_ID env
-    
+
     # LLM (OpenAI-compatible HTTP) — llama-server 7060
     # v3.37 single-LLM-gateway: voice path goes through webinfer, NOT
     # directly to llama-server. Default base is the OpenAI-compatible
@@ -171,7 +200,7 @@ class JarvisConfig:
     llm_system_prompt: str = ""  # populated by __post_init__ from prompts/bt-7274.txt
 
     @classmethod
-    def from_env(cls) -> "JarvisConfig":
+    def from_env(cls) -> JarvisConfig:
         """Build a JarvisConfig with env overrides on the KWS / LLM / TTS paths.
 
         Env overrides (see doc/adr/0002-kws-config-env.md):
@@ -212,7 +241,9 @@ class JarvisConfig:
             except ValueError:
                 logger.warning(
                     "%s=%r is not a float; falling back to default %s",
-                    name, raw, default,
+                    name,
+                    raw,
+                    default,
                 )
                 return default
 
@@ -225,7 +256,9 @@ class JarvisConfig:
             except ValueError:
                 logger.warning(
                     "%s=%r is not an int; falling back to default %s",
-                    name, raw, default,
+                    name,
+                    raw,
+                    default,
                 )
                 return default
 
@@ -240,7 +273,9 @@ class JarvisConfig:
                 return False
             logger.warning(
                 "%s=%r is not a bool; falling back to default %s",
-                name, raw, default,
+                name,
+                raw,
+                default,
             )
             return default
 
@@ -248,28 +283,43 @@ class JarvisConfig:
             kws_model_dir=_get_str("JARVIS_KWS_MODEL_DIR", cls.kws_model_dir),
             kws_keywords_score=_get_float("JARVIS_KWS_SCORE", cls.kws_keywords_score),
             kws_keywords_threshold=_get_float("JARVIS_KWS_THRESHOLD", cls.kws_keywords_threshold),
-            kws_num_trailing_blanks=_get_int("JARVIS_KWS_TRAILING_BLANKS", cls.kws_num_trailing_blanks),
+            kws_num_trailing_blanks=_get_int(
+                "JARVIS_KWS_TRAILING_BLANKS", cls.kws_num_trailing_blanks
+            ),
             kws_max_active_paths=_get_int("JARVIS_KWS_MAX_ACTIVE_PATHS", cls.kws_max_active_paths),
             kws_shadow_asr_enabled=_get_bool("JARVIS_KWS_SHADOW_ASR", cls.kws_shadow_asr_enabled),
             kws_capture_enabled=_get_bool("JARVIS_KWS_CAPTURE", cls.kws_capture_enabled),
             kws_capture_dir=_get_str("JARVIS_KWS_CAPTURE_DIR", cls.kws_capture_dir),
-            kws_capture_window_s=_get_float("JARVIS_KWS_CAPTURE_WINDOW_S", cls.kws_capture_window_s),
-            kws_capture_min_interval_s=_get_float("JARVIS_KWS_CAPTURE_INTERVAL_S", cls.kws_capture_min_interval_s),
-            kws_capture_peak_threshold=_get_float("JARVIS_KWS_CAPTURE_PEAK", cls.kws_capture_peak_threshold),
-            kws_fresh_window_probe_enabled=_get_bool("JARVIS_KWS_FRESH_PROBE", cls.kws_fresh_window_probe_enabled),
-            kws_fresh_window_probe_interval_s=_get_float("JARVIS_KWS_FRESH_PROBE_INTERVAL_S", cls.kws_fresh_window_probe_interval_s),
-            kws_fresh_window_min_s=_get_float("JARVIS_KWS_FRESH_PROBE_MIN_S", cls.kws_fresh_window_min_s),
-            kws_fresh_window_direct_wake=_get_bool("JARVIS_KWS_FRESH_DIRECT_WAKE", cls.kws_fresh_window_direct_wake),
+            kws_capture_window_s=_get_float(
+                "JARVIS_KWS_CAPTURE_WINDOW_S", cls.kws_capture_window_s
+            ),
+            kws_capture_min_interval_s=_get_float(
+                "JARVIS_KWS_CAPTURE_INTERVAL_S", cls.kws_capture_min_interval_s
+            ),
+            kws_capture_peak_threshold=_get_float(
+                "JARVIS_KWS_CAPTURE_PEAK", cls.kws_capture_peak_threshold
+            ),
+            kws_fresh_window_probe_enabled=_get_bool(
+                "JARVIS_KWS_FRESH_PROBE", cls.kws_fresh_window_probe_enabled
+            ),
+            kws_fresh_window_probe_interval_s=_get_float(
+                "JARVIS_KWS_FRESH_PROBE_INTERVAL_S", cls.kws_fresh_window_probe_interval_s
+            ),
+            kws_fresh_window_min_s=_get_float(
+                "JARVIS_KWS_FRESH_PROBE_MIN_S", cls.kws_fresh_window_min_s
+            ),
+            kws_fresh_window_direct_wake=_get_bool(
+                "JARVIS_KWS_FRESH_DIRECT_WAKE", cls.kws_fresh_window_direct_wake
+            ),
             llm_api_url=_get_str("JARVIS_LLM_API_URL", cls.llm_api_url),
             llm_model=_get_str("JARVIS_LLM_MODEL", cls.llm_model),
             llm_text_path=_get_str("JARVIS_LLM_TEXT_PATH", cls.llm_text_path),
-            llm_multimodal_path=_get_str(
-                "JARVIS_LLM_MULTIMODAL_PATH", cls.llm_multimodal_path
-            ),
+            llm_multimodal_path=_get_str("JARVIS_LLM_MULTIMODAL_PATH", cls.llm_multimodal_path),
             tts_api_url=_get_str("JARVIS_TTS_API_URL", cls.tts_api_url),
             tts_voice_id=_get_str("JARVIS_TTS_VOICE_ID", cls.tts_voice_id),
             events_dir=_get_str("JARVIS_EVENTS_DIR", cls.events_dir),
         )
+
     def __post_init__(self) -> None:
         # (a) Lazy-load the BT-7274 persona prompt from prompts/bt-7274.txt
         #     unless the caller already supplied one explicitly.
@@ -290,19 +340,23 @@ class JarvisConfig:
 # State Machine
 # ============================================================================
 
+
 class JarvisState(Enum):
-    KWS_LISTENING = auto()    # Waiting for wake word, KWS running
-    WAKE_DETECTED = auto()    # Wake word heard, playing wake.wav
-    DIALOG_ACTIVE = auto()    # Full duplex: ASR streaming + TTS
-    TTS_PAUSED = auto()       # Interrupt: user started speaking during TTS
-    EXIT_DETECTED = auto()    # Exit word detected, playing goodbye.wav
-    ERROR = auto()            # Unrecoverable error, log only
-    WAIT_ASR_CONFIRM = auto()  # KWS fired; waiting for ASR to confirm wake pattern before playing wake.wav
+    KWS_LISTENING = auto()  # Waiting for wake word, KWS running
+    WAKE_DETECTED = auto()  # Wake word heard, playing wake.wav
+    DIALOG_ACTIVE = auto()  # Full duplex: ASR streaming + TTS
+    TTS_PAUSED = auto()  # Interrupt: user started speaking during TTS
+    EXIT_DETECTED = auto()  # Exit word detected, playing goodbye.wav
+    ERROR = auto()  # Unrecoverable error, log only
+    WAIT_ASR_CONFIRM = (
+        auto()
+    )  # KWS fired; waiting for ASR to confirm wake pattern before playing wake.wav
 
 
 @dataclass
 class AsrPartial:
     """A partial or final ASR result."""
+
     text: str
     is_final: bool = False
     timestamp_ms: float = 0.0
@@ -319,14 +373,14 @@ class JarvisStateMachine:
 
     def __init__(
         self,
-        config: Optional[JarvisConfig] = None,
+        config: JarvisConfig | None = None,
         *,
-        on_wake: Optional[Callable[[], None]] = None,
-        on_goodbye: Optional[Callable[[], None]] = None,
-        on_asr_partial: Optional[Callable[[AsrPartial], None]] = None,
-        on_user_utterance: Optional[Callable[[str], None]] = None,
-        on_llm_response: Optional[Callable[[str, str], None]] = None,
-        audio_output: Optional[Callable[[bytes, int], "asyncio.Future"]] = None,
+        on_wake: Callable[[], None] | None = None,
+        on_goodbye: Callable[[], None] | None = None,
+        on_asr_partial: Callable[[AsrPartial], None] | None = None,
+        on_user_utterance: Callable[[str], None] | None = None,
+        on_llm_response: Callable[[str, str], None] | None = None,
+        audio_output: Callable[[bytes, int], asyncio.Future] | None = None,
     ):
         """
         audio_output: async callable(pcm_bytes, sample_rate) to play PCM
@@ -352,17 +406,17 @@ class JarvisStateMachine:
         # State
         self._last_speech_time: float = 0.0
         self._current_asr_text: str = ""
-        self._tts_task: Optional[asyncio.Task] = None
+        self._tts_task: asyncio.Task | None = None
         # v3.37: when webinfer returns decision="delegation", route the
         # delegated question to BackgroundModelService.handle_foreground_response
         # so the same sub-agent fires for voice requests as for video.
         # Set by JarvisSessionManager.create_session; kept off the class
         # signature so tests can patch it without re-imports.
-        self._background_service: Optional[object] = None
-        self._consume_task: Optional[asyncio.Task] = None
-        self._audio_queue: "asyncio.Queue[bytes]" = asyncio.Queue(maxsize=1024)
+        self._background_service: object | None = None
+        self._consume_task: asyncio.Task | None = None
+        self._audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1024)
         self._tts_done = asyncio.Event()
-        self._confirm_task: Optional[asyncio.Task] = None
+        self._confirm_task: asyncio.Task | None = None
         self._last_asr_match: str = ""
 
         # v3.24 conversation history for LLM context.
@@ -390,6 +444,7 @@ class JarvisStateMachine:
         if self._kws is not None:
             return
         from services.asr.jarvis.kws import JarvisKWS
+
         self._kws = JarvisKWS(
             model_dir=self.config.kws_model_dir,
             wake_word=self.config.wake_word,
@@ -405,6 +460,7 @@ class JarvisStateMachine:
         if self._asr is not None:
             return
         from services.asr.jarvis.asr import JarvisASR
+
         self._asr = JarvisASR(
             model_dir=self.config.asr_model_dir,
             num_threads=self.config.asr_num_threads,
@@ -435,7 +491,8 @@ class JarvisStateMachine:
 
         logger.info(
             "Prewarming Jarvis engines (kws=%s asr=%s) — first load may take a few seconds",
-            self.config.kws_model_dir, self.config.asr_model_dir,
+            self.config.kws_model_dir,
+            self.config.asr_model_dir,
         )
         # KWS is small (~10MB) and ASR is the heavy one (~200MB).
         # Run them sequentially in the executor; we cannot easily overlap
@@ -444,7 +501,9 @@ class JarvisStateMachine:
         # clicks Listen.
         await loop.run_in_executor(None, _load_kws)
         await loop.run_in_executor(None, _load_asr)
-        logger.info("Jarvis engines ready (kws=%s asr=%s)", self.config.wake_word, self.config.asr_model_dir)
+        logger.info(
+            "Jarvis engines ready (kws=%s asr=%s)", self.config.wake_word, self.config.asr_model_dir
+        )
 
     # ------------------------------------------------------------------
     # Audio feed loop (caller-driven)
@@ -654,7 +713,9 @@ class JarvisStateMachine:
         except Exception as exc:
             logger.warning("KWS diagnostic capture failed: %s", exc)
 
-    async def _probe_kws_fresh_window(self, *, peak: float, rms: float, bypass_min_s: bool = False) -> bool:
+    async def _probe_kws_fresh_window(
+        self, *, peak: float, rms: float, bypass_min_s: bool = False
+    ) -> bool:
         """Fallback KWS probe using a clean stream over recent PCM.
 
         Real logs showed a rolling 3s capture could wake offline while the
@@ -740,7 +801,9 @@ class JarvisStateMachine:
         if speechy:
             self._kws_shadow_last_speech_at = now
         if text and text != self._kws_shadow_last_text:
-            if (now - self._kws_shadow_last_log_at) >= max(0.1, self.config.kws_shadow_log_interval_s):
+            if (now - self._kws_shadow_last_log_at) >= max(
+                0.1, self.config.kws_shadow_log_interval_s
+            ):
                 logger.info(
                     "KWS shadow ASR partial without KWS hit: %r (peak=%.3f rms=%.3f)",
                     text,
@@ -824,7 +887,12 @@ class JarvisStateMachine:
         if not text:
             return False
         lowered = text.lower()
-        patterns = getattr(getattr(self, "config", None), "asr_confirm_patterns", None) or ("bt", "BT", "B T", "b t")
+        patterns = getattr(getattr(self, "config", None), "asr_confirm_patterns", None) or (
+            "bt",
+            "BT",
+            "B T",
+            "b t",
+        )
         return any(p.lower() in lowered for p in patterns)
 
     async def _handle_wait_asr_confirm(self, pcm: bytes):
@@ -876,7 +944,6 @@ class JarvisStateMachine:
             # Emit partial
             partial = AsrPartial(text=text, is_final=False, timestamp_ms=now * 1000)
             if self.on_asr_partial:
-
                 self.on_asr_partial(partial)
 
             # Check EXIT_WORDS on partial text (not waiting for final)
@@ -890,15 +957,18 @@ class JarvisStateMachine:
                 return
 
             # Interrupt TTS if user started speaking while TTS is playing
-            if self.state == JarvisState.DIALOG_ACTIVE and self._tts_task and not self._tts_task.done():
+            if (
+                self.state == JarvisState.DIALOG_ACTIVE
+                and self._tts_task
+                and not self._tts_task.done()
+            ):
                 await self._pause_tts()
                 await self._transition_to(JarvisState.TTS_PAUSED)
                 logger.debug("TTS paused")
         # Endpoint detection: Paraformer streaming ASR holds the last partial
         # on silence frames (stale). The `if text` block above only updates
         # _last_speech_time when partial grew, so this fires after ~2s of stale.
-        if (self._current_asr_text
-                and (time.time() - self._last_speech_time) > 2.0):
+        if self._current_asr_text and (time.time() - self._last_speech_time) > 2.0:
             utterance = self._current_asr_text
             self._current_asr_text = ""
 
@@ -1004,7 +1074,9 @@ class JarvisStateMachine:
 
         try:
             import wave
+
             import numpy as _np
+
             with wave.open(str(path), "rb") as wf:
                 sample_rate = wf.getframerate()
                 n_channels = wf.getnchannels()
@@ -1013,7 +1085,8 @@ class JarvisStateMachine:
             if sampwidth != 2:
                 logger.warning(
                     "Event audio %s has sampwidth=%d (expected 2); playback may distort",
-                    filename, sampwidth,
+                    filename,
+                    sampwidth,
                 )
             samples = _np.frombuffer(raw, dtype=_np.int16)
             if n_channels > 1:
@@ -1028,7 +1101,11 @@ class JarvisStateMachine:
             duration = samples.size / sample_rate
             logger.info(
                 "Playing event: %s (%.1fs, %dHz, %dch, %d bytes)",
-                filename, duration, sample_rate, n_channels, len(pcm),
+                filename,
+                duration,
+                sample_rate,
+                n_channels,
+                len(pcm),
             )
             if self.audio_output:
                 try:
@@ -1074,7 +1151,9 @@ class JarvisStateMachine:
     # LLM interaction
     # ------------------------------------------------------------------
 
-    async def _send_to_llm(self, text: str, *, stream_tts: bool = True, image_b64: Optional[str] = None):
+    async def _send_to_llm(
+        self, text: str, *, stream_tts: bool = True, image_b64: str | None = None
+    ):
         """Send user's ASR text to the LLM (llama-server 7060) and stream TTS.
 
         Calls POST {llm_api_url}/chat/completions with system prompt + history,
@@ -1089,7 +1168,7 @@ class JarvisStateMachine:
         # short-term context across turns without persisting anything.
         messages = [{"role": "system", "content": self.config.llm_system_prompt}]
         # Snapshot history before we mutate it
-        history_snapshot = list(self._conv_history)[-self._max_history_turns * 2:]
+        history_snapshot = list(self._conv_history)[-self._max_history_turns * 2 :]
         for role, content in history_snapshot:
             messages.append({"role": role, "content": content})
         if image_b64:
@@ -1110,6 +1189,7 @@ class JarvisStateMachine:
             len(history_snapshot) // 2,
         )
         import httpx
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # v3.37 single-LLM-gateway: route by media type.
@@ -1117,9 +1197,7 @@ class JarvisStateMachine:
                 # composition, token guard, decision-token parsing).
                 # multimodal path -> /v1/chat/completions (existing).
                 endpoint_path = (
-                    self.config.llm_multimodal_path
-                    if image_b64
-                    else self.config.llm_text_path
+                    self.config.llm_multimodal_path if image_b64 else self.config.llm_text_path
                 )
                 endpoint_url = f"{self.config.llm_api_url}{endpoint_path}"
                 resp = await client.post(
@@ -1137,9 +1215,7 @@ class JarvisStateMachine:
                 response = (choice.get("message") or {}).get("content") or ""
                 response = response.strip() if isinstance(response, str) else ""
                 harness = response_payload.get("streamingharness") or {}
-                decision = harness.get("decision") or (
-                    "response" if response else "silence"
-                )
+                decision = harness.get("decision") or ("response" if response else "silence")
                 delegation_question = harness.get("delegation_question")
         except Exception as exc:
             logger.error("LLM call failed: %s", exc)
@@ -1155,15 +1231,17 @@ class JarvisStateMachine:
         if decision == "delegation":
             try:
                 bg = self._background_service
-                if bg is not None and getattr(bg, "enabled", True) and not getattr(bg, "_closed", False):
+                if (
+                    bg is not None
+                    and getattr(bg, "enabled", True)
+                    and not getattr(bg, "_closed", False)
+                ):
                     payload_text = (response or "").strip() or text
                     if delegation_question:
-                        payload_text = (
-                            f"{payload_text}\n\n</delegation> {delegation_question}"
-                        )
+                        payload_text = f"{payload_text}\n\n</delegation> {delegation_question}"
                     metrics = {"user_prompt": text, "delegation_question": delegation_question}
                     bg.handle_foreground_response(payload_text, metrics=metrics)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("delegation routing failed: %s", exc)
             # Skip TTS for delegated replies; the foreground line is empty
             # and the background agent will surface the real answer.
@@ -1190,6 +1268,7 @@ class JarvisStateMachine:
         voice_id is bt-7274 (uploaded reference).
         """
         import httpx
+
         logger.debug("TTS streaming: '%s'", text[:60])
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -1206,6 +1285,7 @@ class JarvisStateMachine:
                 payload = resp.json()
                 # voice_clone_api returns pcm16_base64 or audio (base64)
                 import base64
+
                 audio_b64 = payload.get("pcm16_base64") or payload.get("audio")
                 if not audio_b64:
                     logger.error("TTS response missing audio: %s", payload)
@@ -1240,6 +1320,7 @@ class JarvisStateMachine:
 # Standalone test
 # ============================================================================
 
+
 async def _test_main():
     """Quick smoke test (requires sherpa-onnx models)."""
     import wave
@@ -1270,11 +1351,3 @@ async def _test_main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(_test_main())
-
-
-
-
-
-
-
-

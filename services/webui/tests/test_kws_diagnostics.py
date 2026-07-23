@@ -4,6 +4,7 @@ The production wake contract remains KWS-first.  The diagnostic ASR shadow is
 there to explain misses and collect retraining samples; it must not promote a
 wake by itself.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,6 @@ import logging
 import sys
 import wave
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"

@@ -17,6 +17,7 @@ calls happen inside the test, which already runs in pytest-asyncio's
 loop. Webinfer's aiohttp server runs in its own loop on another thread,
 so they coexist without ``RuntimeError: no running event loop``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,9 +34,11 @@ import pytest
 # conftest.py already puts webui/src + webinfer on sys.path. Re-doing it
 # defensively in case this file is run in isolation.
 _REPO = Path(__file__).resolve().parents[3]
-for _p in (str(_REPO / "services" / "webui" / "src"),
-           str(_REPO / "services" / "webinfer"),
-           str(_REPO)):
+for _p in (
+    str(_REPO / "services" / "webui" / "src"),
+    str(_REPO / "services" / "webinfer"),
+    str(_REPO),
+):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -48,9 +51,9 @@ def _pick_free_port() -> int:
 
 def _build_webinfer_app():
     """Build a webinfer app with stubbed main client (no llama-server needed)."""
+    from aiohttp import web
     from live_adapter import AdapterConfig, StreamingInferAdapter
     from memory_store_client import MemoryStoreClient
-    from aiohttp import web
 
     cfg = AdapterConfig()
     cfg.host = "127.0.0.1"
@@ -245,9 +248,7 @@ async def test_e2e_jarvis_to_webinfer_text_chat_delegation_triggers_background(w
 
     from joy_interaction_webui import server
 
-    bg = SimpleNamespace(
-        enabled=True, _closed=False, handle_foreground_response=Mock()
-    )
+    bg = SimpleNamespace(enabled=True, _closed=False, handle_foreground_response=Mock())
     server.sessions["e2e-delegation"] = {
         "background_service": bg,
         "vlm_service": SimpleNamespace(),
@@ -259,9 +260,7 @@ async def test_e2e_jarvis_to_webinfer_text_chat_delegation_triggers_background(w
         broadcast: list = []
         sm.on_llm_response = lambda text, source: broadcast.append(text)
 
-        await sm._send_to_llm(
-            "帮我查下 Cyberpunk 螳螂帮 boss 攻略", stream_tts=False
-        )
+        await sm._send_to_llm("帮我查下 Cyberpunk 螳螂帮 boss 攻略", stream_tts=False)
 
         assert broadcast == [""]
         bg.handle_foreground_response.assert_called_once()
@@ -283,4 +282,3 @@ async def test_e2e_jarvis_to_webinfer_text_chat_silence_skips_tts(webinfer_serve
     await sm._send_to_llm("hi", stream_tts=True)
 
     assert sm._tts_task is None
-

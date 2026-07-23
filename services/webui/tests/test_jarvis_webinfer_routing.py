@@ -21,14 +21,16 @@ for _p in (str(REPO), str(WEBUI_SRC)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisStateMachine
+from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisStateMachine  # noqa: E402
 
 
 class _FakeResponse:
     def __init__(self, body):
         self._body = body
+
     def raise_for_status(self):
         pass
+
     def json(self):
         return self._body
 
@@ -65,8 +67,9 @@ def _capturing_client(requests, response_body):
     return client
 
 
-def _chat_completion_response(content: str, decision: str = "response",
-                              delegation_question=None) -> dict:
+def _chat_completion_response(
+    content: str, decision: str = "response", delegation_question=None
+) -> dict:
     body = {
         "id": "chatcmpl-test",
         "object": "chat.completion",
@@ -117,14 +120,12 @@ def test_jarvis_text_only_posts_to_webinfer_text_chat():
 
     async def run():
         sm = _build_sm(llm_api_url="http://webinfer:8070/v1")
-        captured = _capturing_client(
-            requests, _chat_completion_response("hi", decision="response")
-        )
+        captured = _capturing_client(requests, _chat_completion_response("hi", decision="response"))
         with patch("httpx.AsyncClient", return_value=captured):
             await sm._send_to_llm("hello", stream_tts=False)
         return sm
 
-    sm = asyncio.run(run())
+    asyncio.run(run())
     assert len(requests) == 1
     assert requests[0]["url"] == "http://webinfer:8070/v1/text/chat"
 
@@ -135,9 +136,7 @@ def test_jarvis_image_b64_posts_to_webinfer_chat_completions():
 
     async def run():
         sm = _build_sm(llm_api_url="http://webinfer:8070/v1")
-        captured = _capturing_client(
-            requests, _chat_completion_response("ok", decision="response")
-        )
+        captured = _capturing_client(requests, _chat_completion_response("ok", decision="response"))
         with patch("httpx.AsyncClient", return_value=captured):
             await sm._send_to_llm(
                 "what is in this image?",
@@ -146,7 +145,7 @@ def test_jarvis_image_b64_posts_to_webinfer_chat_completions():
             )
         return sm
 
-    sm = asyncio.run(run())
+    asyncio.run(run())
     assert len(requests) == 1
     assert requests[0]["url"] == "http://webinfer:8070/v1/chat/completions"
 
@@ -157,9 +156,7 @@ def test_jarvis_text_only_payload_is_text_only():
 
     async def run():
         sm = _build_sm(llm_api_url="http://webinfer:8070/v1")
-        captured = _capturing_client(
-            requests, _chat_completion_response("ok", decision="response")
-        )
+        captured = _capturing_client(requests, _chat_completion_response("ok", decision="response"))
         with patch("httpx.AsyncClient", return_value=captured):
             await sm._send_to_llm("hello", stream_tts=False)
 
@@ -168,9 +165,7 @@ def test_jarvis_text_only_payload_is_text_only():
     for message in sent["messages"]:
         if isinstance(message.get("content"), list):
             for part in message["content"]:
-                assert part.get("type") != "image_url", (
-                    "text-only path leaked image_url content"
-                )
+                assert part.get("type") != "image_url", "text-only path leaked image_url content"
 
 
 def test_jarvis_strips_decision_tokens_before_broadcast():
@@ -198,6 +193,7 @@ def test_jarvis_strips_decision_tokens_before_broadcast():
 
 def test_jarvis_skips_tts_on_silence():
     """When webinfer returns decision='silence', _stream_tts must NOT be invoked."""
+
     async def run():
         sm = _build_sm(llm_api_url="http://webinfer:8070/v1")
         captured = _capturing_client(
@@ -221,6 +217,7 @@ def test_jarvis_triggers_delegation_on_delegation_decision():
         def __init__(self):
             self.enabled = True
             self._closed = False
+
         def handle_foreground_response(self, text, metrics=None):
             captured_payloads.append({"text": text, "metrics": metrics})
 

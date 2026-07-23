@@ -5,6 +5,7 @@ and asserts JarvisConfig.from_env() returns the right values.
 
 Run: pytest services/webui/tests/test_jarvis_config_env.py -v
 """
+
 from __future__ import annotations
 
 import importlib
@@ -12,7 +13,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 
 # Path setup: services/webui/src must be importable so `joy_interaction_webui`
 # resolves. We also need the `services` top-level so `services.asr.jarvis.kws`

@@ -12,16 +12,16 @@ Usage in server.py:
     jarvis = await manager.create_session(session_id)
     await jarvis.feed_audio(pcm_chunk)
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from .jarvis_mode import (
-    AsrPartial,
     EXIT_WORDS,
+    AsrPartial,
     JarvisConfig,
     JarvisState,
     JarvisStateMachine,
@@ -41,8 +41,8 @@ class JarvisSession:
     session_id: str
     state_machine: JarvisStateMachine
     state: JarvisState = JarvisState.KWS_LISTENING
-    _feed_task: Optional[asyncio.Task] = None
-    _bg_task: Optional[asyncio.Task] = None
+    _feed_task: asyncio.Task | None = None
+    _bg_task: asyncio.Task | None = None
 
     async def start(self):
         """Prewarm engines and launch the background state machine loop.
@@ -143,14 +143,14 @@ class JarvisSession:
 class JarvisSessionManager:
     """Manages multiple Jarvis sessions (one per webui session)."""
 
-    def __init__(self, config: Optional[JarvisConfig] = None):
+    def __init__(self, config: JarvisConfig | None = None):
         self.config = config or JarvisConfig()
         self._sessions: dict[str, JarvisSession] = {}
 
     async def create_session(
         self,
         session_id: str,
-        audio_output = None,
+        audio_output=None,
     ) -> JarvisSession:
         """Create a new Jarvis session for the given webui session.
 
@@ -188,6 +188,7 @@ class JarvisSessionManager:
                 bg = session_dict.get("background_service")
                 if bg is not None:
                     sm._background_service = bg
+
             _bind_background_service()
         except Exception:  # pragma: no cover
             logger.debug("background_service lookup skipped for %s", session_id)
@@ -207,31 +208,36 @@ class JarvisSessionManager:
         this broadcast, ASR is a black box -- the only signal we have is the
         final pilot_utterance that fires after the user stops speaking.
         """
+
         def cb(partial: AsrPartial):
             try:
                 from .server import notify_session_asr_partial
+
                 notify_session_asr_partial(
                     session_id,
                     partial.text or "",
                     is_final=bool(getattr(partial, "is_final", False)),
                 )
             except Exception as exc:  # pragma: no cover
-                logger.warning(
-                    "ASR partial broadcast failed for %s: %s", session_id, exc
-                )
+                logger.warning("ASR partial broadcast failed for %s: %s", session_id, exc)
+
         return cb
 
     def _make_user_utterance_callback(self, session_id: str):
         """Build a callback that pushes final ASR text to the browser."""
+
         def cb(text: str):
             try:
                 from .server import notify_session_pilot_utterance
+
                 notify_session_pilot_utterance(session_id, text, source="asr")
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "Pilot utterance broadcast failed for %s: %s",
-                    session_id, exc,
+                    session_id,
+                    exc,
                 )
+
         return cb
 
     def _make_llm_callback(self, session_id: str):
@@ -243,13 +249,15 @@ class JarvisSessionManager:
         does. The callback here only mirrors the cleaned text to the WS;
         no delegation routing here.
         """
+
         def cb(text: str, source: str = "jarvis_voice"):
             try:
                 from .server import notify_session_llm_reply
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "LLM reply broadcast import failed for %s: %s",
-                    session_id, exc,
+                    session_id,
+                    exc,
                 )
                 return
             try:
@@ -257,12 +265,13 @@ class JarvisSessionManager:
             except Exception as exc:  # pragma: no cover
                 logger.warning(
                     "LLM reply broadcast failed for %s: %s",
-                    session_id, exc,
+                    session_id,
+                    exc,
                 )
+
         return cb
 
-
-    def get_session(self, session_id: str) -> Optional[JarvisSession]:
+    def get_session(self, session_id: str) -> JarvisSession | None:
         """Get an existing session, or None."""
         return self._sessions.get(session_id)
 
@@ -278,7 +287,7 @@ class JarvisSessionManager:
 # Singleton (optional)
 # ============================================================================
 
-_global_manager: Optional[JarvisSessionManager] = None
+_global_manager: JarvisSessionManager | None = None
 
 
 def get_global_manager() -> JarvisSessionManager:

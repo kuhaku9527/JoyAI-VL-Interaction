@@ -1,11 +1,12 @@
 """Tests for WebRTC audio binding into the Jarvis listening chain."""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import sys
 from pathlib import Path
-
+from typing import ClassVar
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -25,6 +26,7 @@ class FakePeerConnection:
         def decorator(fn):
             self.handlers[event_name] = fn
             return fn
+
         return decorator
 
     def addTrack(self, track):
@@ -38,6 +40,7 @@ class FakePeerConnection:
         class Answer:
             sdp = "v=0\r\nanswer"
             type = "answer"
+
         return Answer()
 
     async def setLocalDescription(self, desc):
@@ -77,7 +80,9 @@ def test_bind_jarvis_audio_for_peer_creates_session_speaker_and_audio_handler(mo
     monkeypatch.setattr(
         server,
         "_start_mic_audio_consumer",
-        lambda mic_track, session_id: started_consumers.append((mic_track, session_id)) or FakeDoneTask(),
+        lambda mic_track, session_id: (
+            started_consumers.append((mic_track, session_id)) or FakeDoneTask()
+        ),
         raising=False,
     )
 
@@ -104,10 +109,15 @@ def test_offer_invokes_jarvis_audio_binding(monkeypatch):
     calls = []
 
     class FakeRequest:
-        app = {"jarvis_manager": "manager"}
+        app: ClassVar[dict] = {"jarvis_manager": "manager"}
 
         async def json(self):
-            return {"sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111", "type": "offer", "session_id": "s1", "jarvis_audio": True}
+            return {
+                "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111",
+                "type": "offer",
+                "session_id": "s1",
+                "jarvis_audio": True,
+            }
 
     def fake_rtc_session_description(sdp, type):
         return {"sdp": sdp, "type": type}

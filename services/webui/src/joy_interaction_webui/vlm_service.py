@@ -23,13 +23,13 @@ import asyncio
 import base64
 import io
 import json
+import logging
 import math
 import re
 import time
+
 from openai import AsyncOpenAI
 from PIL import Image
-from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class VLMService:
         model: str,
         api_base: str = "http://localhost:8000/v1",
         api_key: str = "EMPTY",
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         max_tokens: int = 512,
         session_id: str = "default",
     ):
@@ -68,8 +68,8 @@ class VLMService:
         self.last_latency_breakdown_ms = {}
         self.last_frame_timing_ms = {}
         self.last_user_prompt = ""
-        self._pending_background_handoff: Optional[dict] = None
-        self._last_background_handoff_meta: Optional[dict] = None
+        self._pending_background_handoff: dict | None = None
+        self._last_background_handoff_meta: dict | None = None
         self._timestamp_turn_count = 0
 
         # Metrics tracking
@@ -77,7 +77,7 @@ class VLMService:
         self.total_inferences = 0
         self.total_inference_time = 0.0
 
-    def _format_frame_time_range(self, frame_metadata: Optional[dict]) -> str:
+    def _format_frame_time_range(self, frame_metadata: dict | None) -> str:
         if not frame_metadata:
             return ""
 
@@ -110,7 +110,7 @@ class VLMService:
             "timestamp_interval_seconds": interval,
         }
 
-    def _apply_turn_timestamp(self, metadata: Optional[dict], turn_metadata: dict) -> dict:
+    def _apply_turn_timestamp(self, metadata: dict | None, turn_metadata: dict) -> dict:
         result = dict(metadata or {})
         if "timestamp" in result:
             result.setdefault("source_timestamp", result.get("timestamp"))
@@ -119,11 +119,9 @@ class VLMService:
         result.update(turn_metadata)
         return result
 
-    def _metadata_with_next_turn_timestamp(self, metadata: Optional[dict]) -> dict:
+    def _metadata_with_next_turn_timestamp(self, metadata: dict | None) -> dict:
         source = dict(metadata or {})
-        turn_metadata = self._next_turn_timestamp_metadata(
-            source.get("timestamp_interval_seconds")
-        )
+        turn_metadata = self._next_turn_timestamp_metadata(source.get("timestamp_interval_seconds"))
         return self._apply_turn_timestamp(source, turn_metadata)
 
     def _batch_with_next_turn_timestamp(self, frames_data: list) -> list:
@@ -133,16 +131,13 @@ class VLMService:
         turn_metadata = self._next_turn_timestamp_metadata(
             first_frame.get("timestamp_interval_seconds")
         )
-        return [
-            self._apply_turn_timestamp(frame_data, turn_metadata)
-            for frame_data in frames_data
-        ]
+        return [self._apply_turn_timestamp(frame_data, turn_metadata) for frame_data in frames_data]
 
     async def analyze_image(
         self,
         image: Image.Image,
-        prompt: Optional[str] = None,
-        frame_metadata: Optional[dict] = None,
+        prompt: str | None = None,
+        frame_metadata: dict | None = None,
     ) -> str:
         if prompt is None:
             prompt = self.prompt
@@ -261,17 +256,17 @@ class VLMService:
                 "response_extract_ms": (end_time - response_extract_start) * 1000,
                 "total_ms": inference_time * 1000,
             }
-            logger.info(f"VLM response: {result} (latency: {inference_time*1000:.0f}ms)")
+            logger.info(f"VLM response: {result} (latency: {inference_time * 1000:.0f}ms)")
             return result
 
         except Exception as e:
             logger.error(f"Error analyzing image: {e}")
-            return f"Error: {str(e)}"
+            return f"Error: {e!s}"
 
-    def get_last_request_payload(self) -> Optional[dict]:
+    def get_last_request_payload(self) -> dict | None:
         return self._last_request_payload
 
-    def get_last_response_payload(self) -> Optional[dict]:
+    def get_last_response_payload(self) -> dict | None:
         return self._last_response_payload
 
     def _track_current_task(self):
@@ -288,9 +283,7 @@ class VLMService:
         """Cancel in-flight VLM processing tasks for this session."""
         current_task = asyncio.current_task()
         tasks = [
-            task
-            for task in self._active_tasks
-            if task is not current_task and not task.done()
+            task for task in self._active_tasks if task is not current_task and not task.done()
         ]
         if not tasks:
             self.is_processing = False
@@ -302,7 +295,7 @@ class VLMService:
         done, pending = await asyncio.wait(tasks, timeout=timeout)
         if done:
             await asyncio.gather(*done, return_exceptions=True)
-        for task in pending:
+        for _ in pending:
             logger.warning(
                 "Timed out waiting for VLM task cancellation for session %s",
                 self.session_id,
@@ -349,7 +342,9 @@ class VLMService:
             len(compact_summary),
         )
 
-    def _resolve_prompt_for_inference(self, explicit_prompt: Optional[str], captured_prompt: Optional[str]) -> tuple[Optional[str], bool]:
+    def _resolve_prompt_for_inference(
+        self, explicit_prompt: str | None, captured_prompt: str | None
+    ) -> tuple[str | None, bool]:
         prompt_text = explicit_prompt if explicit_prompt is not None else captured_prompt
         handoff = self._pending_background_handoff
         if handoff and handoff.get("summary"):
@@ -387,9 +382,9 @@ class VLMService:
     async def process_frame(
         self,
         image: Image.Image,
-        prompt: Optional[str] = None,
-        frame_timing_ms: Optional[dict] = None,
-        frame_metadata: Optional[dict] = None,
+        prompt: str | None = None,
+        frame_timing_ms: dict | None = None,
+        frame_metadata: dict | None = None,
     ) -> None:
         if self._closed:
             return
@@ -412,9 +407,7 @@ class VLMService:
                         captured_prompt,
                     )
                     self.last_user_prompt = str(used_prompt or "").strip()
-                    request_frame_metadata = self._metadata_with_next_turn_timestamp(
-                        frame_metadata
-                    )
+                    request_frame_metadata = self._metadata_with_next_turn_timestamp(frame_metadata)
                     response = await self.analyze_image(
                         image,
                         used_prompt,
@@ -426,7 +419,9 @@ class VLMService:
                     if captured_prompt and self.prompt == captured_prompt:
                         self.prompt = None
                     if consumed_background_handoff:
-                        logger.info("Consumed background handoff metadata for session %s", self.session_id)
+                        logger.info(
+                            "Consumed background handoff metadata for session %s", self.session_id
+                        )
                 finally:
                     self.is_processing = False
         finally:
@@ -435,7 +430,7 @@ class VLMService:
     async def analyze_images(
         self,
         frames_data: list,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
     ) -> str:
         """Analyze multiple images in a single API call (batch mode)."""
         if prompt is None:
@@ -521,19 +516,19 @@ class VLMService:
             }
             logger.info(
                 f"VLM batch response ({len(frames_data)} frames): {result} "
-                f"(latency: {inference_time*1000:.0f}ms)"
+                f"(latency: {inference_time * 1000:.0f}ms)"
             )
             return result
 
         except Exception as e:
             logger.error(f"Error analyzing images batch: {e}")
-            return f"Error: {str(e)}"
+            return f"Error: {e!s}"
 
     async def process_frame_batch(
         self,
         frames_data: list,
-        prompt: Optional[str] = None,
-        frame_timing_ms: Optional[dict] = None,
+        prompt: str | None = None,
+        frame_timing_ms: dict | None = None,
     ) -> None:
         """Process a batch of frames in a single VLM call."""
         if self._closed:
@@ -565,7 +560,9 @@ class VLMService:
                     if captured_prompt and self.prompt == captured_prompt:
                         self.prompt = None
                     if consumed_background_handoff:
-                        logger.info("Consumed background handoff metadata for session %s", self.session_id)
+                        logger.info(
+                            "Consumed background handoff metadata for session %s", self.session_id
+                        )
                 finally:
                     self.is_processing = False
         finally:
@@ -685,7 +682,7 @@ class VLMService:
                 return None
         return value
 
-    def _response_finish_reason(self, response, payload: Optional[dict]) -> str:
+    def _response_finish_reason(self, response, payload: dict | None) -> str:
         choices = getattr(response, "choices", None) or []
         if choices:
             finish_reason = getattr(choices[0], "finish_reason", None)
@@ -718,17 +715,17 @@ class VLMService:
             metrics["background_handoff"] = self._last_background_handoff_meta
         return metrics
 
-    def consume_background_handoff_metric(self) -> Optional[dict]:
+    def consume_background_handoff_metric(self) -> dict | None:
         meta = self._last_background_handoff_meta
         self._last_background_handoff_meta = None
         return meta
 
-    def update_prompt(self, new_prompt: Optional[str]) -> None:
+    def update_prompt(self, new_prompt: str | None) -> None:
         prompt_text = new_prompt.strip() if new_prompt else None
         self.prompt = prompt_text
         logger.info(f"Updated prompt to: {prompt_text}")
 
-    def set_model(self, model: Optional[str]) -> bool:
+    def set_model(self, model: str | None) -> bool:
         model_name = (model or "").strip()
         if not model_name or model_name.lower() in {"undefined", "null", "none"}:
             return False
@@ -736,9 +733,7 @@ class VLMService:
         logger.info("Updated model to: %s", model_name)
         return True
 
-    def update_api_settings(
-        self, api_base: Optional[str] = None, api_key: Optional[str] = None
-    ) -> None:
+    def update_api_settings(self, api_base: str | None = None, api_key: str | None = None) -> None:
         if api_base:
             self.api_base = api_base
         if api_key is not None:
@@ -759,18 +754,18 @@ class VLMService:
 
         reset_url = self.api_base.rstrip("/").removesuffix("/v1") + "/v1/streaming/reset"
         try:
-            async with aiohttp.ClientSession() as http:
-                async with http.post(
+            async with (
+                aiohttp.ClientSession() as http,
+                http.post(
                     reset_url,
                     json={"user": self.session_id},
                     headers={"x-streaming-session": self.session_id},
                     timeout=aiohttp.ClientTimeout(total=5),
-                ) as resp:
-                    ok = resp.status == 200
-                    logger.info(
-                        f"Adapter reset for session {self.session_id}: status={resp.status}"
-                    )
-                    return ok
+                ) as resp,
+            ):
+                ok = resp.status == 200
+                logger.info(f"Adapter reset for session {self.session_id}: status={resp.status}")
+                return ok
         except Exception as e:
             logger.warning(f"Adapter reset failed for session {self.session_id}: {e}")
             return False

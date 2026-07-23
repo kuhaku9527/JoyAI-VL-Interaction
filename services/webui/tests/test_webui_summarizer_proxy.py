@@ -14,6 +14,7 @@ These tests pin the composition:
   4. The proxy returns the new snapshot from webinfer.
   5. When webinfer is unreachable, the proxy returns {ok: false, reason: ...}.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -33,6 +33,7 @@ for _p in (str(REPO), str(WEBUI_SRC)):
 @pytest.fixture(autouse=True)
 def _isolate():
     from joy_interaction_webui import server
+
     snapshot = dict(server._services_config)
     yield
     server._services_config.clear()
@@ -41,12 +42,14 @@ def _isolate():
 
 def test_webinfer_base_url_respects_env(monkeypatch):
     from joy_interaction_webui import server
+
     monkeypatch.setenv("WEBINFER_URL", "http://my-webinfer:9999")
     assert server._webinfer_base_url() == "http://my-webinfer:9999"
 
 
 def test_webinfer_base_url_strips_v1_from_llm_default(monkeypatch):
     from joy_interaction_webui import server
+
     monkeypatch.delenv("WEBINFER_URL", raising=False)
     server._services_config["llm"] = {"api_base": "http://localhost:8070/v1"}
     assert server._webinfer_base_url() == "http://localhost:8070"
@@ -54,6 +57,7 @@ def test_webinfer_base_url_strips_v1_from_llm_default(monkeypatch):
 
 def test_webinfer_base_url_keeps_non_v1_path(monkeypatch):
     from joy_interaction_webui import server
+
     monkeypatch.delenv("WEBINFER_URL", raising=False)
     server._services_config["llm"] = {"api_base": "http://localhost:8070/gateway"}
     # /v1 is not at the end, so the URL is left as is.
