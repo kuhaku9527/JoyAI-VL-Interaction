@@ -1,10 +1,10 @@
 """Tests for hybrid KWS->ASR wake confirmation (v3.17)."""
+
 from __future__ import annotations
 
 import asyncio
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -54,7 +54,7 @@ class FakeASR:
 
 
 async def _make_sm(timeout_s: float = 0.2, kws_fires_on: int = 1, asr_partials=(), asr_finals=()):
-    from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisStateMachine, JarvisState
+    from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisState, JarvisStateMachine
 
     cfg = JarvisConfig.from_env()
     # Override hybrid knobs for the test
@@ -138,7 +138,9 @@ async def test_asr_no_match_timeout_returns_to_kws():
     await sm._handle_wait_asr_confirm(b"\x00\x00" * 80)
     # Wait for the timeout to fire and reset
     await asyncio.sleep(0.25)
-    assert sm.state == JarvisState.KWS_LISTENING, f"expected KWS_LISTENING after timeout, got {sm.state}"
+    assert sm.state == JarvisState.KWS_LISTENING, (
+        f"expected KWS_LISTENING after timeout, got {sm.state}"
+    )
     assert sm._asr_stream_active is False, "ASR should be stopped after rejection"
 
 
@@ -151,4 +153,6 @@ def test_asr_confirm_match_helper():
         assert JarvisStateMachine._asr_confirm_match(sm, text) is True, f"should match: {text!r}"
     # Cases that should NOT match
     for text in ["", "hello world", "bet", "bot", "but", "battery"]:
-        assert JarvisStateMachine._asr_confirm_match(sm, text) is False, f"should NOT match: {text!r}"
+        assert JarvisStateMachine._asr_confirm_match(sm, text) is False, (
+            f"should NOT match: {text!r}"
+        )

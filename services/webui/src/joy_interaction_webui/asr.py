@@ -1,23 +1,21 @@
-
 """ASR websocket bridge for browser microphone audio."""
 
 import asyncio
 import json
 import logging
 import os
-import struct
-import time
-import uuid
-
-import aiohttp
-
 
 # ============================================================================
 # In-process sherpa-onnx ASR fallback
 # ============================================================================
-
 import os as _os
+import struct
 import sys as _sys
+import time
+import uuid
+
+import aiohttp
+from aiohttp import web
 
 _INPROC_ASR = None
 _INPROC_ASR_LOCK_IMPORTED = False
@@ -40,6 +38,7 @@ def _get_inproc_asr():
         return _INPROC_ASR
     _ensure_repo_root_on_path()
     from services.asr.jarvis.asr import JarvisASR
+
     model_dir = _os.environ.get(
         "JARVIS_ASR_MODEL_DIR",
         "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en",
@@ -48,7 +47,7 @@ def _get_inproc_asr():
     _INPROC_ASR = JarvisASR(model_dir=model_dir, num_threads=num_threads)
     _INPROC_ASR.start()
     return _INPROC_ASR
-from aiohttp import web
+
 
 # ASR parameters
 ASR_URL = os.getenv("ASR_URL", "").strip()
@@ -118,13 +117,12 @@ def is_retryable_asr_connect_error(err):
     return status in ASR_RETRYABLE_STATUS_CODES
 
 
-
-
 async def connect_asr_inproc(session_id):
     logger.info("[%s] ASR: using in-process sherpa-onnx fallback", session_id)
     engine = _get_inproc_asr()
     engine.start()
     return None, engine
+
 
 async def connect_asr(session_id):
     if not ASR_URL:
@@ -213,8 +211,6 @@ async def send_asr_client_json(client_ws, payload):
         await client_ws.send_str(json.dumps(payload, ensure_ascii=False))
 
 
-
-
 async def forward_asr_audio_inproc(session_id, client_ws, engine, client_end_event):
     while True:
         if client_end_event and client_end_event.is_set():
@@ -238,7 +234,11 @@ async def forward_asr_audio_inproc(session_id, client_ws, engine, client_end_eve
                     return
             except (json.JSONDecodeError, TypeError):
                 pass
-        elif msg.type in {aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSING}:
+        elif msg.type in {
+            aiohttp.WSMsgType.CLOSE,
+            aiohttp.WSMsgType.CLOSED,
+            aiohttp.WSMsgType.CLOSING,
+        }:
             return
         elif msg.type == aiohttp.WSMsgType.ERROR:
             return
@@ -287,6 +287,7 @@ async def forward_asr_results_inproc(session_id, client_ws, engine, stop_on_fina
                 silent_polls = 0
         else:
             silent_polls += 1
+
 
 async def forward_asr_audio(session_id, client_ws, asr_ws, client_end_event):
     seqid = 1
@@ -407,7 +408,11 @@ async def forward_asr_results(
                 return
             if result["event"] == "IS_IPU_END":
                 ending_mid = result["mid"] or "unknown"
-        elif msg.type in {aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSING}:
+        elif msg.type in {
+            aiohttp.WSMsgType.CLOSE,
+            aiohttp.WSMsgType.CLOSED,
+            aiohttp.WSMsgType.CLOSING,
+        }:
             return
         elif msg.type == aiohttp.WSMsgType.ERROR:
             raise asr_ws.exception() or RuntimeError("ASR upstream websocket error")
@@ -447,7 +452,8 @@ async def asr_websocket_handler(request):
     except Exception as connect_err:
         logger.info(
             "[%s] external ASR unreachable (%s); using in-process sherpa-onnx",
-            session_id, connect_err,
+            session_id,
+            connect_err,
         )
         inproc_mode = True
         try:

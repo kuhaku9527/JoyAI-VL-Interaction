@@ -10,12 +10,12 @@ These tests pin two behaviours:
 2. Audio chunks queued in the wake buffer are NOT drained before the confirm
    window opens — they flow into ``_handle_wait_asr_confirm``.
 """
+
 from __future__ import annotations
 
 import asyncio
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"

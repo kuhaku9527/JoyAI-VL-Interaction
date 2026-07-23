@@ -3,12 +3,13 @@
 Uses monkeypatching of httpx.AsyncClient to capture messages without actually
 hitting the network.
 """
+
 from __future__ import annotations
 
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import patch, AsyncMock
+from unittest.mock import AsyncMock, patch
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -16,14 +17,16 @@ for _p in (str(REPO), str(WEBUI_SRC)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisStateMachine
+from joy_interaction_webui.jarvis_mode import JarvisConfig, JarvisStateMachine  # noqa: E402
 
 
 class FakeResponse:
     def __init__(self, text):
         self._text = text
+
     def raise_for_status(self):
         pass
+
     def json(self):
         return {"choices": [{"message": {"content": self._text}}]}
 
@@ -49,7 +52,9 @@ def _make_client(captured):
         async def post(url, json):
             captured_holder.append(json)
             return FakeResponse("Confirmed.")
+
         return post
+
     client.post = make_post()
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
@@ -66,7 +71,7 @@ def test_first_turn_has_no_history():
             await sm._send_to_llm("hello")
         return sm, captured
 
-    sm, captured = asyncio.run(go())
+    _sm, captured = asyncio.run(go())
     assert len(captured) == 1
     msgs = captured[0]["messages"]
     assert len(msgs) == 2
@@ -106,13 +111,11 @@ def test_history_bounded_by_max_turns():
                 await sm._send_to_llm(f"turn-{i}")
         return captured, sm
 
-    captured, sm = asyncio.run(go())
+    captured, _sm = asyncio.run(go())
     assert len(captured) == 25
     msgs_last = captured[-1]["messages"]
     # system + max_history_turns * 2 history + new user = 1 + 20 + 1 = 22
-    assert len(msgs_last) == 22, (
-        f"history not bounded: {len(msgs_last)} messages"
-    )
+    assert len(msgs_last) == 22, f"history not bounded: {len(msgs_last)} messages"
     # Latest user message is at the end
     assert msgs_last[-1]["content"] == "turn-24"
     # Oldest retained is turn-(25-10-1) = turn-14

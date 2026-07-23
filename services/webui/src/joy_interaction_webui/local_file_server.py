@@ -1,4 +1,3 @@
-
 """Serve local artifacts produced by background agent tasks."""
 
 import mimetypes
