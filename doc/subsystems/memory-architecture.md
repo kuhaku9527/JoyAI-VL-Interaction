@@ -1,11 +1,12 @@
 # 记忆架构设计（持久化 + 可插拔外部库）
 
-> 状态：**v3.2 落地中（v0.2 hooks 2026-07-13 完成，v0.3 obsidian/bge-m3 待排期）**。配套 `doc/asr-streaming.md`（Jarvis 模式）。
-> v0.1 skeleton（v3.25）：services/memory-store/ SqliteBackend + FTS5；v0.2 hooks（v3.26）：live_adapter.py push/pull/recall + [Local Wiki] prompt 注入；后续 v0.3 才接 bge-m3 与 obsidian。
+> 状态：**v3.2 落地（v0.2 hooks 2026-07-13 完成；[Local Wiki] 委派召回 2026-07-23 落地进 hermes_api shim；obsidian/bge-m3 待排期）**。配套 `doc/asr-streaming.md`（Jarvis 模式）。
+> v0.1 skeleton（v3.25）：services/memory-store/ SqliteBackend + FTS5；v0.2 hooks（v3.26）：live_adapter.py push/pull/recall + webinfer [历史记忆] 注入；[Local Wiki]（2026-07-23）：hermes_api shim 委派前 recall memory-store。
 > 触发：原项目有 3 层进程内记忆，但**无持久化、无外部接口、无 RAG**——重启即丢。
 > 修订：
 > - v3.1：去掉 namespace 字段（YAGNI）、storage 优先 psql（复用 hermes）。
 > - v3.0：用户确认推/拉对称协作（A 方案）、embedding 本地 bge-m3。
+> - **2026-07-23 ADR-001**：**取消 psql 复用 hermes 路线**，记忆持久层固定为 `sqlite`（避免污染 hermes 原本的记忆/状态库）。见 §10。
 
 ---
 
@@ -46,7 +47,7 @@
 
 1. **重启不丢记忆**：会话结束 → 持久化 mid_term 摘要
 2. **外部知识库**：obsidian wiki / 游戏攻略 / 角色 lore 可注入 prompt
-3. **可插拔后端**：psql 优先（复用 hermes-agent），sqlite 本地兜底，obsidian 同步可选
+3. **可插拔后端**：**sqlite 固定为唯一生产后端**（不复用 hermes-agent 的 pg，避免污染 hermes 原记忆）；obsidian 同步可选（v0.3）
 4. **不破坏现有速度**：进程内 dict 仍为 L0 缓存，按需召回才走 memory-store
 
 ## 2. 架构
@@ -72,10 +73,9 @@ flowchart TB
 
   PUSH --> MS[(memory-store :8996)]
 
-  subgraph "持久层 backend（可插拔）"
-    MS --> PG[psql<br/>hermes 共用]
-    MS --> SQ[sqlite<br/>本地兜底]
-    MS --> OB[obsidian sync<br/>可选]
+  subgraph "持久层 backend（固定 sqlite）"
+    MS --> SQ[sqlite<br/>生产后端]
+    MS --> OB[obsidian sync<br/>可选 v0.3]
   end
 
   subgraph "下次启动"
@@ -227,9 +227,9 @@ if recalled_blocks:
     sections.append(f"[历史记忆]\n{meta}")
 ```
 
-### 4.2 hermes-api shim 改造
+### 4.2 hermes-api shim 改造（✅ 2026-07-23 已落地）
 
-`/v1/solve` 处理 `</delegate>` 时先查 memory-store 再走 web search：
+`/v1/solve` 处理 `</delegate>` 时**先查 memory-store 再走 web search**（实际实现见 `services/background-agent/hermes_api/main.py` 的 `async _enrich_with_memory()`，`solve()` 中 `await` 后注入 `_build_prompt(local_wiki=...)`）：
 
 ```python
 # hermes_api/main.py 的 _build_prompt 里
@@ -243,7 +243,7 @@ async def _enrich_with_memory(question: str) -> str:
             blocks = r.json()["blocks"]
             if not blocks:
                 return ""
-            return "\n".join(f"- [{b['type']}] {b['content']}" for b in blocks)
+            return "\n".join(f"- {b['content']}" for b in blocks)  # v3.1 已移除 type 字段，只用 content
     except Exception:
         return ""  # 失败不阻塞，让 LLM 走 web search
 
@@ -265,17 +265,20 @@ if context:
 
 ## 5. 存储后端选型
 
-### 5.1 主后端：psql（复用 hermes-agent）
+### 5.1 生产后端：sqlite（固定，**不复用 hermes-agent**）
+
+> **ADR-001（2026-07-23）**：原计划（v3.1）把记忆持久层架到 hermes-agent 的 Postgres 实例（psql 优先）。用户明确否决：复用 hermes 的 pg 会污染 hermes 原本的记忆/状态库。故 `MEMORY_BACKEND` 固定为 `sqlite`，`psql_backend.py` 保留为显式 `NotImplementedError` 桩（标注"已从路线图移除"），防止后续 agent 误启用。
 
 | 维度 | 值 |
 | - | - |
-| 大小 | 0 依赖（hermes 已部署） |
-| 部署 | 共用 hermes 的 pg 实例 |
-| 性能 | < 5ms / 检索（10K chunks 带向量索引） |
-| 容量 | 上百万 chunks（pgvector 16GB 无压力） |
-| 优势 | 跨服务共享（hermes / webinfer / webui 同源） |
+| 大小 | 0 外部依赖（pip 装 `sqlite` + `sqlite-vec`/FTS5） |
+| 部署 | 单文件 `data/memory.sqlite`（memory-store 服务内） |
+| 性能 | < 1ms / 检索（FTS5 bm25，10K chunks） |
+| 容量 | 十万级 chunks（当前规模足够） |
+| 优势 | 与 hermes **零耦合**，绝不触碰 hermes 原记忆/状态库 |
+| 取舍 | 失去 pgvector 百万级向量共享（当前不需要，YAGNI） |
 
-### 5.2 兜底：sqlite + sqlite-vec
+### 5.2 后端实现：sqlite + FTS5（当前生产）
 
 | 维度 | 值 |
 | - | - |
@@ -283,7 +286,7 @@ if context:
 | 部署 | 单文件 `data/memory.sqlite` |
 | 性能 | < 1ms / 检索（10K chunks） |
 | 容量 | 上百万 chunks |
-| 用途 | psql 不可用时本地降级 |
+| 用途 | 固定生产后端（不与 hermes 共享） |
 
 ### 5.3 可选：obsidian 同步
 
@@ -319,8 +322,9 @@ class MemoryBackend(Protocol):
     async def recall(self, query: str, top_k: int, ...) -> list[MemoryBlock]: ...
     async def sync_external(self, path: str) -> int: ...
 
-# 实现：PsqlBackend / SqliteBackend / ObsidianBackend
-# 通过 env MEMORY_BACKEND=psql 切换
+# 实现：SqliteBackend（生产） / ObsidianBackend（可选 v0.3）
+#       PsqlBackend 为显式 NotImplementedError 桩（已从路线图移除，勿启用）
+# 通过 env MEMORY_BACKEND=sqlite 固定（默认即 sqlite）
 ```
 
 ## 6. 落地步骤
@@ -359,7 +363,7 @@ class MemoryBackend(Protocol):
 | 检索不准 | 调 `min_score` 阈值；人工加 few-shot 例子 |
 | 注入太多稀释决策 | 限制 `top_k=8`、总 token 上限 2000 |
 | 隐私 | 全本地，psql 不出网（hermes 部署在内网） |
-| psql 不可用 | 自动降级到 sqlite backend |
+| psql 复用已取消（ADR-001） | 不再依赖 hermes pg；sqlite 为固定后端，无降级路径 |
 | obsidian 路径写错 | 启动时校验路径存在性，失败仅 warn 不阻塞 |
 | 异常崩溃丢本轮 push | 接受（你之前经验：响应日志有 jsonl 兜底） |
 
@@ -370,4 +374,19 @@ class MemoryBackend(Protocol):
 - `doc/gaming-mode.md` §8（让 Hermes 委派查攻略的升级版）
 - `doc/jarvis-mode.md`（唤醒 + EXIT_WORDS 状态机，记忆层是其下游）
 - `doc/lightweight-replacement.md` §2（bge-m3 与 whisper.cpp 同源）
-- `services/background-agent/hermes_api/main.py`（psql 复用）
+- `services/background-agent/hermes_api/main.py`（[Local Wiki] 委派前 recall memory-store）
+
+---
+
+## 10. 决策记录（ADR）
+
+### ADR-001：记忆持久层固定为 sqlite，取消 psql 复用 hermes
+
+- **状态**：Accepted（2026-07-23）
+- **上下文**：原计划（v3.1）把记忆持久层架到 hermes-agent 的 Postgres 实例（`backends/psql_backend.py`，psql 优先），目标是跨服务共享与 pgvector 向量检索。但用户明确担心：复用 hermes 的 pg 会**污染 hermes 原本的记忆/状态库**（`D:\Workspace\hermes-data\state.db` 等）。
+- **决策**：取消 psql 复用路线。`MEMORY_BACKEND` 固定为 `sqlite`，作为 memory-store 唯一生产后端。`psql_backend.py` 保留为显式 `NotImplementedError` 桩，标注"已从路线图移除"，防止后续 agent 误启用。
+- **后果（trade-off）**：
+  - ✅ 与 hermes **零耦合**：memory-store 完全独立，绝不触碰 hermes 原记忆/状态库。
+  - ✅ 部署简单：单文件 `data/memory.sqlite`，无外部依赖。
+  - ➖ 失去 pgvector 跨服务共享与百万级向量检索能力（当前规模不需要，YAGNI）。
+  - ➖ 若未来需要大规模 RAG，应评估**独立的**向量库（非 hermes 的 pg）。
