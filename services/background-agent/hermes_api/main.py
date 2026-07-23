@@ -231,10 +231,7 @@ Recent frame metadata:
 {frame_context}
 """
     if local_wiki:
-        prompt += (
-            f"\n[Local Wiki]\n{local_wiki}\n"
-            "(优先用本地资料, 无关时才用 web search)\n"
-        )
+        prompt += f"\n[Local Wiki]\n{local_wiki}\n(优先用本地资料, 无关时才用 web search)\n"
     return prompt
 
 
@@ -259,9 +256,7 @@ async def _enrich_with_memory(question: str) -> str:
             if not blocks:
                 return ""
             lines = [
-                f"- {b['content']}"
-                for b in blocks
-                if isinstance(b, dict) and b.get("content")
+                f"- {b['content']}" for b in blocks if isinstance(b, dict) and b.get("content")
             ]
             return "\n".join(lines)
     except Exception:
