@@ -8,12 +8,12 @@ SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 """
 
-import av
 import asyncio
 import logging
 import re
 import threading
-from typing import Optional
+
+import av
 from aiortc import VideoStreamTrack
 from av import VideoFrame
 
@@ -41,7 +41,7 @@ class RTSPVideoTrack(VideoStreamTrack):
         rtsp_url: str,
         reconnect_attempts: int = 5,
         reconnect_delay: float = 2.0,
-        options: Optional[dict] = None,
+        options: dict | None = None,
     ):
         """
         Initialize RTSP video track.
@@ -56,8 +56,8 @@ class RTSPVideoTrack(VideoStreamTrack):
         self.rtsp_url = rtsp_url
         self.reconnect_attempts = reconnect_attempts
         self.reconnect_delay = reconnect_delay
-        self.container: Optional[av.container.InputContainer] = None
-        self.stream: Optional[av.video.VideoStream] = None
+        self.container: av.container.InputContainer | None = None
+        self.stream: av.video.VideoStream | None = None
         self._stopped = False
         self._frame_count = 0
         self._read_lock = threading.Lock()
@@ -166,7 +166,7 @@ class RTSPVideoTrack(VideoStreamTrack):
                 await self._reconnect()
             raise
 
-    def _read_frame(self) -> Optional[VideoFrame]:
+    def _read_frame(self) -> VideoFrame | None:
         """
         Read and decode next frame from RTSP stream (blocking).
 

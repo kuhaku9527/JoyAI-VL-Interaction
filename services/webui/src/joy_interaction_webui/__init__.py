@@ -24,4 +24,4 @@ __version__ = "0.1.0"
 __author__ = "Joy Future Academy"
 __license__ = "Apache-2.0"
 
-__all__ = ["__version__", "__author__", "__license__"]
+__all__ = ["__author__", "__license__", "__version__"]

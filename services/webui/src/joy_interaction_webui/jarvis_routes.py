@@ -16,15 +16,16 @@ The actual mic <-> speaker WebRTC bridging is done in
 :class:`audio_processor.MicAudioTrack` and
 :class:`audio_processor.SpeakerAudioTrack` classes.
 """
+
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
-import logging
 import wave
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from aiohttp import web
 
@@ -39,15 +40,15 @@ logger = logging.getLogger("joyai.jarvis.routes")
 
 # Per-session speaker tracks so the WebRTC offer handler can wire
 # audio output back to the right peer connection.
-_speaker_tracks: dict[str, "SpeakerAudioTrack"] = {}
+_speaker_tracks: dict[str, SpeakerAudioTrack] = {}
 
 
-def get_speaker_track(session_id: str) -> Optional["SpeakerAudioTrack"]:
+def get_speaker_track(session_id: str) -> SpeakerAudioTrack | None:
     """Return the speaker track for a session, if any."""
     return _speaker_tracks.get(session_id)
 
 
-def bind_audio(session_id: str, manager: JarvisSessionManager) -> "SpeakerAudioTrack":
+def bind_audio(session_id: str, manager: JarvisSessionManager) -> SpeakerAudioTrack:
     """Create (or reuse) a SpeakerAudioTrack and attach it to the
     Jarvis session. Called from ``server.py``'s WebRTC ``offer`` handler
     when an audio track is received.
@@ -67,13 +68,12 @@ def bind_audio(session_id: str, manager: JarvisSessionManager) -> "SpeakerAudioT
     return track
 
 
-
 async def feed_wav_to_session(
     session,
     wav_path: Path,
     chunk_frames: int = 1600,
     sleep_s: float = 0.1,
-    max_duration_s: Optional[float] = None,
+    max_duration_s: float | None = None,
 ) -> dict:
     """Feed a 16kHz mono int16 WAV into a Jarvis session.
 
@@ -101,6 +101,8 @@ async def feed_wav_to_session(
                 logger.info("feed_wav hit max_duration=%.1fs, stopping", deadline_s)
                 break
     return {"path": str(wav_path), "chunks": chunks, "bytes": total_bytes}
+
+
 def _is_allowed_diagnostic_wav(path: Path) -> bool:
     resolved = path.resolve()
     allowed_roots = [
@@ -109,6 +111,7 @@ def _is_allowed_diagnostic_wav(path: Path) -> bool:
     ]
     return any(resolved == root or root in resolved.parents for root in allowed_roots)
 
+
 def setup_jarvis_routes(app: web.Application) -> None:
     """Register the Jarvis HTTP routes on the given aiohttp app."""
     app.router.add_get("/api/jarvis/status", jarvis_status)
@@ -116,8 +119,8 @@ def setup_jarvis_routes(app: web.Application) -> None:
     app.router.add_post("/api/jarvis/stop", jarvis_stop)
     app.router.add_post("/api/jarvis/feed_wav", jarvis_feed_wav)
 
-
     app.router.add_post("/api/diagnostic/save_wav", diagnostic_save_wav)
+
 
 # ============================================================================
 # Handlers
@@ -160,15 +163,12 @@ async def jarvis_force_state(request: web.Request) -> web.Response:
     session_id = (data.get("session_id") or "").strip()
     target = (data.get("state") or "").strip()
     if not session_id or not target:
-        return web.json_response(
-            {"error": "missing session_id or state"}, status=400
-        )
+        return web.json_response({"error": "missing session_id or state"}, status=400)
     try:
         new_state = JarvisState[target]
     except KeyError:
         return web.json_response(
-            {"error": f"unknown state {target!r}",
-             "valid": [s.name for s in JarvisState]},
+            {"error": f"unknown state {target!r}", "valid": [s.name for s in JarvisState]},
             status=400,
         )
     manager: JarvisSessionManager = request.app["jarvis_manager"]
@@ -179,12 +179,11 @@ async def jarvis_force_state(request: web.Request) -> web.Response:
         session = await manager.create_session(session_id)
     # Ensure ASR is alive for DIALOG_ACTIVE entry
     if new_state == JarvisState.DIALOG_ACTIVE:
-        from .jarvis_mode import JarvisConfig
-        cfg: JarvisConfig = session.state_machine.config
         session.state_machine._init_asr()
         session.state_machine._asr.start()
         session.state_machine._asr_stream_active = True
         import time as _t
+
         session.state_machine._last_speech_time = _t.time()
     session.state_machine.state = new_state
     logger.info("Forced state %s for session %s", new_state.name, session_id)
@@ -205,6 +204,8 @@ async def jarvis_stop(request: web.Request) -> web.Response:
     if track is not None:
         track.stop()
     return web.json_response({"session_id": session_id, "stopped": True})
+
+
 async def jarvis_feed_wav(request: web.Request) -> web.Response:
     try:
         data = await request.json()
@@ -250,6 +251,7 @@ async def jarvis_feed_wav(request: web.Request) -> web.Response:
         return web.json_response({"session_id": session_id, "cancelled": True})
     return web.json_response({"session_id": session_id, "fed": result})
     return web.json_response({"session_id": session_id, "fed": result})
+
 
 async def diagnostic_save_wav(request: web.Request) -> web.Response:
     """Save an uploaded WAV to D:/AI/data/kws/mic_captures/ for offline analysis."""

@@ -5,12 +5,12 @@ whose ~1.2s model load is consumed by the same-length confirm window
 — every wake is rejected as a false alarm. Pin the behaviour here so
 nothing can quietly drop the prewarm without a failing test.
 """
+
 from __future__ import annotations
 
 import asyncio
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -158,9 +158,7 @@ async def test_kws_confirm_window_no_longer_eaten_by_asr_init():
     sm._init_asr = lambda: None  # type: ignore[assignment]
 
     await sm._handle_kws(b"\x00\x00" * 80)
-    assert sm.state == JarvisState.WAIT_ASR_CONFIRM, (
-        f"expected WAIT_ASR_CONFIRM, got {sm.state}"
-    )
+    assert sm.state == JarvisState.WAIT_ASR_CONFIRM, f"expected WAIT_ASR_CONFIRM, got {sm.state}"
 
     await sm._handle_wait_asr_confirm(b"\x00\x00" * 80)
     assert sm._asr.feed_calls >= 1, (

@@ -15,6 +15,7 @@ These tests use a FakeWS whose ``send_str`` yields with ``asyncio.sleep(0)`` to
 mimic aiohttp's real behaviour; under the old code they FAIL, under the fix
 they PASS.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +23,6 @@ import sys
 from pathlib import Path
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"

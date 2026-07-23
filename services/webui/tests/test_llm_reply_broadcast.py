@@ -1,13 +1,14 @@
 """Tests for LLM reply broadcast + status endpoint (ADR 0003)."""
+
 from __future__ import annotations
 
 import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -42,9 +43,7 @@ def test_notify_session_llm_reply_well_formed():
         ws = FakeWS()
         server.websockets.add(ws)
         server.session_websockets.setdefault("default", set()).add(ws)
-        server.notify_session_llm_reply(
-            "default", "hello iron lady", source="jarvis"
-        )
+        server.notify_session_llm_reply("default", "hello iron lady", source="jarvis")
 
     asyncio.run(_run())
     assert "raw" in captured, captured
@@ -68,9 +67,7 @@ def test_notify_session_pilot_utterance_well_formed():
         ws = FakeWS()
         server.websockets.add(ws)
         server.session_websockets.setdefault("default", set()).add(ws)
-        server.notify_session_pilot_utterance(
-            "default", "你好 BT", source="asr"
-        )
+        server.notify_session_pilot_utterance("default", "你好 BT", source="asr")
 
     asyncio.run(_run())
     assert "raw" in captured, captured
@@ -83,6 +80,7 @@ def test_notify_session_pilot_utterance_well_formed():
 
 def test_probe_llm_parses_models(monkeypatch):
     import httpx
+
     from joy_interaction_webui import server
 
     class FakeClient:
@@ -114,6 +112,7 @@ def test_probe_llm_parses_models(monkeypatch):
 
 def test_probe_tts_checks_voice_clone_health_for_synthesize_url(monkeypatch):
     import httpx
+
     from joy_interaction_webui import server
 
     seen = []
@@ -197,7 +196,7 @@ def test_llm_message_schedules_async_llm_task():
             return self.session
 
     class FakeRequest:
-        app = {"jarvis_manager": FakeManager()}
+        app: ClassVar[dict] = {"jarvis_manager": FakeManager()}
 
         async def json(self):
             return {"session_id": "s1", "text": "报告状态"}

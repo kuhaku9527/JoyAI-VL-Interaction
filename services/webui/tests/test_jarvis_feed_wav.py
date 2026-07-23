@@ -1,11 +1,11 @@
 """Tests for injecting a known wake wav into a Jarvis session."""
+
 from __future__ import annotations
 
 import asyncio
 import sys
 import wave
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[3]
 WEBUI_SRC = REPO / "services" / "webui" / "src"

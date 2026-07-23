@@ -1,10 +1,10 @@
 """Regression tests for browser ASR in-process fallback state."""
+
 from __future__ import annotations
 
 import asyncio
 import sys
 from pathlib import Path
-
 
 REPO = Path(__file__).resolve().parents[2]
 WEBUI_SRC = REPO / "services" / "webui" / "src"
@@ -35,6 +35,7 @@ def test_connect_asr_inproc_resets_shared_engine(monkeypatch):
     assert returned is engine
     assert engine.start_count == 1
     assert engine.last_text == ""
+
 
 def test_asr_url_defaults_to_inproc():
     from joy_interaction_webui import asr

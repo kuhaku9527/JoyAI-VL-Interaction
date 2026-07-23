@@ -16,13 +16,13 @@ Both tracks run cooperatively — ``recv()`` is an async coroutine that
 yields control between frames, so the event loop stays responsive even
 while audio is flowing.
 """
+
 from __future__ import annotations
 
 import asyncio
 import fractions
 import logging
 import time
-from typing import Optional
 
 import numpy as np
 from aiortc import AudioStreamTrack
@@ -62,7 +62,7 @@ class MicAudioTrack(AudioStreamTrack):
         self._track = track
         self._session = session
         self._target_rate = target_rate
-        self._resampler: Optional[AudioResampler] = None
+        self._resampler: AudioResampler | None = None
         self._frame_count = 0
         self._start = time.time()
         self._timestamp = 0
@@ -77,9 +77,7 @@ class MicAudioTrack(AudioStreamTrack):
 
         # Lazy resampler (depends on inbound sample rate / layout).
         if self._resampler is None:
-            self._resampler = AudioResampler(
-                format="s16", layout="mono", rate=self._target_rate
-            )
+            self._resampler = AudioResampler(format="s16", layout="mono", rate=self._target_rate)
         resampled_frames = self._resampler.resample(frame)
         for rf in resampled_frames:
             pcm_bytes = bytes(rf.planes[0])
@@ -214,7 +212,7 @@ def _resample_pcm16(pcm: bytes, src_rate: int, dst_rate: int) -> bytes:
     if samples.size == 0:
         return pcm
     duration = samples.size / src_rate
-    dst_len = max(1, int(round(duration * dst_rate)))
+    dst_len = max(1, round(duration * dst_rate))
     x_old = np.linspace(0, samples.size - 1, samples.size)
     x_new = np.linspace(0, samples.size - 1, dst_len)
     resampled = np.interp(x_new, x_old, samples.astype(np.float32)).astype(np.int16)

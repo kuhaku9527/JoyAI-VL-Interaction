@@ -40,8 +40,8 @@ def _build_manager():
 
 def test_create_session_attaches_background_service_from_server_sessions(monkeypatch):
     """The BackgroundModelService stored in ``sessions[session_id]`` is set on the state machine."""
-    from joy_interaction_webui import server
     from joy_interaction_webui import jarvis_mode as _jm
+    from joy_interaction_webui import server
 
     bg = SimpleNamespace(
         enabled=True,
@@ -53,38 +53,30 @@ def test_create_session_attaches_background_service_from_server_sessions(monkeyp
         "vlm_service": SimpleNamespace(),
     }
     # Bypass KWS/ASR model load (test uses a fake "ignored" path).
-    monkeypatch.setattr(
-        _jm.JarvisStateMachine, "prewarm_engines", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        _jm.JarvisStateMachine, "run", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(_jm.JarvisStateMachine, "prewarm_engines", AsyncMock(return_value=None))
+    monkeypatch.setattr(_jm.JarvisStateMachine, "run", AsyncMock(return_value=None))
     try:
+
         async def run():
             manager = _build_manager()
             session = await manager.create_session("sess-bg-1")
             return session.state_machine._background_service
 
         sm_bg = asyncio.run(run())
-        assert sm_bg is bg, (
-            "BackgroundModelService was not propagated to JarvisStateMachine"
-        )
+        assert sm_bg is bg, "BackgroundModelService was not propagated to JarvisStateMachine"
     finally:
         server.sessions.pop("sess-bg-1", None)
 
 
 def test_create_session_without_background_service_keeps_none(monkeypatch):
     """No BackgroundModelService registered -> sm._background_service stays None (graceful)."""
-    from joy_interaction_webui import server
     from joy_interaction_webui import jarvis_mode as _jm
+    from joy_interaction_webui import server
 
     server.sessions.pop("sess-bg-2", None)
-    monkeypatch.setattr(
-        _jm.JarvisStateMachine, "prewarm_engines", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        _jm.JarvisStateMachine, "run", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(_jm.JarvisStateMachine, "prewarm_engines", AsyncMock(return_value=None))
+    monkeypatch.setattr(_jm.JarvisStateMachine, "run", AsyncMock(return_value=None))
+
     async def run():
         manager = _build_manager()
         session = await manager.create_session("sess-bg-2")
