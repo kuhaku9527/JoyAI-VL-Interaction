@@ -662,7 +662,8 @@ class VLMService:
                 continue
             try:
                 payload = method()
-            except Exception:
+            except Exception as exc:
+                logger.warning("failed to serialize VLM response via %s: %s", attr_name, exc)
                 continue
             if isinstance(payload, dict):
                 return payload
