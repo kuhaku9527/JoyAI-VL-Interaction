@@ -68,9 +68,35 @@ independently shippable and keeps CI green.
   goes red. The backend dialogue owns the code fixes (per division of labor); this
   ADR's author drafts the config diff + handoff.
 
-### Batch 3 — blind-except (deferred)
-- Add `BLE001` via `ruff --baseline` burn-down: snapshot current violations, then
-  burn them down over subsequent PRs so the gate only gets stricter, never red.
+### Batch 3 — blind-except + assert + pseudo-random (IMPLEMENTED 2026-07-24)
+- Adds `BLE001` (blind except), `S101` (assert in prod), `S311` (pseudo-random) to
+  `select` in **both** repo-root `pyproject.toml` **and** `services/webui/pyproject.toml`.
+  webui ships its own `[tool.ruff]` table, so its violations are baselined there —
+  root `per-file-ignores` cannot reach webui files (ruff resolves each file to the
+  nearest config). Splitting the baseline across the two configs keeps the gate
+  consistent repo-wide.
+- **`ruff 0.15.22 has no `--baseline`** (no subcommand, no `--baseline` flag), so the
+  original "snapshot via `ruff --baseline`" plan is infeasible at the pinned version.
+  Replaced with a **manual `per-file-ignores` baseline** — centralized, reversible,
+  no version bump:
+  - Repo-root `pyproject.toml` `[tool.ruff.lint.per-file-ignores]`: **20 non-webui**
+    production files (`datasets`, `asr`, `background-agent`, `kws-training`,
+    `memory-store`, `scripts`, `tts`, `webinfer`).
+  - `services/webui/pyproject.toml` `[tool.ruff.lint.per-file-ignores]`: **10 webui**
+    production files (`joy_interaction_webui/*`).
+  - Test globs (`**/tests/*`, `**/test_*.py`, `**/conftest.py`) in **both** configs
+    relax `S101` + `BLE001` (asserts / blind excepts are benign in tests).
+- **Frozen backlog:** **87** pre-existing violations — 33 prod
+  (`BLE001`×27, `S101`×5, `S311`×1) + 54 test (`S101`×51, `BLE001`×3). The backend
+  dialogue had already burned down ~129 of the original ~216 (`S101`×97, `S311`×13,
+  `BLE001`×106) in commits `bd89d2a` + `95c7c7a` before this batch landed.
+- **Burn-down discipline:** delete a file's `per-file-ignores` entry once its
+  violation(s) are fixed. The baseline list is the single source of truth for the
+  outstanding security/correctness backlog — see
+  `reports/handoff-lint-gate-batch3-20260724.md`.
+- **Verification (ruff 0.15.22, matches CI pin):** `ruff check . --select
+  BLE001,S101,S311` from repo root → **0 errors**; `cd services/webui && ruff check .`
+  (CI-equivalent for webui) → **0 errors**.
 
 ## Consequences
 
@@ -87,7 +113,9 @@ independently shippable and keeps CI green.
 
 ## Constraints
 - **Baseline only decreases.** Never add a rule that makes the existing baseline
-  red in one shot; use `--baseline` burn-down for the volatile families.
+  red in one shot. For the volatile families use a **`per-file-ignores` baseline**
+  (ruff 0.15.22 ships no `--baseline` subcommand/flag), and burn it down by deleting
+  entries as code is fixed.
 - **Workflow files need a fine-grained PAT** (workflow scope) or
   `workflow_dispatch`. Branch deletion uses the `github-pat` MCP token via the
   `GIT_CONFIG_GLOBAL=/dev/null` + `insteadOf` fallback (bypasses the gh-proxy
