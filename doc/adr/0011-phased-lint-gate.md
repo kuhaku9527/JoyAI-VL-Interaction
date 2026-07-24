@@ -10,9 +10,11 @@ The CI `quality.yml` `ruff` job pins `ruff==0.15.22` and runs `ruff check` **and
 found two structural problems with the lint gate:
 
 1. **Rule-selection blind spots.** The repo-root `pyproject.toml` `select` list omits
-   the `S` (security) and `BLE` (blind-except) families, so safety-relevant lint
-   is not enforced. Separately, `B904` / `B019` / `B007` are quieted via
-   `extend-ignore`, hiding real correctness/robustness findings.
+   the `S` (security) family, so safety-relevant lint is not enforced. (The audit
+   also claimed `B904`/`B019`/`B007` were "quieted via `extend-ignore`" — that is
+   **false**: no `extend-ignore` exists anywhere in the repo; `B019` (3×) and
+   `B007` (1×) are already reported via the `B` family. Only the `S` family is
+   missing from `select`.)
 2. **Baseline documentation drift.** `doc/standards/lint-baseline.md` §4 listed
    `B904` at `services/memory-store/src/memory_store/app.py:85,95` — a false
    positive. Re-verification with `ruff` 0.15.22 (2026-07-24) finds **0** `B904`
@@ -20,9 +22,10 @@ found two structural problems with the lint gate:
    chain). `B019` is genuinely present, but at `services/kws-training/kws_data_module.py:80,89,94`
    (not where the audit implied).
 
-The naive fix — flipping `S`/`BLE` on and dropping the `extend-ignore` entries in one
-shot — would turn CI **permanently red** (~120 violations), defeating the "baseline
-only goes down" discipline. We need a reversible, incremental path.
+The naive fix — flipping the full `S` family (and `BLE`) on in one shot — would turn
+CI **permanently red** (~216 violations from `S101`×97, `S311`×13, `BLE001`×106),
+defeating the "baseline only goes down" discipline. We need a reversible, incremental
+path that adds only the *small, high-value* `S` sub-rules first.
 
 ## Decision
 
@@ -47,12 +50,23 @@ independently shippable and keeps CI green.
     `git cherry` returned all `-` ⇒ patch already in `main`). Verified gone via
     `ls-remote` (0 matches).
 
-### Batch 2 — tighten selection (deferred)
-- Add `S3xx` (security) to `select` in the repo-root `pyproject.toml`.
-- Remove `B904` / `B019` / `B007` from `extend-ignore`.
-- Fix the **limited, high-value** items this surfaces (the real `B019` cache leak,
-  `B007` loop vars) as small reviewable PRs. Do **not** chase the full `S` count in
-  one PR.
+### Batch 2 — tighten selection (IN PROGRESS, handoff drafted 2026-07-24)
+- Add **specific** `S` sub-rules to `select` in repo-root `pyproject.toml`:
+  `["S104","S108","S110","S112","S310"]`. Do **not** add the full `S` family or
+  `BLE` (those are Batch 3).
+- No `extend-ignore` removal needed — the audit's claim that `B904/B019/B007` were
+  suppressed is false; they are already active (via the `B` family).
+- Fix the **33** violations this surfaces (exact list + diff in
+  `reports/handoff-lint-gate-batch2-20260724.md`), grouped:
+  - **Clear fixes** (do now): `B019`×3 cache-leak → module/static cache;
+    `B007`×1 unused loop var; `F841`×3 unused vars; `S110`×10 + `S112`×2 bare
+    except → add `logger.warning(...)`.
+  - **Review / targeted `noqa`** (intentional FPs): `S104`×4 bind-to-all-interfaces
+    (local server, likely intended), `S108`×8 `/tmp/...` model-cache paths (intended),
+    `S310`×2 `urllib` URL open (review scheme allow-list).
+- **Land the `pyproject.toml` flip together with the fixes in ONE PR** so CI never
+  goes red. The backend dialogue owns the code fixes (per division of labor); this
+  ADR's author drafts the config diff + handoff.
 
 ### Batch 3 — blind-except (deferred)
 - Add `BLE001` via `ruff --baseline` burn-down: snapshot current violations, then
