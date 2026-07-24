@@ -70,11 +70,35 @@ def _patch_client(monkeypatch, response, capture):
 
 async def test_enrich_requests_top_k_and_min_score_contract(monkeypatch, capture):
     """The shim must ask memory-store for a bounded, ranked recall (retrieval,
-    NOT a wholesale dump)."""
+    NOT a wholesale dump), scoped to wiki namespaces (ADR-0012)."""
     _patch_client(monkeypatch, _FakeResponse(200, {"blocks": []}), capture)
     await hapi._enrich_with_memory("BT-7274 weapon")
     assert capture["url"].endswith("/v1/blocks/recall")
-    assert capture["json"] == {"query": "BT-7274 weapon", "top_k": 5, "min_score": 0.4}
+    assert capture["json"] == {
+        "query": "BT-7274 weapon",
+        "top_k": 5,
+        "min_score": 0.4,
+        "filter": {"namespaces": ["wiki:*"]},
+    }
+
+
+async def test_enrich_renders_image_refs_for_wiki_blocks(monkeypatch, capture):
+    """Wiki blocks carrying image paths must surface them for the main VLM."""
+    blocks = [
+        {"content": "火焰巨人弱打击", "images": ["assets/fire-giant.png"]},
+        {"content": "纯文本块", "images": None},
+    ]
+    _patch_client(monkeypatch, _FakeResponse(200, {"blocks": blocks}), capture)
+    out = await hapi._enrich_with_memory("火焰巨人怎么打")
+    assert out == "- 火焰巨人弱打击 (附图: assets/fire-giant.png)\n- 纯文本块"
+
+
+async def test_enrich_returns_empty_when_namespaces_blank(monkeypatch, capture):
+    """WIKI_RECALL_NAMESPACES="" disables wiki recall entirely (fail open)."""
+    monkeypatch.setattr(hapi, "WIKI_RECALL_NAMESPACES", "")
+    _patch_client(monkeypatch, _FakeResponse(200, {"blocks": [{"content": "x"}]}), capture)
+    assert await hapi._enrich_with_memory("q") == ""
+    assert "url" not in capture  # no network call made
 
 
 async def test_enrich_returns_ranked_bullets_for_relevant_blocks(monkeypatch, capture):
