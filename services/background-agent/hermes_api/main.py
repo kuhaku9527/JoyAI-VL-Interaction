@@ -49,6 +49,10 @@ HERMES_GATEWAY_URL = f"http://{HERMES_GATEWAY_HOST}:{HERMES_GATEWAY_PORT}"
 # memory-store (Local Wiki source). Recall-only; any failure is non-blocking so
 # the hermes gateway simply falls back to live web search.
 MEMORY_STORE_URL = os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8996").rstrip("/")
+# [Local Wiki] recall scope (ADR-0012): only blocks under these namespaces are
+# injected — conversation memory (per-session) never leaks into wiki recall.
+# Comma-separated, e.g. "wiki:elden-ring" or "wiki:*" for all wiki corpora.
+WIKI_RECALL_NAMESPACES = os.environ.get("WIKI_RECALL_NAMESPACES", "wiki:*")
 
 # Concurrency guard. We do not want the shim to drown the hermes-agent gateway.
 _run_semaphore = asyncio.Semaphore(max(1, DEFAULT_MAX_CONCURRENT_RUNS))
@@ -241,16 +245,26 @@ Recent frame metadata:
 async def _enrich_with_memory(question: str) -> str:
     """Recall local wiki blocks from memory-store before delegating to web search.
 
-    Fails open: any error, empty result, or missing service returns "" so the
-    hermes gateway simply falls back to live web search. Never blocks the solve.
+    Scoped to wiki namespaces (ADR-0012) so per-session conversation memory
+    never pollutes the [Local Wiki] injection. Fails open: any error, empty
+    result, or missing service returns "" so the hermes gateway simply falls
+    back to live web search. Never blocks the solve.
     """
     if not question:
+        return ""
+    namespaces = [ns.strip() for ns in WIKI_RECALL_NAMESPACES.split(",") if ns.strip()]
+    if not namespaces:
         return ""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.post(
                 f"{MEMORY_STORE_URL}/v1/blocks/recall",
-                json={"query": question, "top_k": 5, "min_score": 0.4},
+                json={
+                    "query": question,
+                    "top_k": 5,
+                    "min_score": 0.4,
+                    "filter": {"namespaces": namespaces},
+                },
             )
             if resp.status_code >= 400:
                 return ""
@@ -258,9 +272,15 @@ async def _enrich_with_memory(question: str) -> str:
             blocks = payload.get("blocks") if isinstance(payload, dict) else None
             if not blocks:
                 return ""
-            lines = [
-                f"- {b['content']}" for b in blocks if isinstance(b, dict) and b.get("content")
-            ]
+            lines = []
+            for b in blocks:
+                if not isinstance(b, dict) or not b.get("content"):
+                    continue
+                line = f"- {b['content']}"
+                images = b.get("images") or []
+                if images:
+                    line += f" (附图: {', '.join(images)})"
+                lines.append(line)
             return "\n".join(lines)
     except Exception as exc:  # fail open: any recall error falls back to web search
         logger.warning("local wiki recall failed, falling back to web search: %s", exc)
