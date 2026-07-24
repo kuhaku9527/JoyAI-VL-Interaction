@@ -100,7 +100,8 @@ class SummarizerRoutingMixin:
         current_query_text: str | None = None,
         query_start_time: str | None = None,
     ) -> tuple[dict[str, Any], float]:
-        assert self.summarizer is not None
+        if self.summarizer is None:
+            raise RuntimeError("summarizer not initialized before building mid-term summary")
         resolved_chunk_index = chunk_index if chunk_index is not None else state.chunk_index
         resolved_query_text = (
             current_query_text
@@ -148,7 +149,8 @@ class SummarizerRoutingMixin:
         return entry, elapsed
 
     def _compress_mid_terms(self, state: SessionState) -> None:
-        assert self.summarizer is not None
+        if self.summarizer is None:
+            raise RuntimeError("summarizer not initialized before compressing mid-terms")
         batch_index = state.long_term_compression_next_index
         state.long_term_compression_next_index += 1
         source_chunk_indices = [entry["chunk_index"] for entry in state.mid_term_summaries]
