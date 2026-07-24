@@ -135,7 +135,7 @@ def parse_args() -> AdapterConfig:
         "--summarizer-model",
         default=os.environ.get(
             "SUMMARIZER_MODEL",
-            "/tmp/models/Qwen3-VL-4B-Instruct",
+            "/tmp/models/Qwen3-VL-4B-Instruct",  # noqa: S108
         ),
         help="Model name sent to the chunk-summary backend. The summary backend is OpenAI-compatible (port 8065 by default; pair with llama-server or vLLM).",
     )
@@ -148,7 +148,7 @@ def parse_args() -> AdapterConfig:
         "--longterm-model",
         default=os.environ.get(
             "LONGTERM_SUMMARIZER_MODEL",
-            os.environ.get("SUMMARIZER_MODEL", "/tmp/models/Qwen3-VL-4B-Instruct"),
+            os.environ.get("SUMMARIZER_MODEL", "/tmp/models/Qwen3-VL-4B-Instruct"),  # noqa: S108
         ),
         help="Model name used for long-term memory compression. Falls back to SUMMARIZER_MODEL; both share the longterm-api-base.",
     )
@@ -267,7 +267,7 @@ def parse_args() -> AdapterConfig:
     )
     parser.add_argument(
         "--frame-save-dir",
-        default=os.environ.get("FRAME_SAVE_DIR", "/tmp/streaming_adapter_frames"),
+        default=os.environ.get("FRAME_SAVE_DIR", "/tmp/streaming_adapter_frames"),  # noqa: S108
         help="Directory to save base64 frames received from WebUI.",
     )
     parser.add_argument(

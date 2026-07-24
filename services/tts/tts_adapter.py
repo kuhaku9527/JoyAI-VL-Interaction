@@ -493,7 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve", help="Run the FastAPI adapter")
     serve.add_argument(
         "--host",
-        default=env_value("TTS_ADAPTER_HOST", default="0.0.0.0"),
+        default=env_value("TTS_ADAPTER_HOST", default="0.0.0.0"),  # noqa: S104
     )
     serve.add_argument(
         "--port",
@@ -537,7 +537,7 @@ def main() -> int:
 
     if args.command is None:
         args.command = "serve"
-        args.host = args.host or env_value("TTS_ADAPTER_HOST", default="0.0.0.0")
+        args.host = args.host or env_value("TTS_ADAPTER_HOST", default="0.0.0.0")  # noqa: S104
         args.port = args.port or int(env_value("TTS_ADAPTER_PORT", default="8992"))
         args.reload = False
 
