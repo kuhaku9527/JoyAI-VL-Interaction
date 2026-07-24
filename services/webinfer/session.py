@@ -105,8 +105,11 @@ class SessionMixin:
             self._cleanup_task.cancel()
             try:
                 await self._cleanup_task
-            except (asyncio.CancelledError, Exception):
+            except asyncio.CancelledError:
+                # Expected: we cancelled the task on the line above.
                 pass
+            except Exception as exc:  # best-effort shutdown cleanup
+                LOGGER.warning("cleanup task raised during shutdown: %s", exc)
             self._cleanup_task = None
         # Cancel any in-flight per-session warmup tasks.
         for state in list(self.sessions.values()):

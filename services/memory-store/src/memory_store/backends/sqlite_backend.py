@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 from ..models import MemoryBlock, RecallFilter
+
+_LOGGER = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory_blocks (
@@ -181,5 +184,5 @@ class SqliteBackend:
     def close(self) -> None:
         try:
             self._conn.close()
-        except Exception:
-            pass
+        except Exception as exc:  # best-effort cleanup on shutdown
+            _LOGGER.warning("sqlite connection close failed: %s", exc)
