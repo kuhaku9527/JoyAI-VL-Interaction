@@ -236,7 +236,6 @@ def main():
 
     logger.info(f"加载 checkpoint: {args.ckpt}")
     ckpt = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    token_table = ckpt["token_table"]
     vocab_size = ckpt["vocab_size"]
     logger.info(f"  epoch={ckpt.get('epoch', '?')}  vocab_size={vocab_size}  valid_loss={ckpt.get('valid_loss', '?')}")
 
