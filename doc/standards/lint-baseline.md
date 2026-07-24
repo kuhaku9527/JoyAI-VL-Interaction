@@ -1,6 +1,7 @@
 # Lint Baseline & Quality Backlog
 
 - **Generated:** 2026-07-20
+- **Last corrected:** 2026-07-24 — `B904`/`B019` locations re-verified with `ruff` 0.15.22 (see §4).
 - **Tool:** `ruff` 0.6.9 (config in repo-root `pyproject.toml`, `target-version = py39`)
 - **Scope:** entire repo **except** `archive/` (frozen one-off scripts) and
   `services/kws-training/icefall_src/` (vendored third-party code — not team-owned).
@@ -97,8 +98,8 @@ maintainability landmines, not style nits.
 | Severity | Code | Location | Action |
 |---|---|---|---|
 | 🔴 Bug | `F821` | `services/voice-clone/voice_clone_api/main.py:314` — `MiniMaxClient` undefined | **Resolved 2026-07-20:** added top-level `from .cloud_clone import MiniMaxClient` (commit `fix: resolve F821 MiniMaxClient ...`). Remaining count dropped 759 → 758. |
-| 🟠 Correctness | `B904` | `services/memory-store/src/memory_store/app.py:85,95` — `raise` without `from` inside `except` | Use `raise ... from err` (or `from None`) to preserve the causal chain. |
-| 🟠 Correctness | `B019` | 3× cached-instance-method (see `ruff check --select B019`) | `@functools.cached_property` on instances is fine, but `@lru_cache` on methods leaks memory across instances — convert to a module/static cache. |
+| 🟢 Cleared | `B904` | ~~`services/memory-store/src/memory_store/app.py:85,95`~~ **Documentation drift — re-verified 2026-07-24 with `ruff` 0.15.22 (CI-pinned): 0 findings repo-wide.** The cited code at `app.py:95` is `raise HTTPException(...) from exc`, which already preserves the causal chain. The `2` count in §2 was measured under `ruff` 0.6.9 and does not reproduce under 0.15.22. **No fix required.** |
+| 🟠 Correctness | `B019` | `services/kws-training/kws_data_module.py:80,89,94` — `@functools.lru_cache` on methods | Leaks memory across instances. Convert to a module-level/static cache (or `@staticmethod` + module cache). Confirmed 3× under `ruff` 0.15.22. |
 | 🟠 Robustness | `B007` | 2× unused loop control variable | Likely a typo in a `for`/`while`; confirm intent. |
 | 🟡 Naming | `N803`/`N812` | `invalid-argument-name` / `lowercase-imported-as-non-lowercase` | Rename per PEP8; verify no external callers. |
 | 🟡 Dead code | `F841` | 7× unused-variable | Remove or use; some hide logic bugs. |
@@ -108,6 +109,13 @@ Quick command to re-list any of the above with file:line:
 ```bash
 ruff check . --select F821,B904,B019,B007,N803,N812,F841 --output-format concise
 ```
+
+> **⚠️ Tool-version drift:** the §2 counts were generated with `ruff` 0.6.9
+> (see line 5), but CI pins `ruff==0.15.22` (see `quality.yml`). Rule versions
+> shift between releases, so a few counts differ — notably **`B904` is 0 under
+> 0.15.22** (the §2 table still shows `2` from 0.6.9). Treat §4 (re-verified
+> 2026-07-24) as the source of truth for high-value items; re-run the command
+> above with the CI-pinned `ruff` to get current line numbers.
 
 ---
 

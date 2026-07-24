@@ -44,6 +44,10 @@ select = [
     "N",   # pep8-naming
     "RUF", # ruff-specific
     "D",   # pydocstyle (docstring presence — see per-file-ignores)
+    # --- Security / correctness signals (ADR-0011 Batch 3) ---
+    "BLE001", # blind except — catch specific exceptions, not bare `except:`
+    "S101",   # assert — don't use assert for runtime validation in production
+    "S311",   # pseudo-random — use `secrets` for security-sensitive randomness
 ]
 ignore = [
     "D203", # no-blank-line-before-docstring (conflicts with D211)
@@ -54,9 +58,45 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests and generated code are not held to the public docstring / naming bar.
 # (WebRTC test helpers mirror JS API names like `addTrack`, so N is relaxed.)
-"**/tests/*" = ["D", "N"]
-"**/test_*.py" = ["D", "N"]
-"**/conftest.py" = ["D", "N"]
+# S101 (assert) and BLE001 (blind except) are benign in tests, so they are
+# relaxed there too. Burn them down only when a test genuinely mishandles
+# errors — these are not production correctness risks.
+"**/tests/*" = ["D", "N", "S101", "BLE001"]
+"**/test_*.py" = ["D", "N", "S101", "BLE001"]
+"**/conftest.py" = ["D", "N", "S101", "BLE001"]
+
+# --- ADR-0011 Batch 3 manual baseline (ruff 0.15.22 has no --baseline) ---
+# ruff 0.15.22 ships no `baseline` subcommand/flag, so the "freeze current
+# violations" goal is met with a centralized per-file-ignores block instead.
+# These are PRE-EXISTING production violations of BLE001/S101/S311. They are
+# IGNORED (not fixed) so the gate can flip to enforcing on day one.
+# Burn down by removing a file's entry once its violation(s) are fixed
+# (see reports/handoff-lint-gate-batch3-*.md). Keep this list as the single
+# source of truth for the outstanding security/correctness backlog.
+"datasets/convert_data.py" = ["BLE001"]
+"services/asr/jarvis/asr.py" = ["S101"]
+"services/asr/jarvis/kws.py" = ["S101"]
+"services/background-agent/codex_api/main.py" = ["BLE001", "S101"]
+"services/background-agent/hermes_api/main.py" = ["BLE001"]
+"services/kws-training/export_kws_onnx.py" = ["BLE001", "S101"]
+"services/memory-store/src/memory_store/backends/sqlite_backend.py" = ["BLE001"]
+"services/scripts/analyze_kws_captures.py" = ["BLE001"]
+"services/scripts/prep_kws_data.py" = ["S311"]
+"services/scripts/smoke_voice_clone.py" = ["BLE001"]
+"services/scripts/verify-services.py" = ["BLE001"]
+"services/tts/http_synthesizer.py" = ["BLE001"]
+"services/webinfer/app.py" = ["BLE001"]
+"services/webinfer/infer_loop.py" = ["BLE001"]
+"services/webinfer/io_utils.py" = ["BLE001"]
+"services/webinfer/memory_io.py" = ["BLE001"]
+"services/webinfer/memory_summarizer.py" = ["BLE001"]
+"services/webinfer/prompt_assembly.py" = ["BLE001"]
+"services/webinfer/session.py" = ["BLE001"]
+"services/webinfer/summarizer_routing.py" = ["BLE001"]
+# NOTE: services/webui has its OWN [tool.ruff] table, so webui violations are
+# baselined in services/webui/pyproject.toml instead (see that file's
+# [tool.ruff.lint.per-file-ignores]). Entries here for webui paths would be
+# dead, since ruff resolves webui files to the webui config, not this root one.
 
 [tool.ruff.lint.pydocstyle]
 # Use the NumPy/SciPy docstring convention (most readable for a mixed team).

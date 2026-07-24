@@ -76,7 +76,11 @@ target-version = "py310"
 
 [tool.ruff.lint]
 # 启用真 bug 规则（对齐根 select，但排除 D 文档债——webui 无 docstring 纪律，276 处噪声）
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N", "RUF"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N", "RUF",
+          # ADR-0011 Batch 3: security/correctness signals
+          "BLE001",  # blind except — catch specific exceptions
+          "S101",    # assert — no assert for runtime validation in prod
+          "S311"]    # pseudo-random — use `secrets` for security-sensitive use
 # 装饰性 / 非 bug 债务放 ignore，避免无意义 churn
 ignore = [
     "E501",      # 行过长（100 处），black line-length=100 已控，不重复强制
@@ -94,6 +98,26 @@ ignore = [
     "D203",      # 与 D211 冲突，根已忽略
     "D213",      # 与 D212 冲突，根已忽略
 ]
+
+# --- ADR-0011 Batch 3 manual baseline (ruff 0.15.22 has no --baseline) ---
+# Paths are relative to THIS config file (services/webui). These are
+# PRE-EXISTING production violations of BLE001/S101/S311, IGNORED (not fixed)
+# so the gate flips to enforcing on day one. Burn down by removing a file's
+# entry once its violation(s) are fixed (see reports/handoff-lint-gate-batch3-*.md).
+[tool.ruff.lint.per-file-ignores]
+"src/joy_interaction_webui/asr.py" = ["BLE001"]
+"src/joy_interaction_webui/background_model.py" = ["BLE001"]
+"src/joy_interaction_webui/jarvis_mode.py" = ["BLE001", "S101"]
+"src/joy_interaction_webui/jarvis_routes.py" = ["BLE001"]
+"src/joy_interaction_webui/jarvis_session.py" = ["BLE001"]
+"src/joy_interaction_webui/rtsp_track.py" = ["BLE001"]
+"src/joy_interaction_webui/server.py" = ["BLE001"]
+"src/joy_interaction_webui/tts.py" = ["BLE001"]
+"src/joy_interaction_webui/video_processor.py" = ["BLE001"]
+"src/joy_interaction_webui/vlm_service.py" = ["BLE001"]
+# S101 (assert) / BLE001 (blind except) are benign in tests.
+"**/tests/*" = ["S101", "BLE001"]
+"**/test_*.py" = ["S101", "BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

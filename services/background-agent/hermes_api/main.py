@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import os
 import sys
 import time
@@ -22,6 +23,8 @@ from typing import Any, Literal
 import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Environment configuration (kept CODEX_API_* names to remain drop-in compatible
@@ -259,7 +262,8 @@ async def _enrich_with_memory(question: str) -> str:
                 f"- {b['content']}" for b in blocks if isinstance(b, dict) and b.get("content")
             ]
             return "\n".join(lines)
-    except Exception:
+    except Exception as exc:  # fail open: any recall error falls back to web search
+        logger.warning("local wiki recall failed, falling back to web search: %s", exc)
         return ""
 
 
