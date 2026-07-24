@@ -338,7 +338,9 @@ class SqliteBackend:
         session_ids: list[str] | None = flt.session_ids if flt else None
         created_after = flt.created_after if flt else None
         namespaces: list[str] | None = (
-            expanded_namespaces if expanded_namespaces is not None else (flt.namespaces if flt else None)
+            expanded_namespaces
+            if expanded_namespaces is not None
+            else (flt.namespaces if flt else None)
         )
 
         def _apply_post_filters(rows):

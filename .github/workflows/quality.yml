@@ -167,6 +167,10 @@ jobs:
             # (aiohttp, aiohttp-cors, Pillow, openai, httpx, pytest,
             # pytest-asyncio) rather than the shared lightweight set below.
             pip install -e ".[dev]"
+          elif [ "${{ matrix.service }}" = "memory-store" ]; then
+            # memory-store declares usearch + numpy (ADR-0012 vector recall) in
+            # its own pyproject; editable install pulls them in alongside pytest.
+            pip install -e ".[dev]"
           else
             pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
           fi
