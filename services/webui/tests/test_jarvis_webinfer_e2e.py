@@ -200,7 +200,7 @@ async def webinfer_server():
             try:
                 future = asyncio.run_coroutine_threadsafe(_shutdown(), server_loop)
                 future.result(timeout=5.0)
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
         server_loop.call_soon_threadsafe(server_loop.stop)
         thread.join(timeout=5.0)

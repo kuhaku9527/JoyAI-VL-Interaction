@@ -29,11 +29,11 @@ TINY_JPEG_B64 = (
 
 def _http(method: str, url: str, body: dict | None = None, timeout: float = 10.0):
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method)
+    req = urllib.request.Request(url, data=data, method=method)  # noqa: S310
     if body is not None:
         req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             return resp.status, json.loads(resp.read().decode("utf-8") or "null")
     except urllib.error.HTTPError as exc:
         return exc.code, {"error": exc.read().decode("utf-8", errors="replace")[:300]}

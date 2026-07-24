@@ -80,7 +80,13 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N", "RUF",
           # ADR-0011 Batch 3: security/correctness signals
           "BLE001",  # blind except — catch specific exceptions
           "S101",    # assert — no assert for runtime validation in prod
-          "S311"]    # pseudo-random — use `secrets` for security-sensitive use
+          "S311",    # pseudo-random — use `secrets` for security-sensitive use
+          # ADR-0011 Batch 2 gate: extend security surface (2026-07-24)
+          "S104",    # bind to all interfaces — LAN dev servers use `# noqa: S104`
+          "S108",    # insecure temp file/dir — intentional cache paths use `# noqa: S108`
+          "S110",    # try/except/pass — intentional in tests
+          "S112",    # try/except/continue
+          "S310"]    # urllib URL open — trusted internal URLs use `# noqa: S310`
 # 装饰性 / 非 bug 债务放 ignore，避免无意义 churn
 ignore = [
     "E501",      # 行过长（100 处），black line-length=100 已控，不重复强制

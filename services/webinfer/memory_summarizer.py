@@ -291,7 +291,7 @@ def _encode_image_base64(image_path: str, max_pixels: int = 0) -> str:
 class SummarizerModel:
     def __init__(
         self,
-        model_name: str = "/tmp/models/Qwen3-VL-4B-Instruct",
+        model_name: str = "/tmp/models/Qwen3-VL-4B-Instruct",  # noqa: S108
         api_base: str = "http://localhost:8065/v1",
         longterm_model_name: str = "",
         longterm_api_base: str = "",

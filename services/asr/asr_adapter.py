@@ -345,7 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve", help="Run the FastAPI adapter")
     serve.add_argument(
         "--host",
-        default=env_value("ASR_ADAPTER_HOST", default="0.0.0.0"),
+        default=env_value("ASR_ADAPTER_HOST", default="0.0.0.0"),  # noqa: S104
     )
     serve.add_argument(
         "--port",
@@ -377,7 +377,7 @@ def main() -> int:
 
     if args.command is None:
         args.command = "serve"
-        args.host = args.host or env_value("ASR_ADAPTER_HOST", default="0.0.0.0")
+        args.host = args.host or env_value("ASR_ADAPTER_HOST", default="0.0.0.0")  # noqa: S104
         args.port = args.port or int(env_value("ASR_ADAPTER_PORT", default="8994"))
         args.reload = False
 

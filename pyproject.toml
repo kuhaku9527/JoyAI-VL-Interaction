@@ -48,6 +48,13 @@ select = [
     "BLE001", # blind except — catch specific exceptions, not bare `except:`
     "S101",   # assert — don't use assert for runtime validation in production
     "S311",   # pseudo-random — use `secrets` for security-sensitive randomness
+    # --- ADR-0011 Batch 2 gate (config flip, 2026-07-24) ---
+    "S104",   # bind to all interfaces — LAN-scoped dev servers use `# noqa: S104`
+    "S108",   # insecure temp file/dir — intentional model-cache paths use `# noqa: S108`
+    "S110",   # try/except/pass — intentional in tests; prod fixed in Batch 2
+    "S112",   # try/except/continue — prod fixed in Batch 2
+    "S310",   # urllib URL open — trusted internal URLs use `# noqa: S310`
+    # NOTE: B019/B007 already enforced via the B family; F841 via the F family.
 ]
 ignore = [
     "D203", # no-blank-line-before-docstring (conflicts with D211)
