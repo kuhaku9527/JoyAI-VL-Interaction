@@ -14,7 +14,7 @@ import argparse
 import gzip
 import json
 import logging
-from functools import lru_cache
+from functools import cached_property
 from pathlib import Path
 from typing import List
 
@@ -77,7 +77,7 @@ class KwsAsrDataModule:
         if not self.manifests_dir.exists():
             raise FileNotFoundError(f"manifests_dir 不存在: {self.manifests_dir}")
 
-    @lru_cache
+    @cached_property
     def train_cuts(self) -> CutSet:
         logger.info("About to get train cuts (positive + negative)")
         pos = _jsonl_gz_to_cuts(self.manifests_dir / "positive_train.jsonl.gz")
@@ -86,12 +86,12 @@ class KwsAsrDataModule:
         logger.info(f"  pos_train={len(pos)}, neg_train={len(neg)}, total={len(combined)}")
         return combined
 
-    @lru_cache
+    @cached_property
     def valid_cuts(self) -> CutSet:
         logger.info("About to get valid cuts (positive test)")
         return _jsonl_gz_to_cuts(self.manifests_dir / "positive_test.jsonl.gz")
 
-    @lru_cache
+    @cached_property
     def test_cuts(self) -> CutSet:
         logger.info("About to get test cuts (positive + negative test)")
         pos = _jsonl_gz_to_cuts(self.manifests_dir / "positive_test.jsonl.gz")
