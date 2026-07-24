@@ -61,7 +61,8 @@ def analyze_one(wav_path: Path, cfg: JarvisConfig) -> dict:
     hit = False
     text = ""
     duration = 0.0
-    for pcm, duration in _read_chunks(wav_path):
+    for pcm, chunk_dur in _read_chunks(wav_path):
+        duration = chunk_dur
         if kws.feed_audio(pcm):
             hit = True
         next_text = asr.feed_chunk(pcm) or ""

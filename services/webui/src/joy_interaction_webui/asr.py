@@ -499,8 +499,8 @@ async def asr_websocket_handler(request):
         logger.exception("[%s] ASR websocket failed", session_id)
         try:
             await send_asr_client_json(ws, {"type": "error", "message": f"ASR failed: {err}"})
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("[%s] failed to notify client of ASR error: %s", session_id, exc)
     finally:
         if not inproc_mode:
             if asr_ws is not None and not asr_ws.closed:

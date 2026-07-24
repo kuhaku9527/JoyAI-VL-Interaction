@@ -368,7 +368,8 @@ def _probe_tts(tts_api_url):
         try:
             with httpx.Client(timeout=3.0) as client:
                 resp = client.get(url)
-        except Exception:
+        except Exception as exc:
+            logger.warning("TTS health check failed for %s: %s", url, exc)
             continue
         if resp.status_code == 200:
             return {"status": "ok", "endpoint": url, "code": 200}
@@ -706,8 +707,8 @@ async def _drain_mic_audio_track(mic_track, session_id):
     finally:
         try:
             mic_track.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("mic track stop failed for %s: %s", session_id, exc)
 
 
 def _start_mic_audio_consumer(mic_track, session_id):
@@ -805,20 +806,20 @@ async def on_shutdown(app):
     for ws in list(websockets):
         try:
             await ws.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("error closing websocket during shutdown: %s", exc)
     for _session_id, session in list(sessions.items()):
         bg_svc = session.get("background_service")
         if bg_svc:
             try:
                 await bg_svc.close(cancel_requests=False)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("error closing background service during shutdown: %s", exc)
     for pc in list(pcs):
         try:
             await pc.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("error closing peer connection during shutdown: %s", exc)
 
 
 _services_config: dict = {
