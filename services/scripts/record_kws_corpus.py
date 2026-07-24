@@ -141,9 +141,7 @@ def main() -> int:
                 continue
 
             input("  按 Enter 开始录音 > ")
-            t0 = time.time()
             audio = record_one(args.max_sec, args.sr, args.device)
-            dt = time.time() - t0
 
             audio_trim = trim_silence(audio, args.sr)
             dur = len(audio_trim) / args.sr
