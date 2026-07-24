@@ -174,10 +174,11 @@ class OnnxJoiner(nn.Module):
         self.encoder_dim = max(ENCODER_DIMS)
         self.decoder_dim = model.decoder_dim
         self.vocab_size = model.ctc_head.out_features
-        assert model.joiner.in_features == self.encoder_dim + self.decoder_dim, (
-            f"model.joiner.in_features={model.joiner.in_features} != "
-            f"encoder_dim({self.encoder_dim}) + decoder_dim({self.decoder_dim})"
-        )
+        if model.joiner.in_features != self.encoder_dim + self.decoder_dim:
+            raise ValueError(
+                f"model.joiner.in_features={model.joiner.in_features} != "
+                f"encoder_dim({self.encoder_dim}) + decoder_dim({self.decoder_dim})"
+            )
         # 直接复用训练后的 joiner Linear (ONNX export 时 torch 会自动拷贝权重)
         self.linear = model.joiner
 
@@ -307,7 +308,8 @@ def main():
     # total outputs = 1 (encoder_out) + 1 (encoder_out) + n_cached (new_state_X) + 2 (new_embed_states, new_processed_lens)
     n_cached = sum(NUM_LAYERS) * 6
     expected_outputs = 1 + n_cached + 2  # encoder_out + new_states + 2 passthrough
-    assert len(encoder_output_names) == expected_outputs, f"output_names should be {expected_outputs}, got {len(encoder_output_names)}"
+    if len(encoder_output_names) != expected_outputs:
+        raise ValueError(f"output_names should be {expected_outputs}, got {len(encoder_output_names)}")
     # 最后两个 output 是 new_embed_states 和 new_processed_lens (在 forward 里 return)
     encoder_output_names[-2] = "new_embed_states"
     encoder_output_names[-1] = "new_processed_lens"
