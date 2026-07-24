@@ -160,7 +160,7 @@ def batch_main(args, spotter):
     try:
         kw = Path(args.keywords).read_text(encoding="utf-8").strip()
         keywords_inline = kw if kw else None
-    except Exception:
+    except Exception:  # noqa: S110
         pass
     n_total, n_hit, hits_per_wav = evaluate_dir(spotter, args.eval_dir, keywords_inline, args.max_files)
     far = n_hit / n_total if n_total else 0

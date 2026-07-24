@@ -65,7 +65,7 @@ BACKGROUND_SUMMARIZER_API_BASE = os.environ.get(
 )
 BACKGROUND_SUMMARIZER_MODEL = os.environ.get(
     "BACKGROUND_SUMMARIZER_MODEL",
-    os.environ.get("SUMMARIZER_MODEL", "/tmp/models/Qwen3-VL-4B-Instruct"),
+    os.environ.get("SUMMARIZER_MODEL", "/tmp/models/Qwen3-VL-4B-Instruct"),  # noqa: S108
 )
 BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS = float(
     os.environ.get("BACKGROUND_SUMMARIZER_TIMEOUT_SECONDS", "60")

@@ -120,7 +120,7 @@ async def test_barge_in_transition():
         jarvis._tts_task.cancel()
         try:
             await jarvis._tts_task
-        except (asyncio.CancelledError, Exception):
+        except (asyncio.CancelledError, Exception):  # noqa: S110
             pass
     print("[OK] barge-in → TTS_PAUSED")
 

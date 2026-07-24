@@ -49,9 +49,9 @@ class AdapterConfig:
     qa_history_window: int = 12  # 0 = 禁用(旧无界行为)；保留最近 N 轮问答
     normalize_output: bool = True
     enable_summarizer: bool = True
-    summarizer_model: str = "/tmp/models/Qwen3-VL-4B-Instruct"
+    summarizer_model: str = "/tmp/models/Qwen3-VL-4B-Instruct"  # noqa: S108
     summarizer_api_base: str = "http://127.0.0.1:8065/v1"
-    longterm_model: str = "/tmp/models/Qwen3-VL-4B-Instruct"
+    longterm_model: str = "/tmp/models/Qwen3-VL-4B-Instruct"  # noqa: S108
     longterm_api_base: str = "http://127.0.0.1:8065/v1"
     summarizer_max_pixels: int = 262144
     summarizer_key_frames: int = 0
@@ -83,7 +83,7 @@ class AdapterConfig:
     save_model_inputs: bool = True
     save_debug_inputs: bool = False
     summarizer_debug: bool = False
-    frame_save_dir: str = "/tmp/streaming_adapter_frames"
+    frame_save_dir: str = "/tmp/streaming_adapter_frames"  # noqa: S108
     language: str = "en"
     system_prompt: str = DEFAULT_SYSTEM_PROMPT_EN
     character_prompts_enabled: bool = True
