@@ -184,9 +184,12 @@ if __name__ == "__main__":
     kws.start()
 
     with wave.open(str(wav_path), "rb") as wf:
-        assert wf.getnchannels() == 1, "mono only"
-        assert wf.getsampwidth() == 2, "int16 only"
-        assert wf.getframerate() == 16000, "16kHz only"
+        if wf.getnchannels() != 1:
+            raise ValueError("mono only")
+        if wf.getsampwidth() != 2:
+            raise ValueError("int16 only")
+        if wf.getframerate() != 16000:
+            raise ValueError("16kHz only")
 
         chunk_size = 1600  # 100ms @ 16kHz int16
         while True:

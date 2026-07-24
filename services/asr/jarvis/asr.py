@@ -101,9 +101,12 @@ if __name__ == "__main__":
     asr.start()
 
     with wave.open(str(wav_path), "rb") as wf:
-        assert wf.getnchannels() == 1
-        assert wf.getsampwidth() == 2
-        assert wf.getframerate() == 16000
+        if wf.getnchannels() != 1:
+            raise ValueError("input wav must be mono (1 channel)")
+        if wf.getsampwidth() != 2:
+            raise ValueError("input wav must be 16-bit PCM (int16)")
+        if wf.getframerate() != 16000:
+            raise ValueError("input wav must be sampled at 16000 Hz")
         chunk_size = 1600  # 100ms chunks
         while True:
             data = wf.readframes(chunk_size // 2)
