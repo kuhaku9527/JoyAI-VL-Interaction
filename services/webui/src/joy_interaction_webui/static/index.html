@@ -89,6 +89,7 @@ limitations under the License.
     <script src="./render_markdown.js"></script>
     <script src="./sanitize_static_html.js"></script>
     <script src="./config_services.js"></script>
+    <script src="./wiki_frontend.js"></script>
     <script src="./joy_ws.js"></script>
     <script>
         document.title = 'JoyAI VL Live';
@@ -148,8 +149,21 @@ limitations under the License.
                 <button class="settings-close" id="settingsClose" aria-label="Close settings">×</button>
 
             </div>
-            <div class="settings-body">
-                <!-- Column 1: Layout & Visual Effects -->
+        <div class="settings-body">
+            <!-- [Local Wiki] F2: API Status panel (top of settings, ADR-0012 §5) -->
+            <div class="settings-section" style="grid-column: 1 / -1;">
+                <div class="settings-section-title">API Status</div>
+                <div class="api-status-grid" id="apiStatusGrid">
+                    <div class="api-status-item"><span class="status-dot" id="status-main_llm"></span><span class="api-status-name">Main LLM</span><span class="api-status-meta" id="meta-main_llm">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-summarizer"></span><span class="api-status-name">Summarizer</span><span class="api-status-meta" id="meta-summarizer">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-embedding"></span><span class="api-status-name">Embedding</span><span class="api-status-meta" id="meta-embedding">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-memory_store"></span><span class="api-status-name">Memory Store</span><span class="api-status-meta" id="meta-memory_store">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-tts"></span><span class="api-status-name">TTS</span><span class="api-status-meta" id="meta-tts">--</span></div>
+                </div>
+                <button class="icon-btn" id="apiStatusRefresh" type="button" aria-label="Refresh API status"><i data-lucide="refresh-cw"></i> Refresh</button>
+            </div>
+
+            <!-- Column 1: Layout & Visual Effects -->
                 <div>
                     <div class="settings-section">
                         <div class="settings-section-title">Layout</div>
@@ -327,6 +341,38 @@ limitations under the License.
                             </label>
                         </div>
                     </div>
+
+                    <!-- [Local Wiki] F1: Network Proxy block (ADR-0012 §4, config-only for v1) -->
+                    <div class="settings-section">
+                        <div class="settings-section-title">Network Proxy</div>
+                        <div class="settings-item">
+                            <div>
+                                <div class="settings-item-label">Enable proxy</div>
+                                <div class="settings-item-description">Reserve only; v1 traffic stays direct (ADR-0012 §4)</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="proxyEnabledToggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="settings-item">
+                            <div style="flex: 1; min-width: 0;">
+                                <div class="settings-item-label">Proxy host</div>
+                            </div>
+                            <input type="text" id="proxyHost" placeholder="127.0.0.1" style="width: 120px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
+                        </div>
+                        <div class="settings-item">
+                            <div style="flex: 1; min-width: 0;">
+                                <div class="settings-item-label">Proxy port</div>
+                            </div>
+                            <input type="number" id="proxyPort" value="7890" min="1" max="65535" step="1" style="width: 80px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <button class="icon-btn" id="proxyTestBtn" type="button" aria-label="Test connection"><i data-lucide="plug-zap"></i> Test</button>
+                            <button class="icon-btn" id="proxySaveBtn" type="button" aria-label="Save network settings"><i data-lucide="save"></i> Save</button>
+                        </div>
+                        <div id="proxyStatus" class="input-hint" style="margin-top: 8px;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -451,6 +497,47 @@ limitations under the License.
                     </div>
                 </div>
             </div>
+
+            <!-- [Local Wiki] F4: Knowledge Base panel (ADR-0012 §7.3) -->
+            <div class="panel">
+                <div class="panel-header" onclick="togglePanel('knowledgeBase')">
+                    <div class="panel-title">
+                        <span class="panel-icon"><i data-lucide="book-open"></i></span>
+                        <span class="panel-title-text">Knowledge Base</span>
+                    </div>
+                    <span class="panel-toggle collapsed" id="knowledgeBaseToggle">▼</span>
+                </div>
+                <div class="panel-content collapsed" id="knowledgeBase">
+                    <div class="input-hint" style="margin-bottom: 8px;">Local wiki corpora (per game). Sync a <code>wiki/&lt;game&gt;</code> folder into a vector namespace.</div>
+                    <div id="namespaceList" class="namespace-list"></div>
+                    <div id="namespaceEmpty" class="input-hint" style="display: none;">No knowledge bases yet.</div>
+
+                    <div class="wiki-paste-block">
+                        <div class="form-group">
+                            <label>Game / namespace</label>
+                            <input type="text" id="wikiNamespace" placeholder="elden-ring">
+                        </div>
+                        <div class="form-group">
+                            <label>Paste wiki markdown</label>
+                            <textarea id="wikiPaste" rows="4" placeholder="Paste攻略 markdown here..."></textarea>
+                        </div>
+                        <button class="icon-btn" id="wikiPasteBtn" type="button" aria-label="Ingest pasted markdown"><i data-lucide="upload"></i> Ingest</button>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label>Sync folder path (wiki/&lt;game&gt;)</label>
+                        <input type="text" id="wikiSyncPath" placeholder="/path/to/wiki/elden-ring">
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <button class="icon-btn" id="wikiSyncBtn" type="button" aria-label="Sync folder"><i data-lucide="refresh-cw"></i> Sync</button>
+                            <label style="display: flex; align-items: center; gap: 4px;">
+                                <input type="checkbox" id="wikiDropFirst"> <span class="input-hint" style="margin: 0;">Drop first</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="wikiStatus" class="input-hint" style="margin-top: 8px;"></div>
+                </div>
+            </div>
+
             </div><!-- /.sidebar-panels -->
 
         <!-- Main Content -->
@@ -3505,6 +3592,10 @@ limitations under the License.
         // Open settings modal
         settingsBtn.addEventListener('click', () => {
             settingsModal.classList.add('show');
+            if (window.JoyWiki) {
+                window.JoyWiki.loadHealth();
+                window.JoyWiki.loadNetwork();
+            }
         });
 
         // Close settings modal
@@ -3597,6 +3688,11 @@ limitations under the License.
 
             content?.classList.toggle('collapsed');
             toggle?.classList.toggle('collapsed');
+
+            // [Local Wiki] F4: lazy-load namespace list when the panel opens
+            if (panelId === 'knowledgeBase' && window.JoyWiki) {
+                window.JoyWiki.loadNamespaces();
+            }
 
             const allSidebarPanelsCollapsed = sidebarPanelIds
                 .every(id => document.getElementById(id)?.classList.contains('collapsed'));
