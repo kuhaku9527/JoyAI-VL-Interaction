@@ -37,6 +37,7 @@ export default [
         fetch: 'readonly',
         location: 'readonly',
         alert: 'readonly',
+        confirm: 'readonly',
         setTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
@@ -48,7 +49,7 @@ export default [
     rules: {
       // Baseline "real bug" rules.
       'no-undef': 'error',
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       // Style rules that the 7 files already mostly follow.
       'strict': ['error', 'global'], // require 'use strict'
       'quotes': ['error', 'single', { avoidEscape: true }],
