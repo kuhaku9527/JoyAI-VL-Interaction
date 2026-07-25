@@ -115,15 +115,18 @@ class SqliteBackend:
         self._embedder = embedder
 
     def name(self) -> str:
+        """Return the backend identifier ``"sqlite"``."""
         return "sqlite"
 
     @property
     def embedder(self) -> BgeM3Embedder | None:
+        """Expose the configured embedder (or ``None``) for wiki vector ingest."""
         return self._embedder
 
     # -- push ----------------------------------------------------------------
 
     async def push(self, session_id: str, blocks: list[MemoryBlock]) -> int:
+        """Persist a batch of memory blocks; returns the count stored."""
         if not blocks:
             return 0
         async with self._lock:
@@ -223,6 +226,7 @@ class SqliteBackend:
         return int(deleted), index_removed
 
     def namespace_stats(self) -> list[dict]:
+        """Aggregate per-namespace block counts and indexed-vector counts."""
         cur = self._conn.cursor()
         cur.execute(
             "SELECT namespace, COUNT(*) AS blocks FROM memory_blocks "
@@ -248,6 +252,7 @@ class SqliteBackend:
         flt: RecallFilter | None,
         min_similarity: float = 0.25,
     ) -> list[MemoryBlock]:
+        """Recall the top-k blocks for ``query`` (vector path, else FTS5)."""
         async with self._lock:
             return await asyncio.to_thread(
                 self._recall_sync, query, top_k, min_score, flt, min_similarity
@@ -412,6 +417,7 @@ class SqliteBackend:
         )
 
     async def health(self) -> dict:
+        """Return a readiness snapshot with block count and backend name."""
         async with self._lock:
             count = await asyncio.to_thread(self._count_sync)
         return {"ok": True, "path": self._path, "blocks": count, "backend": self.name()}
@@ -422,6 +428,7 @@ class SqliteBackend:
         return int(cur.fetchone()["c"])
 
     def close(self) -> None:
+        """Release the vector store and sqlite connection (best-effort)."""
         try:
             self._vectors.close()
         except Exception as exc:

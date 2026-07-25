@@ -32,6 +32,7 @@ def sync_wiki_dir(
     dir_path: str,
     drop_first: bool = False,
 ) -> SyncResponse:
+    """Sync a wiki directory into a namespace: chunk, embed, and index blocks."""
     chunks, files, errors = ingest_directory(dir_path)
     dropped = False
 
@@ -71,9 +72,15 @@ def sync_wiki_dir(
 
     want_vectors = embedder is not None and embedder.available()
     if new_blocks and embedder is not None and not embedder.available():
-        errors.append(
-            "embedder unavailable (check SILICONFLOW_API_KEY); blocks stored without vectors"
-        )
+        # Provider-aware hint: the default is now nvidia, so pointing users at
+        # SILICONFLOW_API_KEY when the nvidia key is missing would mislead them.
+        if embedder.provider == "nvidia":
+            key_hint = "NVIDIA_API_KEY"
+        elif embedder.provider == "siliconflow":
+            key_hint = "SILICONFLOW_API_KEY"
+        else:
+            key_hint = "embedding provider configuration"
+        errors.append(f"embedder unavailable (check {key_hint}); blocks stored without vectors")
 
     for start in range(0, len(new_blocks), _EMBED_BATCH):
         batch = new_blocks[start : start + _EMBED_BATCH]

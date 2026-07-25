@@ -14,7 +14,7 @@ def test_ingest_extracts_images_and_frontmatter(tmp_path):
         'source_url: "https://example.wiki/Bosses"\n'
         "---\n\n"
         "# 火焰巨人\n\n"
-        "火焰巨人位于巨人山顶，弱打击属性。\n\n"
+        "火焰巨人位于巨人山顶,弱打击属性。\n\n"
         "![火焰巨人站位图](assets/fire-giant.png)\n\n"
         "推荐等级 100 级以上挑战。\n",
         encoding="utf-8",

@@ -65,6 +65,7 @@ class VectorIndexStore:
             return idx
 
     def add(self, namespace: str, keys: list[int], vectors: np.ndarray) -> None:
+        """Insert (rowid, vector) pairs into a namespace index and persist it."""
         if not keys:
             return
         idx = self._open(namespace)
@@ -77,6 +78,7 @@ class VectorIndexStore:
             idx.save(str(self._path(namespace)))
 
     def remove(self, namespace: str, keys: list[int]) -> None:
+        """Drop keys from a namespace index (idempotent) and persist it."""
         if not keys or not self._path(namespace).exists():
             return
         idx = self._open(namespace)
@@ -113,11 +115,13 @@ class VectorIndexStore:
             return False
 
     def count(self, namespace: str) -> int:
+        """Return the number of indexed vectors for a namespace (0 if absent)."""
         if not self._path(namespace).exists():
             return 0
         return len(self._open(namespace))
 
     def close(self) -> None:
+        """Persist and release all open namespace indexes."""
         with self._lock:
             for ns, idx in self._indexes.items():
                 try:
