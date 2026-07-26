@@ -3720,3 +3720,84 @@
                 scroll-behavior: auto !important;
             }
         }
+
+        /* ---- [Local Wiki] F1-F4 frontend (ADR-0012) ---- */
+        .api-status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .api-status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-primary);
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted, #888);
+            flex: 0 0 auto;
+        }
+        .status-dot.ok { background: #2ecc71; }
+        .status-dot.err { background: #e74c3c; }
+        .status-dot.pending { background: #f1c40f; animation: statusPulse 1.2s ease-in-out infinite; }
+        .api-status-name { font-weight: 600; font-size: 13px; }
+        .api-status-meta {
+            margin-left: auto;
+            font-size: 11px;
+            color: var(--text-muted, #888);
+            max-width: 60%;
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .namespace-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .namespace-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-primary);
+        }
+        .namespace-info { min-width: 0; }
+        .namespace-name {
+            font-weight: 600;
+            font-size: 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .namespace-sub { font-size: 11px; color: var(--text-muted, #888); }
+        .namespace-del { color: var(--warning-color); }
+
+        .wiki-paste-block {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed var(--border-color);
+        }
+        .wiki-paste-block textarea {
+            width: 100%;
+            resize: vertical;
+            padding: 6px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: inherit;
+        }
