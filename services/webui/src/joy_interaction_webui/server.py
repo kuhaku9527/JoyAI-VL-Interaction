@@ -949,6 +949,95 @@ async def _services_status_handler(request):
     )
 
 
+# -- [Local Wiki] frontend gateway endpoints (ADR-0012, task F4) ----------
+# The webui is the single SPA entry point. It proxies the whitelisted /v1/*
+# wiki endpoints to the memory-store service. Provider health (B3) and
+# network settings (B4) are owned by the backend (#36); this gateway only
+# forwards the F4 knowledge-base surface (namespaces / sync / ingest).
+
+MEMORY_STORE_URL = os.environ.get("JOYAI_MEMORY_STORE_URL", "http://127.0.0.1:8996").rstrip("/")
+
+
+async def _proxy_to_memory_store(request: web.Request) -> web.Response:
+    """Forward whitelisted [Local Wiki] /v1/* endpoints to memory-store.
+
+    Only the three UI-facing wiki endpoints are proxied; memory-store's
+    internal /v1/blocks/* surface is intentionally NOT exposed to the SPA.
+    """
+    target = MEMORY_STORE_URL + request.path
+    if request.query_string:
+        target += "?" + request.query_string
+    try:
+        body = await request.read()
+        headers = {
+            k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
+        }
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session,
+            session.request(request.method, target, data=body or None, headers=headers) as resp,
+        ):
+            resp_body = await resp.read()
+            # Strip any "; charset=..." — aiohttp's content_type arg rejects it
+            # (it adds charset itself), and FastAPI/memory-store send it.
+            ct = resp.headers.get("Content-Type", "application/json")
+            ct = ct.split(";", 1)[0].strip() or "application/json"
+            return web.Response(
+                status=resp.status,
+                body=resp_body,
+                content_type=ct,
+            )
+    except Exception as exc:
+        logger.warning("memory-store proxy %s failed: %s", request.path, exc)
+        return web.json_response(
+            {"error": "memory-store unreachable", "reason": str(exc)[:160]}, status=502
+        )
+
+
+async def _ingest_text_handler(request: web.Request) -> web.Response:
+    """POST /v1/external/ingest-text (F4 pasted-markdown entry).
+
+    The browser cannot write files, so the webui gateway accepts raw markdown
+    text, stages it as a single .md under a temp dir, and forwards to the
+    memory-store sync endpoint (the single ingest path). The temp dir is
+    removed after the upstream call resolves.
+    """
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        return web.json_response({"error": "bad json: %s" % exc}, status=400)
+    namespace = (payload.get("namespace") or "").strip()
+    text = payload.get("text") or ""
+    if not namespace:
+        return web.json_response({"error": "namespace required"}, status=422)
+    if not text.strip():
+        return web.json_response({"error": "text required"}, status=422)
+    import tempfile
+
+    tmp = tempfile.mkdtemp(prefix="joyai-wiki-")
+    md_path = os.path.join(tmp, "paste.md")
+    try:
+        with open(md_path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session,
+            session.post(
+                MEMORY_STORE_URL + "/v1/external/sync",
+                json={"namespace": namespace, "dir": tmp, "drop_first": False},
+            ) as resp,
+        ):
+            upstream = await resp.json(content_type=None)
+            return web.json_response(upstream, status=resp.status)
+    except Exception as exc:
+        logger.warning("ingest-text failed: %s", exc)
+        return web.json_response(
+            {"error": "memory-store unreachable", "reason": str(exc)[:160]}, status=502
+        )
+    finally:
+        import shutil
+
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _propagate_services_to_runtime():
     """Push the saved llm/summary config into live service instances.
     - LLM: update every session VLMService (api_base + model + api_key).
@@ -1124,6 +1213,16 @@ def main():
     app.router.add_get("/api/services/config", _services_config_handler)
     app.router.add_put("/api/services/config", _services_config_handler)
     app.router.add_get("/api/services/status", _services_status_handler)
+    # [Local Wiki] frontend gateway (ADR-0012, tasks F1-F4). Provider health
+    # (B3) and network settings (B4) are OWNED by the backend (#36); this
+    # gateway only FORWARDS them to memory-store — no business logic here.
+    app.router.add_get("/v1/providers/health", _proxy_to_memory_store)
+    app.router.add_get("/v1/settings/network", _proxy_to_memory_store)
+    app.router.add_put("/v1/settings/network", _proxy_to_memory_store)
+    app.router.add_get("/v1/namespaces", _proxy_to_memory_store)
+    app.router.add_post("/v1/external/sync", _proxy_to_memory_store)
+    app.router.add_post("/v1/external/ingest-text", _ingest_text_handler)
+    app.router.add_delete("/v1/namespaces/{namespace}", _proxy_to_memory_store)
     app.router.add_get("/api/webinfer/summarizer/route", _webinfer_summarizer_route_handler)
     app.router.add_post("/api/webinfer/summarizer/route", _webinfer_summarizer_route_handler)
 
