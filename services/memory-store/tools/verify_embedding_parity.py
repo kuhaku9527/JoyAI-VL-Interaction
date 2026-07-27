@@ -25,13 +25,14 @@ from memory_store.embedder import BgeM3Embedder, EmbedderError, cosine_similarit
 
 _THRESHOLD = 0.999
 _SAMPLES = [
-    "火焰巨人是艾尔登法环中位于巨人山顶的 Boss，弱打击属性武器。",
+    "火焰巨人是艾尔登法环中位于巨人山顶的 Boss,弱打击属性武器。",
     "The Fire Giant is a Legend Boss in Elden Ring, weak to strike damage.",
     "玛莲妮亚的水鸟乱舞需要连续翻滚四次躲避。",
 ]
 
 
 def main() -> int:
+    """Verify the local and hosted bge-m3 produce the same vector space."""
     api = BgeM3Embedder(provider="siliconflow")
     local = BgeM3Embedder(provider="local")
     try:

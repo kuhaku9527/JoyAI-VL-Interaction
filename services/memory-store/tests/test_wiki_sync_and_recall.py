@@ -70,8 +70,8 @@ def test_sync_embeds_and_vector_recall(backend, tmp_path):
     _write_wiki(
         wiki,
         {
-            "boss.md": "# Boss\n\n火焰巨人弱打击属性武器，位于巨人山顶。\n\n![站位](assets/a.png)\n",
-            "item.md": "# Item\n\n名刀月隐是智力流太刀，战技为隙间月影。\n",
+            "boss.md": "# Boss\n\n火焰巨人弱打击属性武器,位于巨人山顶。\n\n![站位](assets/a.png)\n",
+            "item.md": "# Item\n\n名刀月隐是智力流太刀,战技为隙间月影。\n",
         },
     )
     result = sync_wiki_dir(backend, backend.embedder, "wiki:game-a", str(wiki))
@@ -83,7 +83,7 @@ def test_sync_embeds_and_vector_recall(backend, tmp_path):
 
     blocks = asyncio.run(
         backend.recall(
-            "火焰巨人弱打击属性武器，位于巨人山顶。",
+            "火焰巨人弱打击属性武器,位于巨人山顶。",
             top_k=5,
             min_score=0.0,
             flt=RecallFilter(namespaces=["wiki:game-a"]),

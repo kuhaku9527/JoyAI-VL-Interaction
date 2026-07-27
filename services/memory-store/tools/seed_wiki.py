@@ -55,6 +55,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """CLI entrypoint: seed/drop [Local Wiki] corpora into the sqlite backend."""
     args = _parse_args()
     backend = SqliteBackend(args.db, vec_dir=args.vec_dir, embedder=None)
     try:

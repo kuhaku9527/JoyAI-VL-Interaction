@@ -26,6 +26,8 @@ _OVERLAP_CHARS = 150
 
 @dataclass
 class WikiChunk:
+    """A parsed wiki chunk carrying its text, referenced images, and metadata."""
+
     text: str
     images: list[str] = field(default_factory=list)
     source_url: str | None = None

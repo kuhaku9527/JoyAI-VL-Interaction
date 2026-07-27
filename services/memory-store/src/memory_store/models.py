@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 
 
 class MemoryBlock(BaseModel):
+    """A single stored memory unit with optional [Local Wiki] metadata."""
+
     block_id: str = Field(default_factory=lambda: __import__("uuid").uuid4().hex)
     session_id: str | None = None
     content: str
@@ -28,22 +30,30 @@ class MemoryBlock(BaseModel):
 
 
 class PushRequest(BaseModel):
+    """Batch push request."""
+
     session_id: str
     blocks: list[MemoryBlock]
 
 
 class PushResponse(BaseModel):
+    """Batch push response."""
+
     pushed: int
     session_id: str
 
 
 class RecallFilter(BaseModel):
+    """Namespace / session / time filters for recall."""
+
     session_ids: list[str] | None = None
     created_after: datetime | None = None
     namespaces: list[str] | None = None
 
 
 class RecallRequest(BaseModel):
+    """Recall request."""
+
     query: str
     top_k: int = 8
     min_score: float = 0.3
@@ -54,6 +64,8 @@ class RecallRequest(BaseModel):
 
 
 class RecallResponse(BaseModel):
+    """Recall response."""
+
     blocks: list[MemoryBlock]
 
 
@@ -72,6 +84,8 @@ class SyncRequest(BaseModel):
 
 
 class SyncResponse(BaseModel):
+    """Wiki directory sync result."""
+
     namespace: str
     files: int
     chunks: int
@@ -82,6 +96,37 @@ class SyncResponse(BaseModel):
 
 
 class DropNamespaceResponse(BaseModel):
+    """Result of dropping a whole namespace."""
+
     namespace: str
     deleted_rows: int
     index_file_removed: bool
+
+
+# --- [Local Wiki] network settings (ADR-0012, tasks B2/B4) ------------------
+# These mirror ``config.ProxyConfig`` / ``config.ProviderNetConfig`` but live
+# in the request contract so the settings UI can PATCH only what it touches.
+
+
+class ProxySettings(BaseModel):
+    """Proxy switch sent by the settings UI (reserved; disabled in phase 1)."""
+
+    enabled: bool = False
+    url: str = "http://127.0.0.1:7890"
+
+
+class ProviderNetSettings(BaseModel):
+    """Per-provider proxy opt-in sent by the settings UI."""
+
+    use_proxy: bool = False
+
+
+class NetworkSettingsRequest(BaseModel):
+    """Body for ``PUT /v1/settings/network`` (ADR-0012 §7.1).
+
+    ``proxy`` and ``providers`` are optional so the UI can update just one
+    side. Omitted fields keep their current value.
+    """
+
+    proxy: ProxySettings | None = None
+    providers: dict[str, ProviderNetSettings] | None = None
