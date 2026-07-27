@@ -180,7 +180,7 @@
   async function syncWiki() {
     const st = document.getElementById('wikiStatus');
     const path = (document.getElementById('wikiSyncPath') || {}).value || '';
-    const ns = path.split(/[\\/]/).pop().replace(/^wiki[\\/]?/, '') || '';
+    const ns = (document.getElementById('wikiNamespace') || {}).value || path.split(/[\\/]/).pop().replace(/^wiki[\\/]?/, '') || '';
     const drop = document.getElementById('wikiDropFirst');
     if (!path) {
       if (st) st.textContent = 'Enter a wiki/<game> folder path first.';
