@@ -39,7 +39,9 @@ def test_api_success(monkeypatch):
                 ]
             }
 
-    monkeypatch.setattr("httpx.post", lambda *a, **k: _Resp())
+    # Embeddings now go through httpx.Client.post (via client_factory), not the
+    # module-level httpx.post, so patch the client method to stay offline.
+    monkeypatch.setattr("httpx.Client.post", lambda self, *a, **k: _Resp())
     emb = BgeM3Embedder(provider="siliconflow", api_key="k")
     vecs = emb.embed_texts(["a", "b"])
     assert vecs.shape == (2, 1024)

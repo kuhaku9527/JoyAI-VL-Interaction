@@ -50,6 +50,7 @@ def _api_get(api: str, params: dict, rate: float) -> dict:
 
 
 def check_api(api: str, rate: float) -> bool:
+    """Probe a MediaWiki API endpoint and report its siteinfo; return reachable."""
     try:
         data = _api_get(api, {"action": "query", "meta": "siteinfo", "siprop": "general"}, rate)
     except Exception as exc:  # noqa: BLE001 - probe tool: any failure means "not a MediaWiki API"
@@ -63,6 +64,7 @@ def check_api(api: str, rate: float) -> bool:
 
 
 def category_members(api: str, category: str, rate: float, limit: int) -> list[str]:
+    """List page titles in a wiki category, following pagination up to ``limit``."""
     titles: list[str] = []
     cont: dict = {}
     while len(titles) < limit:
@@ -83,6 +85,7 @@ def category_members(api: str, category: str, rate: float, limit: int) -> list[s
 
 
 def fetch_pages(api: str, titles: list[str], rate: float) -> list[dict]:
+    """Fetch plain-text extracts and image lists for the given page titles."""
     pages: list[dict] = []
     for start in range(0, len(titles), 50):  # API caps titles per request
         batch = titles[start : start + 50]
@@ -115,6 +118,7 @@ def _image_filename(url: str) -> str:
 
 
 def download_image(url: str, dest: Path, rate: float) -> bool:
+    """Download an image URL to ``dest``; return success (a failure is non-fatal)."""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": _UA})  # noqa: S310 - image URL comes from the wiki API response
         with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 - image URL comes from the wiki API response
@@ -127,6 +131,7 @@ def download_image(url: str, dest: Path, rate: float) -> bool:
 
 
 def write_page(page: dict, out_dir: Path, with_images: bool, rate: float) -> str | None:
+    """Write one wiki page to ``out_dir`` as markdown; return its title or None."""
     title = page.get("title")
     text = page.get("extract", "").strip()
     url = page.get("fullurl", "")
@@ -178,6 +183,7 @@ def write_page(page: dict, out_dir: Path, with_images: bool, rate: float) -> str
 
 
 def main() -> int:
+    """CLI entrypoint: probe, fetch categories, and write wiki pages to disk."""
     parser = argparse.ArgumentParser(description="Fetch game wiki pages via MediaWiki API.")
     parser.add_argument("--api", required=True, help="wiki api.php endpoint")
     parser.add_argument("--check", action="store_true", help="only probe siteinfo and exit")

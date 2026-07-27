@@ -10,19 +10,33 @@ from ..models import MemoryBlock, RecallFilter
 
 
 class MemoryBackend(Protocol):
-    async def push(self, session_id: str, blocks: list[MemoryBlock]) -> int: ...
+    """Storage backend contract implemented by sqlite/psql/obsidian backends."""
+
+    async def push(self, session_id: str, blocks: list[MemoryBlock]) -> int:
+        """Persist a batch of memory blocks; returns the number stored."""
+        ...
+
     async def recall(
         self,
         query: str,
         top_k: int,
         min_score: float,
         flt: RecallFilter | None,
-    ) -> list[MemoryBlock]: ...
-    async def health(self) -> dict: ...
-    def name(self) -> str: ...
+    ) -> list[MemoryBlock]:
+        """Return the top-k memory blocks matching ``query`` under ``flt``."""
+        ...
+
+    async def health(self) -> dict:
+        """Return a readiness/health snapshot for the backend."""
+        ...
+
+    def name(self) -> str:
+        """Return the backend identifier name."""
+        ...
 
 
 def get_backend(sqlite_path: str | None = None) -> MemoryBackend:
+    """Instantiate the configured storage backend (sqlite by default)."""
     name = os.getenv("MEMORY_BACKEND", "sqlite").lower()
     if name == "sqlite":
         from .sqlite_backend import SqliteBackend

@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -15,9 +16,12 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .backends import get_backend
 from .backends.sqlite_backend import SqliteBackend
+from .client_factory import proxy_url_for
+from .config import NetworkConfig, ProviderNetConfig, get_network_config, update_network_config
 from .embedder import BgeM3Embedder
 from .models import (
     DropNamespaceResponse,
+    NetworkSettingsRequest,
     PushRequest,
     PushResponse,
     RecallRequest,
@@ -62,6 +66,7 @@ logger.info("memory-store v%s loaded backend=%s", __version__, app.state.backend
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Close the storage backend gracefully when the app shuts down."""
     try:
         yield
     finally:
@@ -88,6 +93,7 @@ def _reset_backend_for_tests() -> None:
 
 @app.get("/health")
 async def health() -> dict:
+    """Liveness/readiness probe for the backend and the configured embedder."""
     backend = app.state.backend
     try:
         h = await backend.health()
@@ -107,6 +113,7 @@ async def health() -> dict:
 
 @app.get("/v1/backends")
 async def list_backends() -> dict:
+    """Report the active storage backend and the available alternatives."""
     backend = app.state.backend
     return {
         "active": backend.name(),
@@ -116,6 +123,7 @@ async def list_backends() -> dict:
 
 @app.post("/v1/blocks/push", response_model=PushResponse)
 async def push_blocks(req: PushRequest) -> PushResponse:
+    """Persist a batch of memory blocks, backfilling per-block session/created_at."""
     backend = app.state.backend
     # Backfill per-block fields that legacy clients (e.g. webinfer) omit.
     # The storage layer requires non-null session_id / created_at, and recall
@@ -134,6 +142,7 @@ async def push_blocks(req: PushRequest) -> PushResponse:
 
 @app.post("/v1/blocks/recall", response_model=RecallResponse)
 async def recall_blocks(req: RecallRequest) -> RecallResponse:
+    """Recall the top-k memory blocks for a query from the active backend."""
     backend = app.state.backend
     try:
         if isinstance(backend, SqliteBackend):
@@ -190,6 +199,129 @@ async def list_namespaces() -> dict:
     if not isinstance(backend, SqliteBackend):
         return {"namespaces": []}
     return {"namespaces": backend.namespace_stats()}
+
+
+# -- [Local Wiki] provider health + network settings (ADR-0012, B3/B4) -------
+
+
+def _provider_env(name: str) -> tuple[str | None, str | None]:
+    """Read optional external provider endpoint config from env.
+
+    External LLM/summarizer/tts providers are not configured in phase 1; when
+    their base URL env is absent we report ``not configured`` rather than a
+    fake green. The env keys are ``MEMORY_EXT_<NAME>_URL`` / ``_KEY``.
+    """
+    upper = name.upper().replace("-", "_")
+    base = os.getenv(f"MEMORY_EXT_{upper}_URL")
+    key = os.getenv(f"MEMORY_EXT_{upper}_KEY")
+    return base, key
+
+
+async def _ping_external(name: str) -> dict:
+    """Real 1-token completion ping for an external provider, same config path.
+
+    Returns ``not configured`` when the provider has no base URL; otherwise
+    pings through the per-provider proxy and reports latency or the error.
+    """
+    base, key = _provider_env(name)
+    if not base:
+        return {
+            "ok": False,
+            "configured": False,
+            "error": "not configured",
+            "hint": f"set MEMORY_EXT_{name.upper().replace('-', '_')}_URL (+_KEY) to enable ping",
+        }
+    started = time.perf_counter()
+    try:
+        import httpx
+
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        async with httpx.AsyncClient(proxy=proxy_url_for(name), timeout=10.0) as client:
+            resp = await client.post(
+                base,
+                headers=headers,
+                json={
+                    "model": os.getenv(f"MEMORY_EXT_{name.upper().replace('-', '_')}_MODEL", ""),
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1,
+                },
+            )
+            resp.raise_for_status()
+        latency_ms = round((time.perf_counter() - started) * 1000)
+        return {"ok": True, "configured": True, "latency_ms": latency_ms}
+    except Exception as exc:  # noqa: BLE001 - health must report, never 500
+        return {
+            "ok": False,
+            "configured": True,
+            "error": str(exc),
+            "hint": "check API key / endpoint / network",
+        }
+
+
+async def _ping_memory_store(backend) -> dict:
+    """Probe the local sqlite backend through the same path as /health."""
+    started = time.perf_counter()
+    try:
+        h = await backend.health()
+        latency_ms = round((time.perf_counter() - started) * 1000)
+        result = dict(h)
+        result["latency_ms"] = latency_ms
+        return result
+    except Exception as exc:  # noqa: BLE001 - health must report, never 500
+        return {"ok": False, "error": str(exc), "hint": "sqlite backend health failed"}
+
+
+@app.get("/v1/providers/health")
+async def providers_health() -> dict:
+    """Multi-provider real health (ADR-0012 §5).
+
+    Every slot is pinged through the *same* config path as real traffic
+    (same proxy, key, endpoint) to avoid false greens. External providers
+    (main_llm / summarizer / tts) report ``not configured`` until their
+    endpoints are set via env.
+    """
+    backend = app.state.backend
+    out: dict = {}
+    out["memory_store"] = await _ping_memory_store(backend)
+    embedder = getattr(app.state, "embedder", None)
+    out["embedding"] = (
+        embedder.health() if embedder is not None else {"ok": False, "error": "no embedder"}
+    )
+    for name in ("main_llm", "summarizer", "tts"):
+        out[name] = await _ping_external(name)
+    return out
+
+
+@app.put("/v1/settings/network")
+async def put_network_settings(req: NetworkSettingsRequest) -> dict:
+    """Update network/proxy config (ADR-0012 §7.1): hot-reload + re-test.
+
+    ``proxy`` and ``providers`` are merged over the current config (omitted
+    fields are preserved). The result is persisted, the client factory cache
+    is invalidated, and a fresh provider-health snapshot is returned so the
+    UI can confirm the change took effect.
+    """
+    cur = get_network_config()
+    proxy_cfg = cur.proxy
+    if req.proxy is not None:
+        proxy_cfg = type(cur.proxy)(enabled=req.proxy.enabled, url=req.proxy.url)
+    merged_providers = dict(cur.providers)
+    if req.providers:
+        for name, pc in req.providers.items():
+            merged_providers[name] = ProviderNetConfig(use_proxy=pc.use_proxy)
+    update_network_config(NetworkConfig(proxy=proxy_cfg, providers=merged_providers))
+    return await providers_health()
+
+
+@app.get("/v1/settings/network")
+async def get_network_settings() -> dict:
+    """Read the live network/proxy config (ADR-0012 §7.1, B4 read path).
+
+    The settings UI loads the current proxy + per-provider opt-in on open;
+    this mirrors the persisted :class:`NetworkConfig` exactly so the write
+    path (``PUT``) round-trips. Returns ``{"proxy": {...}, "providers": {...}}``.
+    """
+    return get_network_config().model_dump()
 
 
 def main() -> int:
