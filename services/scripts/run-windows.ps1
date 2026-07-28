@@ -291,7 +291,12 @@ function Start-Background {
     $psi.RedirectStandardOutput = $false
     $psi.RedirectStandardError  = $false
     foreach ($k in $ExtraEnv.Keys) {
-        $psi.Environment[$k] = [string]$ExtraEnv[$k]
+        # Set in the current-process environment; the child process launched
+        # below inherits it. We intentionally do NOT assign to
+        # ProcessStartInfo.EnvironmentVariables: on this PowerShell 5.1 / .NET
+        # build its StringDictionary getter returns $null on first access and
+        # its indexer setter throws "Cannot index into a null array".
+        [Environment]::SetEnvironmentVariable($k, [string]$ExtraEnv[$k])
     }
     $p = New-Object System.Diagnostics.Process
     $p.StartInfo = $psi
