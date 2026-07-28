@@ -129,6 +129,11 @@ class SessionState:
     _pending_write_task: asyncio.Task | None = field(default=None, repr=False)
     # Memory-store v0.2 fields (live adapter spec D-9):
     _memory_block_cache: list = field(default_factory=list)
+    # Local Wiki live-recall cache (ADR-0012 §6, integration analysis 2026-07-28).
+    # Populated on every chat turn via ``MemoryIOMixin._memory_recall``; read
+    # by ``PromptAssemblyMixin._build_memory_prompt`` so the model sees
+    # looked-up reference material in a separate [Local Wiki] section.
+    _memory_wiki_cache: list = field(default_factory=list)
     _memory_warmed: asyncio.Event = field(default_factory=asyncio.Event)
     _memory_pushed: bool = False
     _memory_warmup_task: asyncio.Task | None = field(default=None, repr=False)
