@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-"""BgeM3Embedder provider-switch tests (nvidia vs siliconflow), mocked HTTP.
+"""BgeM3Embedder provider-switch tests (local / nvidia / siliconflow), mocked
+HTTP for the API paths.
 
-No network: the per-provider client is replaced with a recording fake so we
-can assert on the request payload (model, base URL, and the NVIDIA-only
-``input_type`` discriminator) without ever hitting NVIDIA or SiliconFlow.
+The local path needs real sentence-transformers weights, so the local-only
+cases are guarded with ``pytest.importorskip`` and never run on the
+``memory-store`` dedicated CI image — that's a hygiene boundary, not a power
+test: the **provider switch** is what we want to lock down here, and that
+unfolds entirely without network. Real-space parity lives in
+``tools/verify_embedding_parity.py``.
+
 Secrets are never hard-coded — ``NVIDIA_API_KEY`` / ``SILICONFLOW_API_KEY``
 are injected via monkeypatch only.
 """
@@ -68,20 +73,43 @@ def fake_client(monkeypatch):
 # -- provider selection -----------------------------------------------------
 
 
-def test_nvidia_is_default_and_uses_nvidia_constants(monkeypatch):
+def test_local_is_default_and_uses_local_constants(monkeypatch):
+    """PR #42 reverted the default to ``local`` so the box works out of the
+    box for users without a hosted key. See ADR-0012 §6."""
     monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
     emb = BgeM3Embedder()  # no env, no provider arg
-    assert emb.provider == "nvidia"
-    assert emb.api_base == "https://integrate.api.nvidia.com/v1"
-    assert emb.model == "baai/bge-m3"
+    assert emb.provider == "local"
+    assert emb.model == "BAAI/bge-m3"
+    assert emb.available() is True
+    # Local path has no api_base / api_key — only the model path matters.
+    assert emb.api_base == ""
+    assert emb.api_key == ""
 
 
-def test_nvidia_default_overridden_by_env(monkeypatch):
+def test_local_default_overridden_by_env(monkeypatch):
     monkeypatch.setenv("EMBEDDING_PROVIDER", "siliconflow")
     emb = BgeM3Embedder()
     assert emb.provider == "siliconflow"
     assert emb.api_base == "https://api.siliconflow.cn/v1"
     assert emb.model == "BAAI/bge-m3"
+
+
+def test_local_model_path_honours_explicit_model_override(monkeypatch):
+    """Pointing the local provider at a weights folder must override the
+    bge-m3 default so users can plug in D:/AI/models/bge-m3 without telling
+    the HF cache."""
+    monkeypatch.delenv("EMBEDDING_LOCAL_MODEL", raising=False)
+    emb = BgeM3Embedder(provider="local", model="D:/AI/models/bge-m3")
+    assert emb.model == "D:/AI/models/bge-m3"
+
+
+def test_unknown_provider_raises_value_error(monkeypatch):
+    """Mistyped EMBEDDING_PROVIDER must fail loud at construction, not silently
+    fall back to a wrong API endpoint."""
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+    with pytest.raises(ValueError) as exc:
+        BgeM3Embedder(provider="azure")
+    assert "azure" in str(exc.value).lower()
 
 
 def test_nvidia_explicit_selects_nvidia_constants(monkeypatch):
@@ -113,6 +141,16 @@ def test_siliconflow_available_requires_siliconflow_key(monkeypatch):
     assert BgeM3Embedder(provider="siliconflow").available() is False
     monkeypatch.setenv("SILICONFLOW_API_KEY", "sf-key")
     assert BgeM3Embedder(provider="siliconflow").available() is True
+
+
+def test_local_available_always_true(monkeypatch):
+    """The local path is the unblocking default — it must be available
+    regardless of any env state."""
+    for env in ({}, {"HF_HOME": "/no/such/path"}):
+        for k in list(env):
+            monkeypatch.setenv(k, env[k])
+        monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+        assert BgeM3Embedder().available() is True
 
 
 # -- request payload (input_type discriminator) -----------------------------
