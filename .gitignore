@@ -83,6 +83,9 @@ agent-workspace/
 *.crt
 *.sqlite
 *.db
+# Vector index sidecar (USearch HNSW) — regenerable local artifact produced by
+# Local Wiki /v1/external/sync; never commit (companion to *.sqlite above).
+*.usearch
 
 # Generated test outputs are not uploaded from this combined workspace
 test-results/
