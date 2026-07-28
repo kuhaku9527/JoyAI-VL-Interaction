@@ -43,8 +43,6 @@ CREATE TABLE IF NOT EXISTS memory_blocks (
 );
 CREATE INDEX IF NOT EXISTS memory_blocks_session_idx ON memory_blocks(session_id);
 CREATE INDEX IF NOT EXISTS memory_blocks_created_idx ON memory_blocks(created_at);
-CREATE INDEX IF NOT EXISTS memory_blocks_namespace_idx ON memory_blocks(namespace);
-CREATE INDEX IF NOT EXISTS memory_blocks_hash_idx ON memory_blocks(namespace, content_hash);
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_blocks_fts USING fts5(
     content, block_id UNINDEXED, session_id UNINDEXED,
     content='memory_blocks', tokenize='porter unicode61'
