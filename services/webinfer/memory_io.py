@@ -8,6 +8,7 @@ hooks and the qa_history text-path archive helpers previously on
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,100 @@ from adapter_types import SessionState
 from response_format import archive_chunk_response_records
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
+# ---------------------------------------------------------------------------
+# Local Wiki live-recall (ADR-0012 §6, integration analysis 2026-07-28).
+# ---------------------------------------------------------------------------
+# These defaults are read on every chat turn from the inherited
+# ``StreamingInferAdapter.config``; the env vars are the deployment override.
+# Operators can shrink the recall set per deployment by setting
+# ``WIKI_RECALL_NAMESPACES="wiki:elden-ring,wiki:hl2"`` — GLobs (``wiki:*``)
+# are expanded by the memory-store backend.
+_WIKI_DEFAULTS = {
+    "namespaces": ["wiki:*"],
+    "top_k": 5,
+    "min_score": 0.0,
+    "enabled": True,
+}
+
+
+def _wiki_settings(config) -> dict[str, Any]:
+    """Resolve wiki recall settings from config (with env fallback)."""
+    enabled = _config_or_env(
+        config,
+        "WIKI_RECALL_ENABLED",
+        default=_WIKI_DEFAULTS["enabled"],
+        cast=_to_bool,
+    )
+    namespaces = _config_or_env(
+        config,
+        "WIKI_RECALL_NAMESPACES",
+        default=_WIKI_DEFAULTS["namespaces"],
+        cast=_parse_namespaces,
+    )
+    top_k = _config_or_env(
+        config,
+        "WIKI_RECALL_TOP_K",
+        default=_WIKI_DEFAULTS["top_k"],
+        cast=int,
+    )
+    min_score = _config_or_env(
+        config,
+        "WIKI_RECALL_MIN_SCORE",
+        default=_WIKI_DEFAULTS["min_score"],
+        cast=float,
+    )
+    return {
+        "enabled": enabled,
+        "namespaces": namespaces,
+        "top_k": max(1, int(top_k)),
+        "min_score": float(min_score),
+    }
+
+
+def _config_or_env(config, env_name: str, *, default, cast):
+    """Pick a config attribute (if present) else fall back to the env / default.
+
+    Env wins over config when both are set — operators can override from
+    the deployment without touching the adapter config.
+    """
+    config_value = None
+    if config is not None and hasattr(config, env_name.lower()):
+        try:
+            config_value = cast(getattr(config, env_name.lower()))
+        except (TypeError, ValueError):
+            config_value = None
+    raw = os.environ.get(env_name)
+    if raw is None:
+        return (
+            config_value
+            if config_value is not None
+            else (cast(default) if not isinstance(default, list) else list(default))
+        )
+    return cast(raw)
+
+
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_namespaces(raw: Any) -> list[str]:
+    """Accept either a list (typed config) or a comma-separated string (env).
+
+    The list branch is the no-op fast path; the string branch handles the
+    ``WIKI_RECALL_NAMESPACES="wiki:a,wiki:b"`` deployment form.
+    """
+    if isinstance(raw, list):
+        return [str(s).strip() for s in raw if str(s).strip()]
+    text = str(raw)
+    if text.startswith("[") and text.endswith("]"):
+        # Tolerate a stringified list (``"['wiki:a','wiki:b']"``) — happens
+        # when the config field is itself a list that gets str()-ed by env.
+        inner = text[1:-1]
+        return [s.strip().strip("'\"") for s in inner.split(",") if s.strip()]
+    return [s.strip() for s in text.split(",") if s.strip()]
 
 
 class MemoryIOMixin:
@@ -66,6 +161,13 @@ class MemoryIOMixin:
         finished (fire-and-forget on session create). In that case we wait
         briefly for the warmup so the first answer benefits from previous
         session memory without a separate round-trip.
+
+        ADR-0012 §6 live recall (2026-07-28): in addition to the warmup cache,
+        a per-question Local Wiki semantic recall is fired in parallel. The
+        result is stashed on ``state._memory_wiki_cache`` so the prompt
+        builder can render it as a separate ``[Local Wiki]`` section. The
+        wiki call is fail-open: any error is logged and the chat goes on
+        with chat memory only.
         """
         if not question:
             async with state.lock:
@@ -77,7 +179,50 @@ class MemoryIOMixin:
         # v0.1 spec skips per-question rerank -- the cache is the answer.
         # v0.3+ may add per-question hot-fetch against the live query.
         async with state.lock:
-            return list(state._memory_block_cache)
+            chat_blocks = list(state._memory_block_cache)
+        # Local Wiki live recall (separate from chat memory) — see
+        # reports/local-wiki-chat-integration-analysis-20260728.md.
+        wiki_blocks = await self._memory_wiki_recall(state, question)
+        if wiki_blocks:
+            async with state.lock:
+                state._memory_wiki_cache = list(wiki_blocks)
+        return chat_blocks
+
+    async def _memory_wiki_recall(self, state, question: str) -> list[dict[str, Any]]:
+        """Per-question Local Wiki semantic recall.
+
+        Fail-open: any error logs a warning and returns [] so the chat never
+        blocks on wiki.
+        """
+        settings = _wiki_settings(getattr(self, "config", None))
+        if not settings["enabled"]:
+            return []
+        client = getattr(self, "memory_store", None)
+        if client is None or not getattr(client, "enabled", False):
+            return []
+        try:
+            blocks = await client.recall(
+                question,
+                top_k=settings["top_k"],
+                min_score=settings["min_score"],
+                namespaces=settings["namespaces"],
+            )
+        except Exception as exc:  # fail-open: any error logs a warning, never raises
+            LOGGER.warning("local-wiki recall failed: %s", exc)
+            return []
+        # The wiki recall goes through the namespace filter at the backend
+        # level — see ``MemoryStoreClient.recall``'s ``session_id`` arg and
+        # ``/v1/blocks/recall``'s ``filter.namespaces`` field. When the
+        # session_id is None we ask the client to scope explicitly.
+        if not blocks:
+            return []
+        # Tag every block so the renderer can render them as a separate wiki
+        # section. The backend already populates ``namespace`` / ``source_url``
+        # (memory-store PR #36 schema); we only stamp the source marker.
+        for b in blocks:
+            if isinstance(b, dict):
+                b.setdefault("source", "wiki")
+        return blocks
 
     async def _memory_push(self, state):
         """Push session memory blocks to memory-store at session end.

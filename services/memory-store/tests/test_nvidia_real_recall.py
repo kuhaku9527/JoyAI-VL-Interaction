@@ -5,8 +5,9 @@ This is the *real-API* counterpart to ``test_embedder_provider.py`` (which is
 fully mocked). It exercises the actual NVIDIA NIM endpoint with a genuine
 ``NVIDIA_API_KEY`` and asserts that:
 
-* the default provider is ``nvidia`` and points at the NVIDIA NIM base URL /
-  ``baai/bge-m3`` model;
+* the explicit ``nvidia`` provider points at the NVIDIA NIM base URL /
+  ``baai/bge-m3`` model (the **default** is now ``local`` — see ADR-0012 §6
+  and test_local_real_recall.py for the local-machine counterpart);
 * ``health()`` returns a live OK with dim == 1024;
 * embeddings are 1024-d, float32, L2-normalized (norm ≈ 1);
 * a **Chinese** query semantically retrieves the correct Chinese passage
@@ -60,8 +61,10 @@ def _real_embedder() -> BgeM3Embedder:
 
 
 def test_nvidia_default_provider_and_endpoint():
-    emb = BgeM3Embedder()  # no args; relies on default + env
-    # Without a key the instance still wires up to the NVIDIA constants.
+    """Explicit ``provider="nvidia"`` wiring must still select NVIDIA
+    constants. The default switched to ``local`` in PR #42, so the default
+    assertion lives in test_local_real_recall.py instead."""
+    emb = BgeM3Embedder(provider="nvidia")
     # NOTE: the correct NVIDIA-hosted bge-m3 OpenAI endpoint is
     # ``https://integrate.api.nvidia.com/v1`` (per NVIDIA's official NIM
     # OpenAPI spec). ``api.nvcf.nvidia.com`` is the NVCF *invoke* host and

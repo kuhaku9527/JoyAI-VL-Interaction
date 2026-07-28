@@ -1,22 +1,29 @@
 # SPDX-License-Identifier: Apache-2.0
-"""bge-m3 dual-mode embedder (ADR-0012).
+"""bge-m3 dual-mode embedder (ADR-0012 v6).
 
 Space-consistency rule: the model that embeds documents MUST be the model that
 embeds queries — otherwise distance is meaningless. bge-m3 is uniquely suited
 because the same weights are available both locally (offline bulk ingest, free,
 no rate limits) and via a hosted OpenAI-compatible API (online recall).
 
-Provider selection (``EMBEDDING_PROVIDER`` env or ``provider`` arg):
+Provider selection (``EMBEDDING_PROVIDER`` env or ``provider`` arg, ADR-0012 §6
+provider switch):
 
-- ``nvidia`` (default): NVIDIA NIM ``baai/bge-m3`` endpoint
-  (``https://integrate.api.nvidia.com/v1``), authenticated via ``NVIDIA_API_KEY``.
-  NIM requires an ``input_type`` of ``query`` (recall) or ``passage`` (ingest)
-  on the embeddings call.
+- ``local`` (default): local sentence-transformers weights. The path the test
+  harness and CI use today; works offline as long as the weights are present at
+  ``EMBEDDING_LOCAL_MODEL`` (default ``BAAI/bge-m3``). Zero network dependency,
+  zero quota, predictable latency. **The default was switched from ``nvidia``
+  → ``local`` in PR #42 to restore the v5 "open the box and it works"**
+  contract; ``nvidia`` and ``siliconflow`` remain selectable for parity /
+  cross-validation.
 - ``siliconflow``: SiliconFlow hosted API (``https://api.siliconflow.cn/v1``),
-  authenticated via ``SILICONFLOW_API_KEY``. Selectable via
-  ``EMBEDDING_PROVIDER=siliconflow`` — the original behaviour is preserved.
-- ``local``: local FlagEmbedding/sentence-transformers weights when installed
-  (offline bulk ingest, free, no rate limits).
+  authenticated via ``SILICONFLOW_API_KEY``. Original v5 default. Useful when
+  the local weights are missing or as a sanity check for the local path.
+- ``nvidia``: NVIDIA NIM ``baai/bge-m3`` endpoint
+  (``https://integrate.api.nvidia.com/v1``), authenticated via ``NVIDIA_API_KEY``.
+  Requires an ``input_type`` of ``query`` (recall) or ``passage`` (ingest) on
+  the embeddings call. Use only when proxy + quota are validated — see
+  ADR-0012 §6 for the cutoff before reaching for it.
 
 Preprocessing lives in exactly one place (``_prepare``) so document and query
 paths can never diverge. bge-m3 outputs are already L2-normalized — do NOT
@@ -73,17 +80,37 @@ class BgeM3Embedder:
         model: str | None = None,
         timeout: float = 30.0,
     ):
-        # Default provider is now nvidia; siliconflow remains selectable via
-        # EMBEDDING_PROVIDER=siliconflow (see ADR-0012 provider switch).
-        self.provider = (provider or os.getenv("EMBEDDING_PROVIDER", "nvidia")).lower()
+        # Default provider is local (offline-friendly, no quota, no proxy):
+        # #42 reverted #38's ad-hoc change to ``nvidia`` because the new
+        # default did not work out of the box for users without a NVIDIA NIM
+        # key, and there was no ADR entry to back the change. Each provider is
+        # still selectable via ``EMBEDDING_PROVIDER`` — see the module docstring
+        # and ADR-0012 §6.
+        self.provider = (provider or os.getenv("EMBEDDING_PROVIDER", "local")).lower()
         if self.provider == "nvidia":
             default_api_base = _NVIDIA_API_BASE
             default_model = _NVIDIA_MODEL
             key_env = _NVIDIA_KEY_ENV
-        else:
+        elif self.provider == "siliconflow":
             default_api_base = _DEFAULT_API_BASE
             default_model = _DEFAULT_MODEL
             key_env = "SILICONFLOW_API_KEY"
+        elif self.provider == "local":
+            # No API base / key needed for local inference; the toggles below
+            # are placeholders so the dataclass shape stays uniform.
+            default_api_base = ""
+            default_model = os.getenv("EMBEDDING_LOCAL_MODEL", _DEFAULT_MODEL)
+            key_env = ""
+        else:
+            raise ValueError(
+                f"unknown EMBEDDING_PROVIDER={self.provider!r}; "
+                "expected one of: local, siliconflow, nvidia"
+            )
+        self.api_base = (api_base or os.getenv("EMBEDDING_API_BASE", default_api_base)).rstrip("/")
+        self.api_key = api_key if api_key is not None else os.getenv(key_env, "")
+        self.model = model or os.getenv("EMBEDDING_MODEL", default_model)
+        self._timeout = timeout
+        self._local_model = None  # lazy
         self.api_base = (api_base or os.getenv("EMBEDDING_API_BASE", default_api_base)).rstrip("/")
         self.api_key = api_key if api_key is not None else os.getenv(key_env, "")
         self.model = model or os.getenv("EMBEDDING_MODEL", default_model)
@@ -113,8 +140,8 @@ class BgeM3Embedder:
         """Embed texts, returning an ``(n, dim)`` float32 array.
 
         Provider selection: ``local`` → local weights; otherwise the selected
-        API (default nvidia NIM, or siliconflow when ``EMBEDDING_PROVIDER`` is
-        set). Raises EmbedderError on failure — callers implement fail-open.
+        API (``siliconflow`` or ``nvidia`` when ``EMBEDDING_PROVIDER`` is set).
+        Raises EmbedderError on failure — callers implement fail-open.
         """
         if not texts:
             return np.zeros((0, _EMBED_DIM), dtype=np.float32)
@@ -201,9 +228,14 @@ class BgeM3Embedder:
             except ImportError as exc:
                 raise EmbedderError(
                     "local embedding requires sentence-transformers "
-                    "(pip install 'memory-store[local-embed]') or set EMBEDDING_PROVIDER=siliconflow"
+                    "(pip install 'memory-store[local-embed]') or set "
+                    "EMBEDDING_PROVIDER=siliconflow"
                 ) from exc
-            name = os.getenv("EMBEDDING_LOCAL_MODEL", _DEFAULT_MODEL)
+            # Honour EMBEDDING_LOCAL_MODEL when set; otherwise fall back to the
+            # bge-m3 default. The override path lets users point at a local
+            # weights checkout (e.g. D:/AI/models/bge-m3) without the HF cache
+            # being populated.
+            name = self.model if self.model else os.getenv("EMBEDDING_LOCAL_MODEL", _DEFAULT_MODEL)
             _LOGGER.info("loading local embedding model %s ...", name)
             self._local_model = SentenceTransformer(name)
         return self._local_model
