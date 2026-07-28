@@ -173,15 +173,33 @@ def compose_system_prompt(
 # ---------------------------------------------------------------------------
 # Each block is a dict with `content` (str) and optional `block_id` / `score`.
 _MEMORY_HEADER_EN = (
-    "\n\n[Local Wiki]\n"
+    "\n\n[Previous Memory]\n"
     "The following are previous-session memory blocks from persistent storage."
     " Use them as background context if the current User Query relates to them."
     " Stay silent when the query is unrelated."
 )
 _MEMORY_HEADER_ZH = (
-    "\n\n[本地知识库]\n"
+    "\n\n[Previous Memory]\n"
     "以下是从持久化记忆库中拉出的历史摘要。"
     "当用户问题与之相关时作为背景上下文使用；无关时不要拼凑回答。"
+)
+
+# Local Wiki hits are surfaced in a *separate* section so the model can keep
+# chat history and looked-up reference material mentally distinct — that's the
+# whole point of the integration (see ``reports/local-wiki-chat-integration-analysis-20260728.md``).
+_WIKI_HEADER_EN = (
+    "\n\n[Local Wiki]\n"
+    "The following are semantically retrieved reference blocks from the user's"
+    " local wiki corpora (per-game knowledge base). Prefer them over guessing"
+    " whenever the current User Query is about gameplay, items, bosses, or"
+    " lore. Cite the source URL when one is attached. Do not invent facts"
+    " outside these blocks."
+)
+_WIKI_HEADER_ZH = (
+    "\n\n[Local Wiki]\n"
+    "以下是从本地游戏攻略库语义召回的参考片段（按游戏 namespace 隔离）。"
+    "当用户问题涉及游戏玩法、Boss、装备、剧情时优先引用；"
+    "如块附带来源 URL，请一并引述；不要在参考资料之外臆测事实。"
 )
 
 _MAX_INLINE_BLOCK_CHARS = 600
@@ -225,16 +243,71 @@ def _clip_memory_blocks(blocks, language):
     return _MEMORY_HEADER_EN + "\n" + body + "\n"
 
 
-def compose_system_prompt_with_memory(
-    base, character_prompts=None, language="en", memory_blocks=None
-):
-    """Compose system prompt, appending a [Local Wiki] block at the end.
+def _clip_wiki_blocks(blocks, language):
+    """Render Local Wiki recall blocks. Mirror of ``_clip_memory_blocks`` but
+    with its own header so the two sections stay separate in the prompt.
 
-    Empty / falsy memory_blocks degrades to compose_system_prompt semantics
-    so callers can always pass the warmup result without branching.
+    Same per-block / total char caps as chat memory so the two paths stay
+    behaviorally comparable. Each block carries an optional ``source_url``
+    and ``namespace`` so the player can see *where* the answer came from.
+    """
+    out = []
+    total = 0
+    for raw in blocks or []:
+        if not isinstance(raw, dict):
+            continue
+        text = raw.get("content")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        text = text.strip()
+        if len(text) > _MAX_INLINE_BLOCK_CHARS:
+            text = text[: _MAX_INLINE_BLOCK_CHARS - 1] + "\u2026"
+        prefix_parts: list[str] = []
+        ns = raw.get("namespace") or ""
+        if ns:
+            prefix_parts.append(f"ns={ns}")
+        src = raw.get("source_url") or ""
+        if src:
+            prefix_parts.append(f"src={src}")
+        bid = raw.get("block_id") or ""
+        if bid:
+            prefix_parts.append(f"id={bid}")
+        prefix = " (" + ", ".join(prefix_parts) + ") " if prefix_parts else ""
+        line = "- " + prefix + text
+        if total + len(line) > _MAX_TOTAL_BLOCK_CHARS:
+            remaining = _MAX_TOTAL_BLOCK_CHARS - total
+            if remaining <= 0:
+                break
+            line = line[:remaining] + "\u2026"
+        out.append(line)
+        total += len(line)
+        if total >= _MAX_TOTAL_BLOCK_CHARS:
+            break
+    if not out:
+        return ""
+    body = "\n".join(out)
+    if str(language or "").lower().startswith("zh"):
+        return _WIKI_HEADER_ZH + "\n" + body + "\n"
+    return _WIKI_HEADER_EN + "\n" + body + "\n"
+
+
+def compose_system_prompt_with_memory(
+    base, character_prompts=None, language="en", memory_blocks=None, wiki_blocks=None
+):
+    """Compose system prompt, appending a [Previous Memory] block and a
+    separate [Local Wiki] block at the end.
+
+    Empty / falsy ``memory_blocks`` degrades to ``compose_system_prompt``
+    semantics so callers can always pass the warmup result without branching.
+    ``wiki_blocks`` is rendered as a *separate* section so chat history and
+    looked-up reference material stay mentally distinct (see
+    ``reports/local-wiki-chat-integration-analysis-20260728.md``).
     """
     composed = compose_system_prompt(base, character_prompts, language)
-    block = _clip_memory_blocks(memory_blocks, language)
-    if not block:
-        return composed
-    return composed.rstrip() + "\n" + block
+    mem_block = _clip_memory_blocks(memory_blocks, language)
+    wiki_block = _clip_wiki_blocks(wiki_blocks, language)
+    if mem_block:
+        composed = composed.rstrip() + "\n" + mem_block
+    if wiki_block:
+        composed = composed.rstrip() + "\n" + wiki_block
+    return composed

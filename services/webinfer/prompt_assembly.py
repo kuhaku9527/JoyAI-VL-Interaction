@@ -128,12 +128,17 @@ class PromptAssemblyMixin:
         just re-uses the regular cached system prompt (no extra IO).
 
         Slow path: when memory blocks are present, we re-compose the
-        base+character+language prompt and append the [Local Wiki]
+        base+character+language prompt and append the [Previous Memory]
         block list. We do NOT poison the no-memory cache because the
-        block content varies per session.
+        block content varies per session. Local Wiki hits surfaced during
+        the same chat turn live on a separate SessionState attribute
+        (``_memory_wiki_cache``) and are rendered as a distinct
+        ``[Local Wiki]`` section so the rendered prompt keeps chat
+        history and looked-up reference material mentally distinct.
         """
         blocks = list(getattr(session_state, "_memory_block_cache", None) or [])
-        if not blocks:
+        wiki = list(getattr(session_state, "_memory_wiki_cache", None) or [])
+        if not blocks and not wiki:
             return self._build_system_prompt(self.config.language)
         base = self.config.system_prompt or ""
         profiles = self._load_character_profiles()
@@ -142,6 +147,7 @@ class PromptAssemblyMixin:
             character_prompts=profiles,
             language=self.config.language,
             memory_blocks=blocks,
+            wiki_blocks=wiki,
         )
 
     def _build_internal_user_message(

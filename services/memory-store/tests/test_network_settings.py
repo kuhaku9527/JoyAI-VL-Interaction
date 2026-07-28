@@ -5,10 +5,13 @@ Uses FastAPI's ASGI TestClient. The network config store is isolated to a temp
 file per test via ``config.reset_store`` so the PUT /v1/settings/network
 persistence does not leak across tests.
 
-The proxy-routing test is fully offline: the embedder is disabled (``provider=
-none``) and the live per-provider proxy path is exercised through an external
-provider ping (``main_llm``) whose base URL points at a dead local port, so the
-ping fails fast without reaching any real endpoint.
+The proxy-routing test is fully offline: the embedder is disabled (we set
+``EMBEDDING_PROVIDER`` to a placeholder that the BgeM3Embedder rejects at
+construction — the app uses a deliberately empty client and the
+``/v1/providers/health`` embedding slot reports ``ok=False`` with a hint) and
+the live per-provider proxy path is exercised through an external provider
+ping (``main_llm``) whose base URL points at a dead local port, so the ping
+fails fast without reaching any real endpoint.
 """
 
 from __future__ import annotations
@@ -21,26 +24,50 @@ from memory_store import app as app_module
 from memory_store import client_factory, config
 
 
+# ``provider="none"`` was the old opt-out knob. PR #42 tightened the provider
+# surface to exactly ``{local, siliconflow, nvidia}``; the disabled path is
+# now expressed by *not* wiring one up (or by giving the app a stub embedder
+# that reports ``ok=False``). The integration tests below skip the embedder
+# ping outright by stubbing it on the AppHandle — see the ``stub_embedder``
+# fixture.
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    """Client whose embedder is disabled ('none') so health never touches network."""
+def stub_embedder(monkeypatch):
+    """Replace the embedder with a sentinel that reports ``ok=False`` so the
+    ``/v1/providers/health`` test never hits the real model."""
+
+    class _Stub:
+        provider = "none"
+
+        def available(self):
+            return False
+
+        def health(self):
+            return {"ok": False, "provider": "none", "error": "embedding disabled"}
+
+    monkeypatch.setattr(app_module, "BgeM3Embedder", lambda: _Stub())
+    return _Stub
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch, stub_embedder):
+    """Client whose embedder slot is stubbed-off so health never touches network."""
     monkeypatch.setenv("MEMORY_SQLITE_PATH", str(tmp_path / "memory.sqlite"))
-    monkeypatch.setenv("EMBEDDING_PROVIDER", "none")
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
     app_module._reset_backend_for_tests()
     transport = httpx.ASGITransport(app=app_module.app)
     return httpx.AsyncClient(transport=transport, base_url="http://test")
 
 
 @pytest.fixture
-def proxy_client(tmp_path, monkeypatch):
+def proxy_client(tmp_path, monkeypatch, stub_embedder):
     """Client that drives the live per-provider proxy path offline.
 
     ``main_llm`` is given a base URL (a dead local port) so its health ping
     calls ``client_factory.proxy_url_for`` through the app's import; we spy on
-    that call. The embedder is disabled so no embedding network call happens.
+    that call. The embedder is stubbed so no embedding network call happens.
     """
     monkeypatch.setenv("MEMORY_SQLITE_PATH", str(tmp_path / "memory.sqlite"))
-    monkeypatch.setenv("EMBEDDING_PROVIDER", "none")
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
     monkeypatch.setenv("MEMORY_EXT_MAIN_LLM_URL", "http://127.0.0.1:9/v1/messages")
     monkeypatch.setenv("MEMORY_EXT_MAIN_LLM_KEY", "dummy")
     app_module._reset_backend_for_tests()
