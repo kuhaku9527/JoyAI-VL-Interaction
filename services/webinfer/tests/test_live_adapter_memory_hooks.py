@@ -162,7 +162,9 @@ async def test_build_memory_prompt_slow_path():
     state = _make_state()
     state._memory_block_cache = [{"block_id": "abc", "content": "remembered fact"}]
     out = a._build_memory_prompt(state)
-    assert "[Local Wiki]" in out or "[本地知识库]" in out
+    # PR #42 split the heading: chat memory is now under [Previous Memory];
+    # the [Local Wiki] heading is reserved for the separate wiki section.
+    assert "[Previous Memory]" in out
     assert "remembered fact" in out
 
 

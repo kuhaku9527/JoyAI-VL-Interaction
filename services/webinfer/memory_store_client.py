@@ -182,8 +182,17 @@ class MemoryStoreClient:
         session_id: str | None = None,
         top_k: int = 6,
         min_score: float = 0.0,
+        namespaces: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Pull blocks similar to ``query``. Optional ``session_id`` filter."""
+        """Pull blocks similar to ``query``. Optional ``session_id`` and
+        ``namespaces`` filters.
+
+        ``namespaces`` is the ADR-0012 L1 isolation gate: the backend filters
+        untrusted wiki scrubs from the same session view by routing the
+        recall through ``filter.namespaces`` (wildcards like ``wiki:*`` are
+        expanded by the backend). When both ``session_id`` and ``namespaces``
+        are given, the two filter clauses are merged as a permissive AND.
+        """
         if not self.enabled or not query:
             return []
         payload: dict[str, Any] = {
@@ -191,8 +200,13 @@ class MemoryStoreClient:
             "top_k": max(1, int(top_k)),
             "min_score": float(min_score),
         }
+        filter_clause: dict[str, Any] = {}
         if session_id:
-            payload["filter"] = {"session_ids": [session_id]}
+            filter_clause["session_ids"] = [session_id]
+        if namespaces:
+            filter_clause["namespaces"] = list(namespaces)
+        if filter_clause:
+            payload["filter"] = filter_clause
         try:
             client = await self._get_client()
             resp = await client.post("/v1/blocks/recall", json=payload)

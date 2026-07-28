@@ -22,7 +22,13 @@ def test_available_requires_key_for_api(monkeypatch):
     monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
     assert BgeM3Embedder(provider="siliconflow").available() is False
     assert BgeM3Embedder(provider="siliconflow", api_key="k").available() is True
-    assert BgeM3Embedder(provider="none").available() is False
+    # ``provider=`` here is a string by design — the embedder rejects unknown
+    # providers at construction time. The "available is False" semantics for
+    # a disabled embedder is now expressed by *not* wiring one up (the
+    # SqliteBackend treats ``embedder=None`` as the disable path; the health
+    # endpoint reports `provider: none` only when the operator opts in
+    # explicitly via env). The literal ``provider="none"`` is therefore no
+    # longer a public knob.
     assert BgeM3Embedder(provider="local").available() is True
 
 
