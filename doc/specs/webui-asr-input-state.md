@@ -44,3 +44,5 @@ Current runtime must be restarted after backend ASR changes. If port `8099` is s
 ## Latency HUD Extension
 
 The webui should expose BT chain timings directly in the result header so ASR, LLM, and TTS slowness can be separated during manual testing. The HUD reports browser-observed ASR startup/first partial, LLM send-to-reply, TTS request-to-audio, and end-to-end turn timing. VLM settings remain visible but are labelled as video-only so they are not confused with the Jarvis BT path.
+
+> **标注（审查组 2026-07-29）**：本 spec 假设 ASR 后端为 sherpa-onnx，现 ASR 已改为 **Qwen3-ASR vLLM（本地，`:8993`，见 `决策/服务-语音栈.md` D-045）**，前提已被 D-045 覆盖。webui 交互逻辑（麦克风按钮 / 纸飞机 / 清空 ASR 状态）仍适用，但 ASR 引擎细节以 D-045 为准。按审计结论留档不改正文。

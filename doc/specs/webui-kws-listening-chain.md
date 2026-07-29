@@ -43,4 +43,6 @@
 
 ## Further Notes
 
-Manual completion requires a real microphone test: start listening, say “BT”, observe `WAKE_DETECTED` then `DIALOG_ACTIVE`, and confirm either wake/TTS audio or visible Pilot/BT messages. Automated tests can prove the code path is wired, but not that the user's physical microphone and NVIDIA Broadcast path produce a wake hit.
+Manual completion requires a real microphone test: start listening, say "BT", observe `WAKE_DETECTED` then `DIALOG_ACTIVE`, and confirm either wake/TTS audio or visible Pilot/BT messages. Automated tests can prove the code path is wired, but not that the user's physical microphone and NVIDIA Broadcast path produce a wake hit.
+
+> **标注（审查组 2026-07-29）**：本 spec 无独立 ADR 链接，但前提仍有效——KWS = sherpa-onnx 进程内、本地部署（见 `决策/服务-语音栈.md` D-047 上下文）。按审计结论留档不改正文；如需追溯，配套决策为 `决策/服务-语音栈.md`。

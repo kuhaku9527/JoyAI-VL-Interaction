@@ -90,3 +90,5 @@ Tests: `test_hybrid_wake_no_pre_confirm_drain.py` pins inline tap, no pre-confir
 - Replacing the v4 KWS model or retraining v5.
 - Changing the wake word to a longer phrase (deferred — see doc/subsystems/jarvis-mode.md §14.11 future work).
 - Adding a second confirmation stage (LLM-side semantic confirmation). Only ASR text matching is in scope.
+
+> **标注（审查组 2026-07-29）**：本 spec 无独立 ADR 链接，但前提仍有效——KWS = sherpa-onnx 进程内、本地部署（见 `决策/服务-语音栈.md` D-047 上下文）。按审计结论留档不改正文；如需追溯，配套决策为 `决策/服务-语音栈.md`。
