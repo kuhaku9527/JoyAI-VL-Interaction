@@ -7,6 +7,7 @@ hooks and the qa_history text-path archive helpers previously on
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -182,11 +183,49 @@ class MemoryIOMixin:
             chat_blocks = list(state._memory_block_cache)
         # Local Wiki live recall (separate from chat memory) — see
         # reports/local-wiki-chat-integration-analysis-20260728.md.
-        wiki_blocks = await self._memory_wiki_recall(state, question)
-        if wiki_blocks:
-            async with state.lock:
-                state._memory_wiki_cache = list(wiki_blocks)
+        # Fire-and-forget: do NOT block the chat path on memory-store.
+        # The first request after a session start may miss wiki content,
+        # but subsequent calls in the same session will see the populated
+        # ``_memory_wiki_cache``. Rationale: wiki recall is enrichment,
+        # not a blocker; awaiting it inline added up to 5s per chat turn
+        # when memory-store was slow/dead (DRIFT-2/D-022 in 决策/).
+        self._schedule_wiki_recall(state, question)
         return chat_blocks
+
+    def _schedule_wiki_recall(self, state, question: str) -> None:
+        """Schedule a fire-and-forget Local Wiki recall.
+
+        The task updates ``state._memory_wiki_cache`` on success; the
+        next ``_memory_recall`` call (or the prompt builder) reads it.
+        Errors are logged and swallowed — the chat path must not raise.
+        """
+        if not question:
+            return
+
+        async def _runner() -> None:
+            try:
+                wiki_blocks = await self._memory_wiki_recall(state, question)
+            except Exception as exc:  # fail-open: never raise
+                LOGGER.warning(
+                    "wiki background recall failed for %s: %s",
+                    state.session_id, exc,
+                )
+                return
+            if wiki_blocks:
+                async with state.lock:
+                    state._memory_wiki_cache = list(wiki_blocks)
+
+        try:
+            task = asyncio.create_task(_runner())
+        except RuntimeError:
+            # No running loop (e.g. unit-test with no event loop) — skip.
+            return
+        # Track the task on state so it is not GCed before completion
+        # and so the session lifecycle can await it on shutdown.
+        existing = getattr(state, "_memory_wiki_tasks", None)
+        if existing is not None:
+            existing.add(task)
+            task.add_done_callback(existing.discard)
 
     async def _memory_wiki_recall(self, state, question: str) -> list[dict[str, Any]]:
         """Per-question Local Wiki semantic recall.
@@ -198,7 +237,7 @@ class MemoryIOMixin:
         if not settings["enabled"]:
             return []
         client = getattr(self, "memory_store", None)
-        if client is None or not getattr(client, "enabled", False):
+        if client is None or not bool(getattr(client, "is_enabled", getattr(client, "enabled", False))):
             return []
         try:
             blocks = await client.recall(

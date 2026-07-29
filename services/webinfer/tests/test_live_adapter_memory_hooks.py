@@ -32,7 +32,8 @@ class _StubMemoryClient:
     async def warmup(self, session_id, top_k=16, min_score=0.0):
         return list(self._blocks)
 
-    async def recall(self, query, session_id=None, top_k=6, min_score=0.0):
+    async def recall(self, query, session_id=None, top_k=6, min_score=0.0,
+                     namespaces=None):
         return list(self._blocks)
 
     async def push(self, session_id, blocks):
@@ -210,3 +211,93 @@ async def test_memory_warmup_concurrent_with_recall():
     # The cache must be a single, consistent assignment (no torn/duplicate
     # write from the interleaved coroutines).
     assert state._memory_block_cache == blocks
+
+
+
+# ---------------------------------------------------------------------------
+# Fire-and-forget wiki recall (v0.3, 2026-07-29) — see ADR-0013 / memory-client-resilience
+# ---------------------------------------------------------------------------
+
+class _SlowWikiClient(_StubMemoryClient):
+    """Wiki recall sleeps long enough that we can observe ordering."""
+
+    def __init__(self, blocks=None, wiki_delay=0.20):
+        super().__init__(blocks=blocks)
+        self._wiki_delay = wiki_delay
+
+    async def recall(self, query, session_id=None, top_k=6, min_score=0.0,
+                     namespaces=None):
+        await asyncio.sleep(self._wiki_delay)
+        return list(self._blocks)
+
+
+@pytest.mark.asyncio
+async def test_wiki_recall_is_fire_and_forget():
+    """``_memory_recall`` returns BEFORE the wiki recall completes.
+
+    Without fire-and-forget, the slow wiki recall would block the main path
+    by 0.20s; with it, the call returns in <50ms and the wiki cache fills in
+    asynchronously.
+    """
+    blocks = [{"block_id": "w1", "content": "wiki fact"}]
+    stub = _SlowWikiClient(blocks=blocks, wiki_delay=0.20)
+    a = _make_adapter(stub)
+    state = _make_state()
+    state._memory_warmed.set()  # skip warmup so timing isolates wiki
+
+    t0 = asyncio.get_event_loop().time()
+    chat_blocks = await a._memory_recall(state, "what is the wiki fact?")
+    elapsed_ms = (asyncio.get_event_loop().time() - t0) * 1000
+
+    # Chat path returns quickly even though wiki recall is in flight.
+    assert chat_blocks == []
+    assert elapsed_ms < 80, f"_memory_recall took {elapsed_ms:.0f}ms; should be <80ms"
+
+    # The wiki recall task is still scheduled — let it finish, then verify cache.
+    # Drain pending tasks on the running loop.
+    await asyncio.sleep(0.30)
+    assert state._memory_wiki_cache == blocks, (
+        "wiki cache should have been populated by the background task"
+    )
+
+
+@pytest.mark.asyncio
+async def test_wiki_recall_updates_cache_async():
+    """The background wiki task writes to ``state._memory_wiki_cache``."""
+    blocks = [{"block_id": "w2", "content": "wiki fact 2"}]
+    stub = _StubMemoryClient(blocks=blocks)
+    a = _make_adapter(stub)
+    state = _make_state()
+    state._memory_warmed.set()
+
+    # Initial cache empty.
+    assert state._memory_wiki_cache == []
+
+    await a._memory_recall(state, "trigger wiki recall")
+
+    # Yield control so the scheduled task can run.
+    await asyncio.sleep(0)
+
+    assert state._memory_wiki_cache == blocks
+
+
+@pytest.mark.asyncio
+async def test_wiki_recall_failure_does_not_propagate():
+    """A stub recall that raises must NOT raise from ``_memory_recall``."""
+    class BoomWikiClient(_StubMemoryClient):
+        async def recall(self, query, session_id=None, top_k=6, min_score=0.0,
+                         namespaces=None):
+            raise RuntimeError("simulated upstream explosion")
+
+    a = _make_adapter(BoomWikiClient())
+    state = _make_state()
+    state._memory_warmed.set()
+
+    # Should not raise even though the wiki client explodes.
+    chat_blocks = await a._memory_recall(state, "boom query")
+    assert chat_blocks == []
+
+    # Drain pending tasks.
+    await asyncio.sleep(0)
+    # Cache untouched because recall raised before any blocks were returned.
+    assert state._memory_wiki_cache == []

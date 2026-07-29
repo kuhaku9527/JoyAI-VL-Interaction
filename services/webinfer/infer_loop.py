@@ -155,6 +155,19 @@ class InferLoopMixin:
             except Exception:
                 LOGGER.debug("memory-store warmup failed for %s", state.session_id)
 
+        # PR #42 follow-up: _memory_recall must fire on the production text path
+        # so the [Local Wiki] section actually lands in the prompt. Fail-open.
+        pre_messages = list(payload.get("messages") or [])
+        last_user_text = ""
+        for m in reversed(pre_messages):
+            if m.get("role") == "user" and isinstance(m.get("content"), str):
+                last_user_text = m["content"]
+                break
+        try:
+            await self._memory_recall(state, last_user_text)
+        except Exception as exc:
+            LOGGER.warning("memory_recall failed for %s: %s", state.session_id, exc)
+
         api_messages = list(payload.get("messages") or [])
         composed_system = (self._build_memory_prompt(state) or "").strip()
 
