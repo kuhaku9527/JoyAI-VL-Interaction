@@ -61,3 +61,5 @@ Current sweep result:
 ## Further Notes
 
 NVIDIA Broadcast can help by lowering background noise, but it can also reshape short consonants and trailing silence. That makes live-domain samples mandatory. The next useful manual test is 10-20 "BT" attempts while listening is active, then reviewing `webui.err.log` and the saved `kws_live_*.wav` captures.
+
+> **标注（审查组 2026-07-29）**：本 spec 无独立 ADR 链接，但前提仍有效——KWS = sherpa-onnx 进程内、本地部署（见 `决策/服务-语音栈.md` D-047 上下文）。按审计结论留档不改正文；如需追溯，配套决策为 `决策/服务-语音栈.md`。
