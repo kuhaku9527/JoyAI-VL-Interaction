@@ -1,0 +1,59 @@
+=== ruff local audit (0.15.22, same as CI) ===
+== webinfer check ==
+All checks passed!
+== webinfer format ==
+31 files already formatted
+== memory-store check ==
+All checks passed!
+== memory-store format ==
+12 files already formatted
+== voice-clone check ==
+All checks passed!
+== voice-clone format ==
+9 files already formatted
+== asr check ==
+All checks passed!
+== asr format ==
+3 files already formatted
+== tts check ==
+All checks passed!
+== tts format ==
+2 files already formatted
+== background-agent check ==
+I001 [*] Import block is un-sorted or un-formatted
+  --> services\background-agent\tests\test_hermes_api_enrich.py:15:1
+   |
+13 |   """
+14 |
+15 | / from __future__ import annotations
+16 | |
+17 | | import httpx
+18 | | import pytest
+19 | |
+20 | | from hermes_api import main as hapi
+   | |___________________________________^
+   |
+help: Organize imports
+
+UP037 [*] Remove quotes from type annotation
+  --> services\background-agent\tests\test_hermes_api_enrich.py:45:35
+   |
+43 |         self._capture = capture
+44 |
+45 |     async def __aenter__(self) -> "_FakeClient":
+   |                                   ^^^^^^^^^^^^^
+46 |         return self
+   |
+help: Remove quotes
+
+Found 2 errors.
+[*] 2 fixable with the `--fix` option.
+[FAIL] background-agent check
+== background-agent format ==
+Would reformat: services\background-agent\tests\test_hermes_api_enrich.py
+1 file would be reformatted, 5 files already formatted
+[FAIL] background-agent format
+== webui check ==
+All checks passed!
+== webui format ==
+41 files already formatted

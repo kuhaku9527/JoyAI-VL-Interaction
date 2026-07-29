@@ -1,0 +1,8 @@
+﻿# Post-setx verify - 2026-07-23 00:20:33
+USER.HF_HOME=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\huggingface
+USER.HF_HUB_CACHE=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\huggingface\hub
+USER.PIP_CACHE_DIR=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\pip
+USER.npm_config_cache=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\npm
+USER.PLAYWRIGHT_BROWSERS_PATH=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\playwright
+USER.UV_CACHE_DIR=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\uv
+USER.ELECTRON_CACHE=D:\AI\workspace\JoyAI-VL-Interaction-main\.cache\electron
