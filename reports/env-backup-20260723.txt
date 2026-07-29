@@ -1,0 +1,17 @@
+﻿# WorkBuddy cache env var backup - 2026-07-23 00:20:09
+# Scope note: User = [Environment]::GetEnvironmentVariable(name,'User'); Machine = 'Machine'
+# Restore example: setx VAR <value>   (User)  |  setx VAR <value> /M  (Machine)
+USER.HF_HOME=D:\Cache\huggingface
+MACHINE.HF_HOME=
+USER.HF_HUB_CACHE=
+MACHINE.HF_HUB_CACHE=
+USER.PIP_CACHE_DIR=D:\Cache\pip
+MACHINE.PIP_CACHE_DIR=
+USER.npm_config_cache=D:\Cache\npm
+MACHINE.npm_config_cache=
+USER.PLAYWRIGHT_BROWSERS_PATH=D:\Cache\playwright
+MACHINE.PLAYWRIGHT_BROWSERS_PATH=
+USER.UV_CACHE_DIR=D:\Cache\uv
+MACHINE.UV_CACHE_DIR=
+USER.ELECTRON_CACHE=
+MACHINE.ELECTRON_CACHE=
