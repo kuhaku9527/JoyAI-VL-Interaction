@@ -485,6 +485,13 @@ function Start-Webui {
     $envs = @{
         "PYTHONPATH"   = Join-Path $workdir "src"
         "WEBUI_API_BASE" = "http://127.0.0.1:$($P.Webinfer)/v1"
+        # v0.3 (2026-07-29): webui gateway must proxy /v1/{providers/health,settings/network,
+        # namespaces,external/sync,external/ingest-text} to the REAL memory-store backend
+        # (D-L4-001 port rule). server.py:958 reads JOYAI_MEMORY_STORE_URL and defaults to
+        # 8996 (the empty shell) when unset, which is the DRIFT-3 root cause. Injecting it
+        # here from run-windows.env (MEMORY_PORT/URL) makes the gateway always talk to
+        # 8997 — env wins over the in-code default.
+        "JOYAI_MEMORY_STORE_URL" = if ($env:JOYAI_MEMORY_STORE_URL) { $env:JOYAI_MEMORY_STORE_URL } else { "http://127.0.0.1:$($P.MemoryStore)" }
     }
     return (Start-Background "webui" $VenvPy $args `
         -Workdir $workdir `
@@ -550,8 +557,11 @@ Write-Host "================================================================" -F
 Write-Host " run-windows.ps1 :: $Mode mode" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 $plan = Plan-For $Mode
-# memory-store opt-in (off by default in v3.25, see services/memory-store/README.md)
-if ($env:JOYAI_ENABLE_MEMORY_STORE -eq "1") {
+# memory-store is part of the default plan as of v0.3 (2026-07-29).
+# Per DRIFT-2/3 closure: scripts must default to ON so the webui gateway does not
+# point at the empty :8996 shell. Operators can opt out by setting
+# ``JOYAI_ENABLE_MEMORY_STORE=0`` before invoking run-windows.ps1.
+if ($env:JOYAI_ENABLE_MEMORY_STORE -ne "0") {
     $plan["memory-store"] = $true
 }
 

@@ -955,7 +955,11 @@ async def _services_status_handler(request):
 # network settings (B4) are owned by the backend (#36); this gateway only
 # forwards the F4 knowledge-base surface (namespaces / sync / ingest).
 
-MEMORY_STORE_URL = os.environ.get("JOYAI_MEMORY_STORE_URL", "http://127.0.0.1:8996").rstrip("/")
+# v0.3 (2026-07-29): in-code default flipped from 8996 (empty shell) to 8997
+# (real bge-m3 backend, D-L4-001). JOYAI_MEMORY_STORE_URL env still wins, so the
+# run-windows.ps1 launcher can override per-deploy. Operators hitting the legacy
+# 8996 shell (e.g. a sandboxed dev box) only need to set the env explicitly.
+MEMORY_STORE_URL = os.environ.get("JOYAI_MEMORY_STORE_URL", "http://127.0.0.1:8997").rstrip("/")
 
 
 async def _proxy_to_memory_store(request: web.Request) -> web.Response:

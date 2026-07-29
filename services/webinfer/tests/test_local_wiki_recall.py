@@ -93,6 +93,16 @@ async def test_wiki_recall_fired_with_namespaces_and_populates_cache():
 
     # Chat memory is still the canonical return value of the hook.
     assert chat == [{"block_id": "c1", "content": "昨天聊到火焰巨人"}]
+
+    # v0.3 (2026-07-29): wiki recall is fire-and-forget (ADR-0013). Yield
+    # control repeatedly so the scheduled task can finish before we
+    # inspect the cache; the task is started via asyncio.create_task.
+    import asyncio as _a
+    for _ in range(5):
+        await _a.sleep(0)
+        if state._memory_wiki_cache:
+            break
+
     # The wiki section is stashed on its own slot for the prompt builder.
     assert state._memory_wiki_cache[0]["block_id"] == "w1"
     assert state._memory_wiki_cache[0]["source"] == "wiki"

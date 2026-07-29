@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
@@ -95,6 +96,45 @@ class MemoryStoreClient:
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
         self._healthy: bool | None = None
+        # --- Circuit breaker (v0.3, 2026-07-29) ---------------------
+        # When ``memory-store`` is unreachable every recall/warmup/push
+        # call would otherwise pay the full ``timeout_s`` (default 5s)
+        # before failing-open. After ``_CB_FAILURE_THRESHOLD`` consecutive
+        # failures the circuit opens for ``_CB_COOLDOWN_S`` seconds and
+        # subsequent calls short-circuit to ``[]`` without touching the
+        # network. A successful call resets the counter and re-closes.
+        self._cb_failure_count: int = 0
+        self._cb_open_until_monotonic: float = 0.0
+
+    # Circuit breaker thresholds (module-level constants for easy tuning).
+    _CB_FAILURE_THRESHOLD = 3
+    _CB_COOLDOWN_S = 30.0
+
+    def _circuit_open(self) -> bool:
+        """True iff the breaker is currently OPEN (calls short-circuit).
+
+        Time-based; if the cooldown has elapsed the breaker is auto-closed
+        on the next check so a single probe is allowed through.
+        """
+        return self._cb_open_until_monotonic > time.monotonic()
+
+    def _record_failure(self) -> None:
+        self._cb_failure_count += 1
+        if self._cb_failure_count >= self._CB_FAILURE_THRESHOLD:
+            self._cb_open_until_monotonic = time.monotonic() + self._CB_COOLDOWN_S
+            LOGGER.warning(
+                "memory-store circuit OPEN for %.0fs after %d failures",
+                self._CB_COOLDOWN_S, self._cb_failure_count,
+            )
+
+    def _record_success(self) -> None:
+        if self._cb_failure_count:
+            LOGGER.info(
+                "memory-store circuit CLOSED after %d prior failure(s)",
+                self._cb_failure_count,
+            )
+        self._cb_failure_count = 0
+        self._cb_open_until_monotonic = 0.0
 
     async def _get_client(self) -> httpx.AsyncClient:
         async with self._lock:
@@ -155,11 +195,14 @@ class MemoryStoreClient:
             "min_score": float(min_score),
             "filter": {"session_ids": [session_id]},
         }
+        if self._circuit_open():
+            return []
         try:
             client = await self._get_client()
             resp = await client.post("/v1/blocks/recall", json=payload)
         except httpx.HTTPError as exc:
             LOGGER.warning("memory-store warmup failed for %s: %s", session_id, exc)
+            self._record_failure()
             return []
         if resp.status_code != 200:
             LOGGER.warning(
@@ -168,7 +211,9 @@ class MemoryStoreClient:
                 resp.status_code,
                 resp.text[:200],
             )
+            self._record_failure()
             return []
+        self._record_success()
         try:
             body = resp.json()
         except ValueError:
@@ -207,11 +252,14 @@ class MemoryStoreClient:
             filter_clause["namespaces"] = list(namespaces)
         if filter_clause:
             payload["filter"] = filter_clause
+        if self._circuit_open():
+            return []
         try:
             client = await self._get_client()
             resp = await client.post("/v1/blocks/recall", json=payload)
         except httpx.HTTPError as exc:
             LOGGER.warning("memory-store recall failed: %s", exc)
+            self._record_failure()
             return []
         if resp.status_code != 200:
             LOGGER.warning(
@@ -219,7 +267,9 @@ class MemoryStoreClient:
                 resp.status_code,
                 resp.text[:200],
             )
+            self._record_failure()
             return []
+        self._record_success()
         try:
             body = resp.json()
         except ValueError:
@@ -254,11 +304,14 @@ class MemoryStoreClient:
         if not cleaned:
             return 0
         payload = {"session_id": session_id, "blocks": cleaned}
+        if self._circuit_open():
+            return 0
         try:
             client = await self._get_client()
             resp = await client.post("/v1/blocks/push", json=payload)
         except httpx.HTTPError as exc:
             LOGGER.warning("memory-store push failed for %s: %s", session_id, exc)
+            self._record_failure()
             return 0
         if resp.status_code != 200:
             LOGGER.warning(
@@ -267,7 +320,9 @@ class MemoryStoreClient:
                 resp.status_code,
                 resp.text[:200],
             )
+            self._record_failure()
             return 0
+        self._record_success()
         try:
             return int(resp.json().get("pushed", 0))
         except ValueError:
