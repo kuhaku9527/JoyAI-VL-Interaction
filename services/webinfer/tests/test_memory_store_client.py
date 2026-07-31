@@ -200,10 +200,10 @@ async def test_health_snapshot_after_ping(monkeypatch):
 # Update warmup test expectation to match _normalize_block shape.
 
 
-
 # ---------------------------------------------------------------------------
 # Circuit breaker v0.3 (2026-07-29) — see ADR-0013 / doc/specs/memory-client-resilience.md
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_circuit_breaker_opens_after_threshold(monkeypatch):
@@ -247,6 +247,7 @@ async def test_circuit_breaker_resets_on_success(monkeypatch):
     # 2 failures — counter is 2, breaker still closed (threshold is 3).
     async def boom(self):
         raise httpx.ConnectError("down")
+
     monkeypatch.setattr(MemoryStoreClient, "_get_client", boom)
     assert await c.warmup("s1") == []
     assert await c.recall("q") == []
@@ -261,6 +262,7 @@ async def test_circuit_breaker_resets_on_success(monkeypatch):
     # After reset, a fresh failure streak still needs 3 to trip.
     async def boom2(self):
         raise httpx.ConnectError("down")
+
     monkeypatch.setattr(MemoryStoreClient, "_get_client", boom2)
     assert await c.recall("q") == []
     assert await c.recall("q") == []
@@ -292,6 +294,7 @@ async def test_circuit_breaker_cooldown_expires(monkeypatch):
     # Fast-forward monotonic clock past the cooldown. We patch
     # ``time.monotonic`` on the module that the client imports from.
     import memory_store_client as msc
+
     real_mono = msc.time.monotonic
     cooldown_end = real_mono() + c._CB_COOLDOWN_S + 0.001
     monkeypatch.setattr(msc.time, "monotonic", lambda: cooldown_end)
@@ -302,5 +305,3 @@ async def test_circuit_breaker_cooldown_expires(monkeypatch):
         assert c._circuit_open() is True, "probe failure should re-open"
     finally:
         monkeypatch.setattr(msc.time, "monotonic", real_mono)
-
-

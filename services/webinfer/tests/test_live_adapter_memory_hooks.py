@@ -32,8 +32,7 @@ class _StubMemoryClient:
     async def warmup(self, session_id, top_k=16, min_score=0.0):
         return list(self._blocks)
 
-    async def recall(self, query, session_id=None, top_k=6, min_score=0.0,
-                     namespaces=None):
+    async def recall(self, query, session_id=None, top_k=6, min_score=0.0, namespaces=None):
         return list(self._blocks)
 
     async def push(self, session_id, blocks):
@@ -213,10 +212,10 @@ async def test_memory_warmup_concurrent_with_recall():
     assert state._memory_block_cache == blocks
 
 
-
 # ---------------------------------------------------------------------------
 # Fire-and-forget wiki recall (v0.3, 2026-07-29) — see ADR-0013 / memory-client-resilience
 # ---------------------------------------------------------------------------
+
 
 class _SlowWikiClient(_StubMemoryClient):
     """Wiki recall sleeps long enough that we can observe ordering."""
@@ -225,8 +224,7 @@ class _SlowWikiClient(_StubMemoryClient):
         super().__init__(blocks=blocks)
         self._wiki_delay = wiki_delay
 
-    async def recall(self, query, session_id=None, top_k=6, min_score=0.0,
-                     namespaces=None):
+    async def recall(self, query, session_id=None, top_k=6, min_score=0.0, namespaces=None):
         await asyncio.sleep(self._wiki_delay)
         return list(self._blocks)
 
@@ -284,9 +282,9 @@ async def test_wiki_recall_updates_cache_async():
 @pytest.mark.asyncio
 async def test_wiki_recall_failure_does_not_propagate():
     """A stub recall that raises must NOT raise from ``_memory_recall``."""
+
     class BoomWikiClient(_StubMemoryClient):
-        async def recall(self, query, session_id=None, top_k=6, min_score=0.0,
-                         namespaces=None):
+        async def recall(self, query, session_id=None, top_k=6, min_score=0.0, namespaces=None):
             raise RuntimeError("simulated upstream explosion")
 
     a = _make_adapter(BoomWikiClient())

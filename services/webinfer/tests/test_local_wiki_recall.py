@@ -98,6 +98,7 @@ async def test_wiki_recall_fired_with_namespaces_and_populates_cache():
     # control repeatedly so the scheduled task can finish before we
     # inspect the cache; the task is started via asyncio.create_task.
     import asyncio as _a
+
     for _ in range(5):
         await _a.sleep(0)
         if state._memory_wiki_cache:
