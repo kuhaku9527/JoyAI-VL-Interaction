@@ -41,4 +41,18 @@ if ($Mode)     { $args += @("-Mode", $Mode) }
 if ($Restart)  { $args += @("-Restart", $Restart) }
 if ($Stop)     { $args += @("-Stop") }
 Write-Host "Forwarding to: $RunScript $($args -join ' ')" -ForegroundColor DarkGray
+
+# 2026-07-31: capture the entire launcher session (banner + service
+# status + post-launch messages) to logs/launcher-<UTC-ISO>.log via
+# Start-Transcript. Without this, the launcher output only lives in
+# the parent shell stdout and is lost if launched detached / via schtasks.
+$launchLogDir = Join-Path $RepoRoot "logs"
+if (-not (Test-Path $launchLogDir)) { New-Item -ItemType Directory -Path $launchLogDir -Force | Out-Null }
+$launchTs = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
+$launchLog = Join-Path $launchLogDir ("launcher-" + $launchTs + ".log")
+Start-Transcript -Path $launchLog
+Write-Host ("[transcript] " + $launchLog) -ForegroundColor DarkGray
 & powershell -ExecutionPolicy Bypass -File $RunScript @args
+$rc = $LASTEXITCODE
+Stop-Transcript | Out-Null
+exit $rc
