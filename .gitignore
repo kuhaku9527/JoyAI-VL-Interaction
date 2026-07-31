@@ -116,10 +116,8 @@ coverage.xml
 # locally; keep transcripts and meta.json. Re-run cloning to regenerate.
 services/voice-clone/voices/**/*.wav
 
-# Intentionally archived one-off scripts / debug artifacts (moved from repo root
-# into archive/ on 2026-07-20 for root-dir cleanup). Kept in VCS for traceability.
-!archive/**
-!/archive
+# archive/ : 2026-07-20 从根目录迁来的临时调试产物；非源码，整体不入库
+# (2026-08-01 大扫除: 取消原 !archive/** 反忽略，避免 42MB workbuddy 临时物进仓库)
 
 # Top-level historical PDF / zip review artefacts.
 /*.pdf
@@ -135,3 +133,10 @@ node_modules/
 logs/vlm-runtime-props.json
 services/.logs/*.log
 services/.logs/*.err.log
+
+# 2026-08-01 大扫除：workbuddy 调试/对话产物不入库（仍保留在磁盘）
+nul
+-w
+archive/agent-scratch-20260723/
+会话记录/
+.workbuddy_tmp/
