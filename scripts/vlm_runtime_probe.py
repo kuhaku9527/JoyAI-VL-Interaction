@@ -107,7 +107,21 @@ def main() -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    serialized = json.dumps(snapshot, ensure_ascii=False, indent=2)
+    out.write_text(serialized, encoding="utf-8")
+    # 2026-07-31: also append a timestamped copy under logs/vlm-probes/ so
+    # operators can see "what was n_ctx 09:00 vs 14:00" without diffing the
+    # current snapshot. The same snapshot is also written to --out (which
+    # the drift_gate runtime phase reads) so the contract stays unchanged.
+    try:
+        history_dir = out.parent / "vlm-probes"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        # ran_at uses ":" which is invalid in Windows filenames. Replace with "-".
+        ts_safe = snapshot["ran_at"].replace(":", "-")
+        history_path = history_dir / (ts_safe + ".json")
+        history_path.write_text(serialized, encoding="utf-8")
+    except OSError as exc:
+        print(f"[WARN] failed to write probe history: {exc}", file=sys.stderr)
     n_ctx = snapshot.get("n_ctx")
     print(f"wrote {out}  n_ctx={n_ctx}")
     return 0 if n_ctx is not None else 3
