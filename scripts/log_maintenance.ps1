@@ -13,6 +13,7 @@
 param(
     [int]$LogRetentionDays = 14,
     [int]$ProbeRetentionDays = 1,
+    [int]$HistoryRetentionDays = 14,
     [switch]$Apply,
     [string]$RepoRoot = ""
 )
@@ -26,10 +27,11 @@ $probe     = Join-Path $RepoRoot "logs\vlm-runtime-props.json"
 $now       = Get-Date
 $cutoffLog   = $now.AddDays(-$LogRetentionDays)
 $cutoffProbe = $now.AddDays(-$ProbeRetentionDays)
+$cutoffHistory = $now.AddDays(-$HistoryRetentionDays)
 $isApply   = [bool]$Apply
 $verb      = if ($isApply) { "DELETE" } else { "DRY-RUN" }
 
-Write-Host "[$verb] log retention: $LogRetentionDays days, probe retention: $ProbeRetentionDays days" -ForegroundColor Cyan
+Write-Host "[$verb] log retention: $LogRetentionDays days, probe retention: $ProbeRetentionDays days, history retention: $HistoryRetentionDays days" -ForegroundColor Cyan
 
 function Get-OldFiles($dir, $cutoff) {
     if (-not (Test-Path $dir)) { return @() }
@@ -37,9 +39,23 @@ function Get-OldFiles($dir, $cutoff) {
         Where-Object { [DateTime]$_.LastWriteTime -lt [DateTime]$cutoff }
 }
 
+# Per-run snapshots: drift_gate --history-dir, vlm_runtime_probe.
+# Apply $HistoryRetentionDays so the JSONL per-run trail does not
+# grow unbounded but operators can still reach back ~2 weeks.
+function Get-OldHistory($repoRoot, $cutoff) {
+    $p1 = $repoRoot + '/logs/drift-gate-history'
+    $p2 = $repoRoot + '/logs/vlm-probes'
+    $all = @()
+    foreach ($p in @($p1, $p2)) {
+        if (Test-Path $p) { $all += @(Get-OldFiles $p $cutoff) }
+    }
+    return $all
+}
+
 $oldSvc = @(Get-OldFiles $svcLogs $cutoffLog)
 $oldTop = @(Get-OldFiles $logsDir $cutoffLog | Where-Object { $_.Name -match '\.(log|err\.log)$' })
-$allOld = @($oldSvc + $oldTop)
+$oldHist = @(Get-OldHistory $RepoRoot $cutoffHistory)
+$allOld = @($oldSvc + $oldTop + $oldHist)
 
 Write-Host ""
 Write-Host "Service log files (services\.logs + logs/*.log):" -ForegroundColor Cyan
