@@ -10,6 +10,24 @@ import base64
 import io
 import json
 import logging
+import time as _time_for_accesslog
+import os as _os_for_accesslog  # access log path
+
+_access_logger = logging.getLogger("joyai.access")
+if not _access_logger.handlers:
+    # Default: write one JSONL per line to logs/webui-access-<UTC>.log (rotated daily
+    # by launcher path). No-op if logs/ cannot be created. Format: one JSON
+    # object per request with ts, method, path, status, latency_ms.
+    _log_dir = _os_for_accesslog.path.join(_os_for_accesslog.path.dirname(_os_for_accesslog.path.abspath(__file__)), "..", "..", "..", "logs")
+    try:
+        _os_for_accesslog.makedirs(_log_dir, exist_ok=True)
+        _ts = _os_for_accesslog.path.join(_log_dir, ("webui-access-" + _time_for_accesslog.strftime("%Y-%m-%d", _time_for_accesslog.gmtime()) + ".log"))
+        _fh = logging.FileHandler(_ts, encoding="utf-8")
+        _fh.setFormatter(logging.Formatter("%(message)s"))
+        _access_logger.addHandler(_fh)
+        _access_logger.setLevel(logging.INFO)
+    except OSError:
+        pass  # access log is best-effort; do not break the webui if logs/ is unwritable
 import os
 import sys
 import time
@@ -1210,7 +1228,32 @@ def main():
             response.headers["Referrer-Policy"] = "no-referrer"
         return response
 
-    app = web.Application(middlewares=[security_headers_middleware])
+    @web.middleware
+    async def access_log_middleware(request, handler):
+        # One JSONL line per HTTP request. PII: do NOT log message bodies,
+        # only the path + method + status + latency. WebSocket upgrades are
+        # recorded at the upgrade point (status 101) but not per frame.
+        t0 = _time_for_accesslog.perf_counter()
+        status = 500
+        try:
+            response = await handler(request)
+            status = response.status if response is not None else 500
+            return response
+        finally:
+            try:
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+                line = json.dumps({
+                    "ts": _time_for_accesslog.strftime("%Y-%m-%dT%H:%M:%SZ", _time_for_accesslog.gmtime()),
+                    "method": request.method,
+                    "path": request.path,
+                    "status": status,
+                    "latency_ms": latency_ms,
+                }, ensure_ascii=False)
+                _access_logger.info(line)
+            except Exception:
+                pass  # never let logging fail a request
+
+    app = web.Application(middlewares=[access_log_middleware, security_headers_middleware])
     app.router.add_get("/", _index_handler)
     app.router.add_get("/models", _models_handler)
     app.router.add_get("/detect-services", _detect_services_handler)
