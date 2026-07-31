@@ -220,6 +220,12 @@ def main() -> int:
         default=None,
         help="仓库根路径（默认：脚本所在位置的父目录）",
     )
+    ap.add_argument(
+        "--history-dir",
+        default=None,
+        help="限定方式：每次 run 写一份 <UTC-ISO>.json 到这个目录（默认 logs/drift-gate-history/），不覆盖。传 --no-history 关闭。",
+    )
+    ap.add_argument("--no-history", action="store_true", help="不写历史报告（仅 stdout/--report）")
     args = ap.parse_args()
 
     repo_root = Path(args.repo_root) if args.repo_root else Path(__file__).resolve().parent.parent
@@ -240,6 +246,23 @@ def main() -> int:
 
     if args.mode == "closed" and report["any_block_fail"]:
         return 1
+    if not args.no_history:
+        # Append a timestamped copy of the report to <history-dir>/. This
+        # lets operators see "drift_gate said X at 09:00, Y at 14:00" later
+        # without re-running the gate. Default <repo>/logs/drift-gate-history/.
+        history_dir = (
+            Path(args.history_dir).resolve()
+            if args.history_dir
+            else (repo_root / "logs" / "drift-gate-history")
+        )
+        try:
+            history_dir.mkdir(parents=True, exist_ok=True)
+            # ran_at is already ISO; replace ":" with "-" for Windows-safe filename.
+            ts_safe = report["ran_at"].replace(":", "-")
+            history_path = history_dir / (ts_safe + ".json")
+            history_path.write_text(out, encoding="utf-8")
+        except OSError as exc:
+            print(f"[WARN] failed to write history report: {exc}", file=sys.stderr)
     return 0
 
 
