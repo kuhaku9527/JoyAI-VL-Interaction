@@ -280,16 +280,20 @@ function Start-Background {
 
     if ($DryRun) { return $true }
 
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Exe
-    $psi.Arguments = Join-ProcessArgs -Items $ArgList
-    Write-Info ("  final  : " + $psi.Arguments)
-    if ($Workdir -and (Test-Path $Workdir)) { $psi.WorkingDirectory = $Workdir }
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow  = $true
-    $psi.WindowStyle     = "Hidden"
-    $psi.RedirectStandardOutput = $false
-    $psi.RedirectStandardError  = $false
+    # 2026-07-31: route stdout/stderr to $LogBase + .log / .err.log when set,
+    # so drift_gate runtime phase can grep a real file (the previous
+    # RedirectStandard* = $false here meant the banner-claimed log path
+    # was a lie). Truncate any prior log so stale passes don't fool the gate.
+    $logOut = $null
+    $logErr = $null
+    if ($LogBase) {
+        $logDir = Split-Path $LogBase -Parent
+        if ($logDir -and -not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        if (Test-Path ($LogBase + ".log")) { Remove-Item ($LogBase + ".log") -Force -ErrorAction SilentlyContinue }
+        if (Test-Path ($LogBase + ".err.log")) { Remove-Item ($LogBase + ".err.log") -Force -ErrorAction SilentlyContinue }
+        $logOut = $LogBase + ".log"
+        $logErr = $LogBase + ".err.log"
+    }
     foreach ($k in $ExtraEnv.Keys) {
         # Set in the current-process environment; the child process launched
         # below inherits it. We intentionally do NOT assign to
@@ -298,11 +302,23 @@ function Start-Background {
         # its indexer setter throws "Cannot index into a null array".
         [Environment]::SetEnvironmentVariable($k, [string]$ExtraEnv[$k])
     }
-    $p = New-Object System.Diagnostics.Process
-    $p.StartInfo = $psi
-    [void]$p.Start()
+    # Use Start-Process for the spawn itself so we get the
+    # -RedirectStandardOutput / -RedirectStandardError parameters, which
+    # are cleaner than ProcessStartInfo's RedirectStandard* (the latter
+    # would also need us to drain the stream or the child blocks).
+    $spArgs = @{
+        FilePath         = $Exe
+        ArgumentList     = $ArgList
+        WindowStyle      = "Hidden"
+        PassThru         = $true
+    }
+    if ($Workdir -and (Test-Path $Workdir)) { $spArgs["WorkingDirectory"] = $Workdir }
+    if ($logOut) { $spArgs["RedirectStandardOutput"] = $logOut }
+    if ($logErr) { $spArgs["RedirectStandardError"]  = $logErr }
+    $p = Start-Process @spArgs
     Save-Pid $Name $p.Id
     $script:Started[$Name] = $p.Id
+    if ($logOut) { Write-Info ("  -> $logOut") }
     return $true
 }
 
@@ -517,6 +533,16 @@ function Start-MemoryStore {
 }
 
 # ---------------------------------------------------------------------------
+# Launch metadata (for traceability)
+# ---------------------------------------------------------------------------
+
+$script:LaunchTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$script:LaunchMode = $Mode
+Write-Host "" -ForegroundColor DarkGray
+Write-Host "  launcher_at: $script:LaunchTime  mode: $script:LaunchMode" -ForegroundColor DarkGray
+$gitHead = (& git -C $RepoRoot rev-parse --short HEAD 2>$null)
+if ($gitHead) { Write-Host "  git_head:    $gitHead" -ForegroundColor DarkGray }
+
 # Mode planner
 # ---------------------------------------------------------------------------
 function Plan-For {
@@ -717,6 +743,14 @@ try {
 
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Green
+    # Auto-refresh the VLM runtime probe so drift_gate runtime phase
+    # has a fresh file (not stale from the previous launch).
+    $probeScript = Join-Path $RepoRoot "scripts\vlm_runtime_probe.py"
+    $probeOut = Join-Path $RepoRoot "logs\vlm-runtime-props.json"
+    if ($plan["llama-main"] -and (Test-Path $probeScript)) {
+        $py = "D:\AI\envs\joyai-main\python.exe"
+        & $py $probeScript --base-url ("http://127.0.0.1:" + $P.Main) --out $probeOut --wait 5 2>&1 | Out-Null
+    }
     Write-Host " All services ready. WebUI is running in the foreground." -ForegroundColor Green
     Write-Host " Open http://127.0.0.1:$($P.Webui)/  in your browser." -ForegroundColor Green
     Write-Host " Press Ctrl+C to stop everything." -ForegroundColor Green
