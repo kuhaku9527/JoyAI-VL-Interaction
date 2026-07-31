@@ -34,6 +34,7 @@
 | L2 | [`服务-VLM.md`](服务-VLM.md) | D-020/021/022/050 | ✅ |
 | L2 | [`服务-webinfer.md`](服务-webinfer.md) | D-023~033 | ✅ |
 | L2 | [`服务-webui.md`](服务-webui.md) | D-032~039 | ✅ |
+| L2 | [`服务-日志.md`](服务-日志.md) | D-060~062 | ✅ |
 | L2 | [`服务-memory-store.md`](服务-memory-store.md) | D-040~044 | ✅ |
 | L2 | [`服务-语音栈.md`](服务-语音栈.md) | D-045~047 | ✅ |
 | L2 | [`服务-Hermes.md`](服务-Hermes.md) | D-048 | ✅ |
