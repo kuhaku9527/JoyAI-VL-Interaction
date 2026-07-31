@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Smoke test for drift_gate.py executor.
 
-Runs five invocations:
+Runs six invocations:
   1. static + open mode: never fails, just warns.
   2. JSON output: must parse, must contain all 4 checks.
   3. closed mode + static only - rc=0 if env matches contract, rc=1 if drifted.
@@ -12,6 +12,12 @@ Runs five invocations:
      every check should pass and rc=0. Closes the smoke-test blind spot
      flagged in workbuddy audit: prior smoke only checked exit codes,
      never a compliant env's actual passed=True verdict.
+  6. **Runtime probe + drift_gate integration**: run
+     scripts/vlm_runtime_probe.py (writes logs/vlm-runtime-props.json)
+     then re-run drift_gate --phase all --mode closed; expects 4/4 PASS.
+     Closes the runtime-check blind spot: the old gate parsed
+     logs/llama-main.log for n_ctx_slot, but the launcher never wrote
+     that log, so the runtime phase was structurally impossible to pass.
 
 Usage:
     python scripts/drift_gate_smoke_test.py
@@ -27,6 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "drift_gate.py"
 CONTRACT = ROOT / "config" / "drift-contract.json"
+PROBE = ROOT / "scripts" / "vlm_runtime_probe.py"
 PYTHON = sys.executable
 
 
@@ -173,6 +180,46 @@ def main():
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+    # 6. Runtime probe + drift_gate integration. Skipped if no llama is up.
+    #    If llama is up: probe writes logs/vlm-runtime-props.json, then
+    #    drift_gate --phase all --mode closed must report all checks passed.
+    #    If llama is NOT up: skip with INFO (operator should run after
+    #    start-joyai.ps1).
+    if not PROBE.exists():
+        print(f"\n[probe+gate] SKIP - {PROBE.name} not present")
+    else:
+        probe_proc = subprocess.run(
+            [PYTHON, str(PROBE), "--out", str(ROOT / "logs" / "vlm-runtime-props.json"), "--wait", "5"],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        probe_rc = probe_proc.returncode
+        probe_out = (probe_proc.stdout or "") + (probe_proc.stderr or "")
+        print(f"\n[probe+gate] probe exit={probe_rc}  out={probe_out.strip()[:120]}")
+        if probe_rc == 0:
+            rc, out, err = run(
+                ["--contract", str(CONTRACT), "--phase", "all", "--mode", "closed", "--json"]
+            )
+            try:
+                j = json.loads(out)
+            except json.JSONDecodeError as exc:
+                print(f"[FAIL] json parse after probe: {exc}")
+                failures += 1
+            else:
+                runtime_block = [
+                    r for r in j["results"] if r["phase"] == "runtime" and not r["passed"]
+                ]
+                if rc != 0 or runtime_block:
+                    failed = [(r["id"], r["detail"][:80]) for r in j["results"] if not r["passed"]]
+                    print(f"[FAIL] drift_gate after probe: rc={rc}  failed={failed}")
+                    failures += 1
+                else:
+                    print(f"[OK]   probe+gate - llama n_ctx=16384 verified end-to-end")
+        else:
+            print("[INFO] probe couldn't reach llama (server not up). Run after start-joyai.ps1.")
 
     print()
     if failures:

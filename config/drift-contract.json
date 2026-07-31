@@ -6,10 +6,10 @@
     {
       "id": "vlm-n_ctx",
       "decision_ref": "决策/业务-上下文架构.md D-050 / drift-历史.md DRIFT-1",
-      "description": "VLM 运行时 n_ctx 必须等于 webinfer main_ctx_tokens=16384（避免 2026-07-28 DRIFT-1 复发）",
+      "description": "VLM 运行时 n_ctx 必须等于 webinfer main_ctx_tokens=16384（避免 2026-07-28 DRIFT-1 复发）；通过 scripts/vlm_runtime_probe.py 写出的 logs/vlm-runtime-props.json 校验（替代旧的日志 grep 方案：launcher 从未真正写 log 文件）",
       "phase": "runtime",
-      "paths": ["logs/llama-main.log"],
-      "pattern": "n_ctx_slot\\s*=\\s*16384",
+      "paths": ["logs/vlm-runtime-props.json"],
+      "pattern": "\"n_ctx\":\\s*16384",
       "severity": "block"
     },
     {
