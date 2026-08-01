@@ -66,9 +66,22 @@
 | **来源** | ADR-0012 v5（2026-07-24 双栖定稿）+ `services/memory-store/src/memory_store/config.py` |
 | **校验** | `grep -nE "provider.*local|provider.*siliconflow|provider.*nvidia" services/memory-store/src/memory_store/config.py` |
 | **预期** | 命中 provider 枚举 |
-| **Drift** | 🟥 **P1 待裁决**：#38（2026-07-27）把 `BgeM3Embedder` 默认 provider 从 `siliconflow` 改为 `nvidia`（`integrate.api.nvidia.com/v1`，默认 `use_proxy=false` 国内通常不可达），注释指向 ADR-0012 但设计文档无对应记录 → 新部署大概率开箱即败。三选一：①恢复硅基；②保留 NVIDIA 但补 ADR+代理；③默认 `local`（开箱即用但吃本地算力） |
+| **Drift** | ✅ 2026-08-01 复核：embedder.py:89 默认实为 `local`（#42 于 07-28 revert，非 #38 的 nvidia）。原 P1「nvidia 默认不可达」告警系误读（基于 #38 中间态），已关闭。默认 local 与 D-038 设计一致。modified: 2026-08-01｜by AI｜approved: 用户 |
 | **Owner** | 后端 |
-| **锁定** | 🔓（P1 设计偏离，待裁决后锁） |
+| **锁定** | ✅ |
+
+---
+
+### D-2026-08-01-038 | E4 根因：EMBEDDING_LOCAL_MODEL 未接线（配置漂移）
+| 字段 | 内容 |
+|---|---|
+| **事实 | Local Wiki 语义召回（E4）不健康的真因 = **配置漂移**。本地 bge-m3 完整 checkpoint 在 `D:/AI/models/bge-m3`（pytorch_model.bin 2.27G + config.json + `1_Pooling/`/tokenizer 全套，07-27 验收已证实可用）。但 `EMBEDDING_LOCAL_MODEL` **全仓库未设**（run-windows.env grep 零命中；git log -p 全历史零命中）→ embedder.py:102/238 默认模型名落到 `BAAI/bge-m3`（HF hub id）→ HF 缓存 `.cache/huggingface/hub/models--BAAI--bge-m3/` 存在但**不完整**（总 40K；blobs=3 个 0 字节 .incomplete，Jul 29/31 三次下载尝试均失败）→ `SentenceTransformer("BAAI/bge-m3")` 加载失败 → `EmbedderError`(embedder.py:220) → `wiki_service.sync_wiki_dir`:91-93 静默存文本块 `vector=None` → 语义召回(ANN 无向量)返回空 → E4"召回不健康"。`available()`(embedder.py:127-133) 对 local **无条件返回 True**，不校验模型可加载，掩盖根因。**根因 = 缺 env 接线（配置漂移），非代码 bug**。07-27 曾验收通过(embedded=3, recall cos=0.65~0.74)，但使成功的 env 配置从未持久化到 run-windows.env（可能为临时终端设置或网络下载成功后缓存丢失/迁移）。 |
+| 来源 | 2026-08-01 健康深扒 FA-4（三源交叉：git 历史 + 磁盘文件 + HF 缓存）；embedder.py:89/102/127/220/238 + wiki_service.py:91-93 + run-windows.env(grep 零命中) + test_local_real_recall.py(明确要求设该变量) + HF 缓存时间线重建 |
+| 校验 | 起服务后 `curl http://127.0.0.1:8997/v1/providers/health` 应见 embedding `ok:true`；wiki sync 后 `embedded>0`；真实提问 Local Wiki 召回应返回块 |
+| 预期 | embedding available + 有向量召回 |
+| Drift | 🟥 `available()`(embedder.py:127) 对 local 无条件 True 不校验模型可加载，掩盖根因；run-windows.env 未导出 `EMBEDDING_LOCAL_MODEL`；HF 缓存残留不完整残骸（可清理） |
+| Owner | 后端（实施 T-06）/ 运维（验证） |
+| 锁定 | 🔓（T-06 修复实施中） |
 
 ---
 
@@ -136,14 +149,22 @@
 - **症状**：8996 vs 8997 哪个是真后端搞不清
 - **修复**：8997 确立为生产（2026-07-26）；`run-windows.env` 未覆盖，须手动 env（见 D-030）
 
-### 2026-07-27 — bge-m3 默认 provider 漂移（P1）
-- #38 把默认改 `nvidia`，无 ADR 记录，国内通常不可达 → 待裁决（见 D-033）
+### 2026-08-01 — E4 根因定位 + T-02 结案 + D-033 误读修正
+- E4 真因 = **EMBEDDING_LOCAL_MODEL 未设**（配置漂移，FA-4）；本地权重 `D:/AI/models/bge-m3` 完整但未被引用 → wiki 建库无向量。修复见 **D-038 / T-06**。
+- T-02「E2/E3 token 泄露」猜想代码深扒无真实泄漏（FA-5），关闭，无需修复。
+- D-033 默认 provider 误读（nvidia）复核为 local（#42 于 07-28 revert），P1 漂移关闭，**锁定 ✅**。
+- FA-2 补充：webinfer 端口假设不成立（启动链路证明实际连 8997）。
+- FA-3 补充：embedder.py:89 默认实为 local，非 nvidia。
+- HF 缓存残留：`.cache/huggingface/hub/models--BAAI--bge-m3/` 存在但不完整（40K，0 字节 incomplete blobs ×3），可清理。
+
+### 2026-07-27 — bge-m3 默认 provider 漂移（P1，已解决）
+- #38 把默认改 `nvidia`，无 ADR 记录 → #42 revert 回 `local`（已解决，见 D-033 修正）
 
 ---
 
 ## 待补充
 
 - D-XXX：memory-store 数据持久化路径（`data/memory.sqlite` 默认）
-- D-XXX：embedding 模型切换 ENV（EMBEDDING_LOCAL_MODEL / EMBEDDING_PROVIDER）
 - D-XXX：recall 默认参数（top_k / min_score / namespaces 列表）
 - D-XXX：mock 模式 vs 真实模式（env 变量）
+- ~~D-XXX：embedding 模型切换 ENV（EMBEDDING_LOCAL_MODEL / EMBEDDING_PROVIDER）~~ → **已由 D-038 覆盖**
