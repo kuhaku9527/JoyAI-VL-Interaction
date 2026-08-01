@@ -106,10 +106,10 @@ limitations under the License.
     <!-- Header -->
     <div class="header">
         <div class="header-left">
-            <button class="sidebar-toggle-btn" id="sidebarToggle" type="button" aria-label="Toggle settings sidebar" aria-controls="sidebarPanels" aria-expanded="false">
+            <button class="sidebar-toggle-btn" id="sidebarToggle" type="button" aria-label="切换设置侧边栏" aria-controls="sidebarPanels" aria-expanded="false">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <div class="logo" id="jdLogo" role="button" tabindex="0" aria-label="Refresh page">
+            <div class="logo" id="jdLogo" role="button" tabindex="0" aria-label="刷新页面">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-hidden="true">
                     <rect width="128" height="128" rx="28" fill="#c81e2a"/>
                     <path fill="#fff" d="M25 34h24v38c0 15-9 24-24 24-7 0-13-2-18-5l7-16c3 2 6 3 9 3 5 0 8-3 8-9V52h-6z"/>
@@ -121,20 +121,20 @@ limitations under the License.
             </div>
         </div>
         <div class="header-right">
-            <span class="status-badge disconnected" id="connectionStatus" role="status" aria-live="polite">Disconnected</span>
-            <span class="status-badge llm-unknown" id="llmServiceStatus" title="LLM (llama-server) reachability -- polled every 3s">LLM ?</span>
-            <span class="status-badge llm-unknown" id="ttsServiceStatus" title="TTS (voice_clone_api) reachability -- polled every 3s">TTS ?</span>
-            <span class="status-badge llm-unknown" id="kwsServiceStatus" title="KWS (sherpa-onnx wake-word) model presence -- polled every 3s">KWS ?</span>
-            <span class="status-badge jarvis-disconnected" id="jarvisStatus" title="Jarvis state machine (KWS_LISTENING -> WAKE_DETECTED -> DIALOG_ACTIVE) -- polled every 1s">Jarvis ?</span>
+            <span class="status-badge disconnected" id="connectionStatus" role="status" aria-live="polite">已断开</span>
+            <span class="status-badge llm-unknown" id="llmServiceStatus" title="LLM（llama-server）可达性 —— 每 3 秒轮询一次">LLM ?</span>
+            <span class="status-badge llm-unknown" id="ttsServiceStatus" title="TTS（voice_clone_api）可达性 —— 每 3 秒轮询一次">TTS ?</span>
+            <span class="status-badge llm-unknown" id="kwsServiceStatus" title="KWS（sherpa-onnx 唤醒词）模型存在性 —— 每 3 秒轮询一次">KWS ?</span>
+            <span class="status-badge jarvis-disconnected" id="jarvisStatus" title="Jarvis 状态机（KWS_LISTENING → WAKE_DETECTED → DIALOG_ACTIVE）—— 每 1 秒轮询一次">Jarvis ?</span>
 
             <button class="settings-btn" id="settingsBtn" title="设置" aria-label="设置">
                 <i data-lucide="settings"></i>
             </button>
-            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">
                 <span id="themeIcon">
                     <i data-lucide="moon"></i>
                 </span>
-                <span id="themeText">Dark</span>
+                <span id="themeText">深色</span>
             </button>
         </div>
     </div>
@@ -465,35 +465,35 @@ limitations under the License.
                 <div class="panel-header" onclick="togglePanel('servicesConfig')">
                     <div class="panel-title">
                         <span class="panel-icon"><i data-lucide="plug"></i></span>
-                        <span class="panel-title-text">Services</span>
+                        <span class="panel-title-text">服务</span>
                     </div>
                     <span class="panel-toggle collapsed" id="servicesConfigToggle">▼</span>
                 </div>
                 <div class="panel-content collapsed" id="servicesConfig">
-                    <div class="input-hint" style="margin-bottom: 12px;">Four pluggable backends. Save applies at runtime; no service restart.</div>
+                    <div class="input-hint" style="margin-bottom: 12px;">四个可插拔后端。保存即时生效，无需重启服务。</div>
                     <div class="service-row" data-service="llm">
                         <div class="service-row-header"><i data-lucide="brain"></i><span>LLM</span><span class="service-badge" id="badge-llm">--</span></div>
-                        <div class="form-group"><label>API Base URL</label><input type="text" id="svc-llm-api-base" placeholder="http://127.0.0.1:8070/v1"></div>
-                        <div class="form-group"><label>Model</label><input type="text" id="svc-llm-model" placeholder="joyai-vl-interaction-preview"></div>
-                        <div class="form-group"><label>API Key</label><input type="password" id="svc-llm-api-key" placeholder="optional"></div>
+                        <div class="form-group"><label>API 基础地址</label><input type="text" id="svc-llm-api-base" placeholder="http://127.0.0.1:8070/v1"></div>
+                        <div class="form-group"><label>模型</label><input type="text" id="svc-llm-model" placeholder="joyai-vl-interaction-preview"></div>
+                        <div class="form-group"><label>API 密钥</label><input type="password" id="svc-llm-api-key" placeholder="可选"></div>
                     </div>
                     <div class="service-row" data-service="summary">
-                        <div class="service-row-header"><i data-lucide="file-text"></i><span>Summary</span><span class="service-badge" id="badge-summary">--</span></div>
-                        <div class="form-group"><label>API Base URL</label><input type="text" id="svc-summary-api-base" placeholder="http://127.0.0.1:7060/v1"></div>
-                        <div class="form-group"><label>Model</label><input type="text" id="svc-summary-model" placeholder="joyai-vl-interaction-preview"></div>
+                        <div class="service-row-header"><i data-lucide="file-text"></i><span>摘要</span><span class="service-badge" id="badge-summary">--</span></div>
+                        <div class="form-group"><label>API 基础地址</label><input type="text" id="svc-summary-api-base" placeholder="http://127.0.0.1:7060/v1"></div>
+                        <div class="form-group"><label>模型</label><input type="text" id="svc-summary-model" placeholder="joyai-vl-interaction-preview"></div>
                     </div>
                     <div class="service-row" data-service="tts">
                         <div class="service-row-header"><i data-lucide="volume-2"></i><span>TTS</span><span class="service-badge" id="badge-tts">--</span></div>
-                        <div class="form-group"><label>API URL</label><input type="text" id="svc-tts-api-base" placeholder="http://127.0.0.1:8985/v1/synthesize"></div>
+                        <div class="form-group"><label>API 地址</label><input type="text" id="svc-tts-api-base" placeholder="http://127.0.0.1:8985/v1/synthesize"></div>
                     </div>
                     <div class="service-row" data-service="asr">
                         <div class="service-row-header"><i data-lucide="mic"></i><span>ASR</span><span class="service-badge" id="badge-asr">--</span></div>
-                        <div class="form-group"><label>API URL</label><input type="text" id="svc-asr-api-base" placeholder="http://127.0.0.1:8993/v1/transcribe"></div>
-                        <div class="form-group"><label>Model</label><input type="text" id="svc-asr-model" placeholder="ggml-large-v3-turbo"></div>
+                        <div class="form-group"><label>API 地址</label><input type="text" id="svc-asr-api-base" placeholder="http://127.0.0.1:8993/v1/transcribe"></div>
+                        <div class="form-group"><label>模型</label><input type="text" id="svc-asr-model" placeholder="ggml-large-v3-turbo"></div>
                     </div>
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
-                        <button class="icon-btn" id="svcSaveBtn" title="Save all service configs and probe" aria-label="Save all service configs and probe"><i data-lucide="save"></i> Save</button>
-                        <button class="icon-btn" id="svcProbeBtn" title="Re-probe all services" aria-label="Re-probe all services"><i data-lucide="activity"></i> Probe</button>
+                        <button class="icon-btn" id="svcSaveBtn" title="保存所有服务配置并探测" aria-label="保存所有服务配置并探测"><i data-lucide="save"></i> 保存</button>
+                        <button class="icon-btn" id="svcProbeBtn" title="重新探测所有服务" aria-label="重新探测所有服务"><i data-lucide="activity"></i> 探测</button>
                     </div>
                 </div>
             </div>
@@ -503,34 +503,34 @@ limitations under the License.
                 <div class="panel-header" onclick="togglePanel('knowledgeBase')">
                     <div class="panel-title">
                         <span class="panel-icon"><i data-lucide="book-open"></i></span>
-                        <span class="panel-title-text">Knowledge Base</span>
+                        <span class="panel-title-text">知识库</span>
                     </div>
                     <span class="panel-toggle collapsed" id="knowledgeBaseToggle">▼</span>
                 </div>
                 <div class="panel-content collapsed" id="knowledgeBase">
-                    <div class="input-hint" style="margin-bottom: 8px;">Local wiki corpora (per game). Sync a <code>wiki/&lt;game&gt;</code> folder into a vector namespace.</div>
+                    <div class="input-hint" style="margin-bottom: 8px;">本地知识库语料（按游戏）。将 <code>wiki/&lt;游戏&gt;</code> 文件夹同步到向量命名空间。</div>
                     <div id="namespaceList" class="namespace-list"></div>
-                    <div id="namespaceEmpty" class="input-hint" style="display: none;">No knowledge bases yet.</div>
+                    <div id="namespaceEmpty" class="input-hint" style="display: none;">暂无知识库。</div>
 
                     <div class="wiki-paste-block">
                         <div class="form-group">
-                            <label>Game / namespace</label>
+                            <label>游戏 / 命名空间</label>
                             <input type="text" id="wikiNamespace" placeholder="elden-ring">
                         </div>
                         <div class="form-group">
-                            <label>Paste wiki markdown</label>
-                            <textarea id="wikiPaste" rows="4" placeholder="Paste攻略 markdown here..."></textarea>
+                            <label>粘贴知识库 markdown</label>
+                            <textarea id="wikiPaste" rows="4" placeholder="在此粘贴攻略 markdown…"></textarea>
                         </div>
-                        <button class="icon-btn" id="wikiPasteBtn" type="button" aria-label="Ingest pasted markdown"><i data-lucide="upload"></i> Ingest</button>
+                        <button class="icon-btn" id="wikiPasteBtn" type="button" aria-label="导入粘贴的 markdown"><i data-lucide="upload"></i> 导入</button>
                     </div>
 
                     <div class="form-group" style="margin-top: 12px;">
-                        <label>Sync folder path (wiki/&lt;game&gt;)</label>
+                        <label>同步文件夹路径 (wiki/&lt;游戏&gt;)</label>
                         <input type="text" id="wikiSyncPath" placeholder="/path/to/wiki/elden-ring">
                         <div style="display: flex; gap: 8px; margin-top: 8px;">
-                            <button class="icon-btn" id="wikiSyncBtn" type="button" aria-label="Sync folder"><i data-lucide="refresh-cw"></i> Sync</button>
+                            <button class="icon-btn" id="wikiSyncBtn" type="button" aria-label="同步文件夹"><i data-lucide="refresh-cw"></i> 同步</button>
                             <label style="display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" id="wikiDropFirst"> <span class="input-hint" style="margin: 0;">Drop first</span>
+                                <input type="checkbox" id="wikiDropFirst"> <span class="input-hint" style="margin: 0;">丢弃首个</span>
                             </label>
                         </div>
                     </div>
@@ -545,7 +545,7 @@ limitations under the License.
             <!-- Video Feed -->
             <div class="video-card" id="videoCard">
                 <!-- Fullscreen Button (top-right corner) -->
-                <button class="fullscreen-btn" onclick="toggleFullscreen()" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+                <button class="fullscreen-btn" onclick="toggleFullscreen()" title="切换全屏" aria-label="切换全屏">
                     <i data-lucide="maximize" id="fullscreenIcon"></i>
                 </button>
 
@@ -562,17 +562,17 @@ limitations under the License.
                         <i data-lucide="bot"></i>
                         VLM Output
                     </div>
-                    <div class="vlm-content" id="fullscreenVlmContent">Ready</div>
+                    <div class="vlm-content" id="fullscreenVlmContent">就绪</div>
                     <div class="vlm-metrics" id="fullscreenVlmMetrics"></div>
                 </div>
 
                 <!-- Legacy controls (kept for mirror functionality) -->
                 <div class="video-controls" style="top: 64px;">
-                    <button class="video-control-btn" id="mirrorBtn" title="Mirror video" aria-label="Mirror video">
-                        <i data-lucide="flip-horizontal"></i> Mirror
+                    <button class="video-control-btn" id="mirrorBtn" title="镜像视频" aria-label="镜像视频">
+                        <i data-lucide="flip-horizontal"></i> 镜像
                     </button>
-                    <button class="video-control-btn" id="resetSessionBtn" title="Reset session: new session id, clear prompt, cleanup server" aria-label="Reset session: new session id, clear prompt, cleanup server">
-                        <i data-lucide="rotate-ccw"></i> Reset
+                    <button class="video-control-btn" id="resetSessionBtn" title="重置会话：新会话 ID、清空输入、清理服务端" aria-label="重置会话：新会话 ID、清空输入、清理服务端">
+                        <i data-lucide="rotate-ccw"></i> 重置
                     </button>
                 </div>
 
@@ -595,9 +595,9 @@ limitations under the License.
                         </div>
                     </div>
                     <div class="result-header-metrics">
-                        <div class="bt-latency-inline" id="btLatencyInline" aria-label="BT chain latency">
+                        <div class="bt-latency-inline" id="btLatencyInline" aria-label="BT 链路延迟">
                             <span class="bt-latency-chip">MIC <strong id="btMicLevelValue">--</strong></span>
-                            <span class="bt-latency-chip" title="BT listening input device">INPUT <strong id="btMicDeviceValue">--</strong></span>
+                            <span class="bt-latency-chip" title="BT 监听输入设备">INPUT <strong id="btMicDeviceValue">--</strong></span>
                             <span class="bt-latency-chip">ASR <strong id="btAsrLatencyValue">--</strong></span>
                             <span class="bt-latency-chip">LLM <strong id="btLlmLatencyValue">--</strong></span>
                             <span class="bt-latency-chip">TTS <strong id="btTtsLatencyValue">--</strong></span>
@@ -637,11 +637,11 @@ limitations under the License.
                     </details>
                 </div>
                 <div class="result-text vlm-history-shell" id="resultText">
-                    <button class="markdown-toggle-embedded" id="markdownToggle" title="Toggle Markdown Rendering" aria-label="Toggle Markdown Rendering">
+                    <button class="markdown-toggle-embedded" id="markdownToggle" title="切换 Markdown 渲染" aria-label="切换 Markdown 渲染">
                         <span id="markdownIcon"><i data-lucide="code"></i></span>
                         <span id="markdownText">Markdown</span>
                     </button>
-                    <button class="copy-button-embedded" id="copyButton" title="Copy to clipboard" aria-label="Copy to clipboard">
+                    <button class="copy-button-embedded" id="copyButton" title="复制到剪贴板" aria-label="复制到剪贴板">
                         <i data-lucide="copy"></i>
                     </button>
                     <div class="result-text-content vlm-history" id="resultTextContent">
@@ -677,7 +677,7 @@ limitations under the License.
                             <button class="prompt-preset-option" type="button" data-label="请实时解说我的表情和动作" data-prompt="请实时解说我的表情和动作">
                                 <span class="prompt-preset-copy">
                                     <span class="zh">请实时解说我的表情和动作</span>
-                                    <span class="en">Describe my facial expressions and movements in real time</span>
+                                    <span class="en">实时描述我的面部表情与动作</span>
                                 </span>
                                 <span class="check">✓</span>
                             </button>
@@ -1018,7 +1018,7 @@ limitations under the License.
                 cameraSelect.innerHTML = '';
 
                 if (videoDevices.length === 0) {
-                    cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+                    cameraSelect.innerHTML = '<option value="">未找到摄像头</option>';
                     return;
                 }
 
@@ -1035,7 +1035,7 @@ limitations under the License.
                 console.log(`Found ${videoDevices.length} camera(s)`);
             } catch (err) {
                 console.error('Error enumerating cameras:', err);
-                document.getElementById('cameraSelect').innerHTML = '<option value="">Error detecting cameras</option>';
+                document.getElementById('cameraSelect').innerHTML = '<option value="">检测摄像头时出错</option>';
             }
         }
 
@@ -1337,7 +1337,7 @@ limitations under the License.
 
                 if (response.ok) {
                     const info = data.stream_info;
-                    statusDiv.innerHTML = `✅ Connected!<br>${info.codec} ${info.width}x${info.height} @${info.fps}fps`;
+                    statusDiv.innerHTML = `✅ 已连接！<br>${info.codec} ${info.width}x${info.height} @${info.fps}fps`;
                     statusDiv.style.color = '#76b900';
 
                     // Stop the test connection after 2 seconds
@@ -3416,11 +3416,11 @@ limitations under the License.
             if (theme === 'light') {
                 document.body.classList.add('light-theme');
                 themeIcon.innerHTML = '<i data-lucide="sun"></i>';
-                themeText.textContent = 'Light';
+                themeText.textContent = '浅色';
             } else if (theme === 'dark') {
                 document.body.classList.remove('light-theme');
                 themeIcon.innerHTML = '<i data-lucide="moon"></i>';
-                themeText.textContent = 'Dark';
+                themeText.textContent = '深色';
             } else { // 'auto' - follow OS preference
                 const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
                 if (prefersLight) {
@@ -3430,7 +3430,7 @@ limitations under the License.
                 }
                 // Always show monitor icon for AUTO mode
                 themeIcon.innerHTML = '<i data-lucide="monitor"></i>';
-                themeText.textContent = 'Auto';
+                themeText.textContent = '自动';
             }
             lucide.createIcons();
 
@@ -3774,7 +3774,7 @@ limitations under the License.
                 lines.push(`输出：${liveResponse}`);
             }
 
-            return lines.slice(-4).join('\n') || 'Ready';
+            return lines.slice(-4).join('\n') || '就绪';
         }
 
         // ESC key to exit fullscreen
@@ -3870,7 +3870,7 @@ limitations under the License.
             cancelRevealVideoFallback();
             revealVideoAfterMetricsToken = null;
             setVideoWaitingForStream(false);
-            updateStatus('Streaming', 'connected');
+            updateStatus('推流中', 'connected');
         }
 
         function showProcessedVideoStream(stream, token) {
@@ -3886,7 +3886,7 @@ limitations under the License.
                 isAnalysisRunning = true;
                 updatePromptAvailability();
                 if (revealVideoAfterMetricsToken === token) {
-                    updateStatus('Preparing first metrics...', 'processing');
+                    updateStatus('正在准备首批指标…', 'processing');
                     cancelRevealVideoFallback();
                     revealVideoFallbackTimeout = setTimeout(() => {
                         revealVideoWhenReady(token);
@@ -4014,7 +4014,7 @@ limitations under the License.
                     api_base: apiBaseUrl.value.trim(),
                     api_key: apiKey.value.trim()
                 }));
-                updateStatus('Model configured', 'connected');
+                updateStatus('模型已配置', 'connected');
             }
 
             // Trigger flash animation
@@ -4244,7 +4244,7 @@ limitations under the License.
                 }
                 const answer = await response.json();
                 await btListenPeerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                updateStatus('BT listening', 'connected');
+                updateStatus('BT 监听中', 'connected');
                 setBtListeningActive(true);
             } catch (error) {
                 console.error('Error starting BT listening:', error);
@@ -4290,7 +4290,7 @@ limitations under the License.
                     console.warn('BT listening stop failed:', error);
                 }
             }
-            updateStatus('Connected', 'connected');
+            updateStatus('已连接', 'connected');
         }
         function syncSpeechButtons() {
             const pressMode = isPressToTalkLayout();
@@ -4633,7 +4633,7 @@ limitations under the License.
                 if (asrWs !== ws) {
                     return;
                 }
-                updateStatus('ASR connection failed', 'disconnected');
+                updateStatus('ASR 连接失败', 'disconnected');
                 stopSpeech({ sendEnd: false, sendPrompt: false });
                 updatePromptAvailability();
             };
@@ -5742,7 +5742,7 @@ limitations under the License.
 
         function startJarvisStatusPoll() {
             if (_jarvisPollTimer) return;
-            updateStatus('Connected', 'connected');
+            updateStatus('已连接', 'connected');
             _jarvisPollTimer = setInterval(pollJarvisStatus, 1000);
         }
 
