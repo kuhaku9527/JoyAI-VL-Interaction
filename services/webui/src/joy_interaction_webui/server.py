@@ -10,40 +10,10 @@ import base64
 import io
 import json
 import logging
-import time as _time_for_accesslog
-import os as _os_for_accesslog  # access log path
-
-_access_logger = logging.getLogger("joyai.access")
-if not _access_logger.handlers:
-    # Default: write one JSONL per line to logs/webui-access-<UTC>.log (rotated daily
-    # by launcher path). No-op if logs/ cannot be created. Format: one JSON
-    # object per request with ts, method, path, status, latency_ms.
-    _log_dir = _os_for_accesslog.path.join(_os_for_accesslog.path.dirname(_os_for_accesslog.path.abspath(__file__)), "..", "..", "..", "logs")
-    try:
-        _os_for_accesslog.makedirs(_log_dir, exist_ok=True)
-        _ts = _os_for_accesslog.path.join(_log_dir, ("webui-access-" + _time_for_accesslog.strftime("%Y-%m-%d", _time_for_accesslog.gmtime()) + ".log"))
-        _fh = logging.FileHandler(_ts, encoding="utf-8")
-        _fh.setFormatter(logging.Formatter("%(message)s"))
-        _access_logger.addHandler(_fh)
-        _access_logger.setLevel(logging.INFO)
-    except OSError:
-        pass  # access log is best-effort; do not break the webui if logs/ is unwritable
 import os
 import sys
 import time
 import uuid
-
-# Fix double-module-load bug: when run via `python -m joy_interaction_webui.server`,
-# Python executes this file as __main__ and *also* registers a separate module
-# instance under the dotted name when jarvis_session.py does
-# `from .server import notify_session_llm_reply`. Those two instances have
-# *independent globals* (separate session_websockets, websockets, ...), so
-# websocket_handler writes to one dict while notify_session_llm_reply reads
-# from the other, silently dropping every LLM reply.
-# Aliasing __main__ under the dotted name makes downstream `from .server import ...`
-# resolve to the SAME module instance. See doc/subsystems/jarvis-mode.md changelog v3.22.
-if __name__ == "__main__":
-    sys.modules.setdefault("joy_interaction_webui.server", sys.modules["__main__"])
 from collections import defaultdict
 
 import aiohttp
@@ -60,6 +30,41 @@ from .jarvis_session import JarvisSessionManager
 from .local_file_server import setup_local_file_routes
 from .tts import setup_tts_routes
 from .vlm_service import VLMService
+
+# Access logging (best-effort; never breaks the webui if logs/ is unwritable)
+_access_logger = logging.getLogger("joyai.access")
+if not _access_logger.handlers:
+    _log_dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "..",
+        "logs",
+    )
+    try:
+        os.makedirs(_log_dir, exist_ok=True)
+        _ts = os.path.join(
+            _log_dir,
+            "webui-access-" + time.strftime("%Y-%m-%d", time.gmtime()) + ".log",
+        )
+        _fh = logging.FileHandler(_ts, encoding="utf-8")
+        _fh.setFormatter(logging.Formatter("%(message)s"))
+        _access_logger.addHandler(_fh)
+        _access_logger.setLevel(logging.INFO)
+    except OSError as _e:
+        _access_logger.debug("access log file unavailable: %s", _e)
+
+# Fix double-module-load bug: when run via `python -m joy_interaction_webui.server`,
+# Python executes this file as __main__ and *also* registers a separate module
+# instance under the dotted name when jarvis_session.py does
+# `from .server import notify_session_llm_reply`. Those two instances have
+# *independent globals* (separate session_websockets, websockets, ...), so
+# websocket_handler writes to one dict while notify_session_llm_reply reads
+# from the other, silently dropping every LLM reply.
+# Aliasing __main__ under the dotted name makes downstream `from .server import ...`
+# resolve to the SAME module instance. See doc/subsystems/jarvis-mode.md changelog v3.22.
+if __name__ == "__main__":
+    sys.modules.setdefault("joy_interaction_webui.server", sys.modules["__main__"])
 
 # Background task registry: keep strong refs to fire-and-forget tasks so they
 # are not garbage-collected before completion (satisfies ruff RUF006).
@@ -1233,7 +1238,7 @@ def main():
         # One JSONL line per HTTP request. PII: do NOT log message bodies,
         # only the path + method + status + latency. WebSocket upgrades are
         # recorded at the upgrade point (status 101) but not per frame.
-        t0 = _time_for_accesslog.perf_counter()
+        t0 = time.perf_counter()
         status = 500
         try:
             response = await handler(request)
@@ -1242,16 +1247,21 @@ def main():
         finally:
             try:
                 latency_ms = int((time.perf_counter() - t0) * 1000)
-                line = json.dumps({
-                    "ts": _time_for_accesslog.strftime("%Y-%m-%dT%H:%M:%SZ", _time_for_accesslog.gmtime()),
-                    "method": request.method,
-                    "path": request.path,
-                    "status": status,
-                    "latency_ms": latency_ms,
-                }, ensure_ascii=False)
+                line = json.dumps(
+                    {
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "method": request.method,
+                        "path": request.path,
+                        "status": status,
+                        "latency_ms": latency_ms,
+                    },
+                    ensure_ascii=False,
+                )
                 _access_logger.info(line)
-            except Exception:
-                pass  # never let logging fail a request
+            except Exception as _e:
+                _access_logger.debug(
+                    "access log skipped: %s", _e
+                )  # never let logging fail a request
 
     app = web.Application(middlewares=[access_log_middleware, security_headers_middleware])
     app.router.add_get("/", _index_handler)
