@@ -109,9 +109,11 @@ jobs:
   # (VLM/ASR/TTS/Hermes/background-agent 等) 在 CI 未起 -> [DOWN] 不计 fail
   # （沿用 check_port 语义）。详见 doc/adr/0015-drift-gate-runtime-v2.1.md 与
   # doc/specs/drift-gate-runtime-v2.1-spec.md。
+  # 注意：本 job 刻意「不 needs drift-gate」，与静态门禁并行独立跑——
+  # 避免因上游红而被 skipped（之前 needs 链导致 runtime 门禁从未在 CI 真跑过，
+  # 见 PR #53 run 30703927856）。两者正交：静态(--ci) vs 运行时(全量)。
   drift-gate-runtime:
     runs-on: ubuntu-latest
-    needs: [drift-gate]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.12
