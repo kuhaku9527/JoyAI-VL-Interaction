@@ -305,3 +305,78 @@ async def test_circuit_breaker_cooldown_expires(monkeypatch):
         assert c._circuit_open() is True, "probe failure should re-open"
     finally:
         monkeypatch.setattr(msc.time, "monotonic", real_mono)
+
+
+# ---------------------------------------------------------------------------
+# T-03 / T-05 observability coverage (2026-08-02) — added by QA.
+# These exercise the fail-closed default URL and the circuit-breaker
+# observability surfaced via health_snapshot().
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_health_snapshot_includes_observability_keys():
+    """health_snapshot() must surface the T-05 observability keys."""
+    c = MemoryStoreClient(base_url="http://x")
+    snap = c.health_snapshot()
+    assert isinstance(snap["circuit_open"], bool)
+    assert isinstance(snap["failure_count"], int)
+    assert isinstance(snap["cooldown_remaining_s"], (float, int))
+    assert isinstance(snap["last_push"], dict)
+    assert "count" in snap["last_push"] and "at" in snap["last_push"]
+    assert isinstance(snap["last_failure"], dict)
+    assert "at" in snap["last_failure"] and "error" in snap["last_failure"]
+
+
+@pytest.mark.asyncio
+async def test_default_base_url_is_8997_and_warns(monkeypatch, caplog):
+    """No base_url and no MEMORY_STORE_URL env -> default 8997 + WARNING."""
+    import logging
+
+    monkeypatch.delenv("MEMORY_STORE_URL", raising=False)
+    with caplog.at_level(logging.WARNING, logger="streaming_infer_adapter.memory_client"):
+        c = MemoryStoreClient()
+    assert c.base_url == "http://127.0.0.1:8997"
+    assert any("falling back to DEFAULT_BASE_URL" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_record_failure_captures_error_and_opens_circuit(monkeypatch):
+    """>=3 consecutive failures capture the error and trip the breaker OPEN."""
+
+    async def fake_get_client(self):
+        raise httpx.ConnectError("network down")
+
+    monkeypatch.setattr(MemoryStoreClient, "_get_client", fake_get_client)
+    c = MemoryStoreClient(base_url="http://x")
+
+    # 3 consecutive failures trip the breaker (threshold is 3).
+    assert await c.recall("q1") == []
+    assert await c.warmup("s1") == []
+    assert await c.push("s1", [{"content": "x"}]) == 0
+
+    snap = c.health_snapshot()
+    assert snap["circuit_open"] is True
+    assert snap["failure_count"] >= 3
+    assert snap["last_failure"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_push_records_last_push(monkeypatch):
+    """A successful push records the count + timestamp in health_snapshot()."""
+
+    def handler(method, url, body):
+        return _ok({"pushed": 3, "ids": ["a", "b", "c"]})
+
+    async def fake_get_client(self):
+        return _FakeAsyncClient(handler)
+
+    monkeypatch.setattr(MemoryStoreClient, "_get_client", fake_get_client)
+    c = MemoryStoreClient(base_url="http://x")
+
+    n = await c.push("s1", [{"content": "a"}, {"content": "b"}, {"content": "c"}])
+    assert n == 3
+
+    snap = c.health_snapshot()
+    assert snap["last_push"]["count"] == 3
+    assert snap["last_push"]["at"]
