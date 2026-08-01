@@ -1263,8 +1263,13 @@ def main():
                     "access log skipped: %s", _e
                 )  # never let logging fail a request
 
+    async def _health_handler(request):
+        # Liveness probe for the drift-gate-runtime CI job (Drift Gate v2.1 阶段A)
+        return web.json_response({"status": "ok"})
+
     app = web.Application(middlewares=[access_log_middleware, security_headers_middleware])
     app.router.add_get("/", _index_handler)
+    app.router.add_get("/health", _health_handler)
     app.router.add_get("/models", _models_handler)
     app.router.add_get("/detect-services", _detect_services_handler)
     app.router.add_get("/api/services/config", _services_config_handler)
