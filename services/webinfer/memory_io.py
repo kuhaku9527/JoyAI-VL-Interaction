@@ -10,12 +10,52 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 from typing import Any
 
 from adapter_types import SessionState
 from response_format import archive_chunk_response_records
+
+# --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
+try:
+
+    def _ensure_event_json_importable() -> None:
+        """Put ``services/common`` on ``sys.path`` by walking up from this file.
+
+        Returns without inserting if the shared emitter cannot be located;
+        the subsequent import then raises ImportError, which is caught below
+        and downgraded to a logged no-op (约法三章: not silent, just not fatal).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return
+            cur = parent
+
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except ImportError:
+    logging.getLogger(__name__).warning(
+        "event_json emitter unavailable; JSONL event emission disabled "
+        "(packaged build without services/common on path?)"
+    )
+
+    def emit_event(*_args, **_kwargs):
+        """No-op fallback used only when the shared emitter is unavailable.
+
+        Logged once above (not silent) per 约法三章 - never swallow the failure.
+        """
+        return None
+
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
@@ -206,6 +246,13 @@ class MemoryIOMixin:
             try:
                 wiki_blocks = await self._memory_wiki_recall(state, question)
             except Exception as exc:  # fail-open: never raise
+                emit_event(
+                    "webinfer",
+                    "wiki_recall_fail",
+                    level="warn",
+                    session_id=state.session_id,
+                    extra={"error_type": type(exc).__name__, "context": "background_schedule"},
+                )
                 LOGGER.warning(
                     "wiki background recall failed for %s: %s",
                     state.session_id,
@@ -250,8 +297,22 @@ class MemoryIOMixin:
                 namespaces=settings["namespaces"],
             )
         except Exception as exc:  # fail-open: any error logs a warning, never raises
+            emit_event(
+                "webinfer",
+                "wiki_recall_fail",
+                level="warn",
+                session_id=state.session_id,
+                extra={"error_type": type(exc).__name__},
+            )
             LOGGER.warning("local-wiki recall failed: %s", exc)
             return []
+        emit_event(
+            "webinfer",
+            "wiki_recall",
+            level="info",
+            session_id=state.session_id,
+            extra={"blocks": len(blocks)},
+        )
         # The wiki recall goes through the namespace filter at the backend
         # level — see ``MemoryStoreClient.recall``'s ``session_id`` arg and
         # ``/v1/blocks/recall``'s ``filter.namespaces`` field. When the

@@ -30,12 +30,52 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 import time
 from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+
+# --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
+try:
+
+    def _ensure_event_json_importable() -> None:
+        """Put ``services/common`` on ``sys.path`` by walking up from this file.
+
+        Returns without inserting if the shared emitter cannot be located;
+        the subsequent import then raises ImportError, which is caught below
+        and downgraded to a logged no-op (约法三章: not silent, just not fatal).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return
+            cur = parent
+
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except ImportError:
+    logging.getLogger(__name__).warning(
+        "event_json emitter unavailable; JSONL event emission disabled "
+        "(packaged build without services/common on path?)"
+    )
+
+    def emit_event(*_args, **_kwargs):
+        """No-op fallback used only when the shared emitter is unavailable.
+
+        Logged once above (not silent) per 约法三章 - never swallow the failure.
+        """
+        return None
+
 
 LOGGER = logging.getLogger("streaming_infer_adapter.memory_client")
 
@@ -121,6 +161,14 @@ class MemoryStoreClient:
     def _record_failure(self) -> None:
         self._cb_failure_count += 1
         if self._cb_failure_count >= self._CB_FAILURE_THRESHOLD:
+            if self._cb_open_until_monotonic == 0.0:
+                # transition closed -> open: emit exactly once per open window
+                emit_event(
+                    "webinfer",
+                    "circuit_breaker_open",
+                    level="warn",
+                    extra={"failures_count": self._cb_failure_count},
+                )
             self._cb_open_until_monotonic = time.monotonic() + self._CB_COOLDOWN_S
             LOGGER.warning(
                 "memory-store circuit OPEN for %.0fs after %d failures",
@@ -130,6 +178,12 @@ class MemoryStoreClient:
 
     def _record_success(self) -> None:
         if self._cb_failure_count:
+            emit_event(
+                "webinfer",
+                "circuit_breaker_close",
+                level="info",
+                extra={"prior_failures": self._cb_failure_count},
+            )
             LOGGER.info(
                 "memory-store circuit CLOSED after %d prior failure(s)",
                 self._cb_failure_count,
@@ -330,9 +384,18 @@ class MemoryStoreClient:
             return 0
         self._record_success()
         try:
-            return int(resp.json().get("pushed", 0))
+            pushed = int(resp.json().get("pushed", 0))
         except ValueError:
             return 0
+        if pushed:
+            emit_event(
+                "webinfer",
+                "push_memory",
+                level="info",
+                session_id=session_id,
+                extra={"pushed": pushed},
+            )
+        return pushed
 
     async def push_block(
         self,

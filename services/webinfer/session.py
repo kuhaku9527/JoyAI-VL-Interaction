@@ -13,6 +13,7 @@ import copy
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,45 @@ from request_parsing import _read_json, _request_session_id, _safe_session_id
 from response_format import _openai_error_response, archive_chunk_response_records
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
+
+# --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
+try:
+
+    def _ensure_event_json_importable() -> None:
+        """Put ``services/common`` on ``sys.path`` by walking up from this file.
+
+        Returns without inserting if the shared emitter cannot be located;
+        the subsequent import then raises ImportError, which is caught below
+        and downgraded to a logged no-op (约法三章: not silent, just not fatal).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return
+            cur = parent
+
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except ImportError:
+    logging.getLogger(__name__).warning(
+        "event_json emitter unavailable; JSONL event emission disabled "
+        "(packaged build without services/common on path?)"
+    )
+
+    def emit_event(*_args, **_kwargs):
+        """No-op fallback used only when the shared emitter is unavailable.
+
+        Logged once above (not silent) per 约法三章 - never swallow the failure.
+        """
+        return None
 
 
 class SessionMixin:
@@ -64,6 +104,7 @@ class SessionMixin:
                 state.debug_input_dir,
                 state.session_frame_dir,
             )
+            emit_event("webinfer", "session_start", level="info", session_id=session_id)
         state.last_access = time.time()
         return state
 
@@ -79,6 +120,13 @@ class SessionMixin:
                     job["task"].cancel()
                 expired_states.append(state)
                 LOGGER.info("Expired session %s (idle %.0fs)", sid, now - state.last_access)
+                emit_event(
+                    "webinfer",
+                    "session_end",
+                    level="info",
+                    session_id=sid,
+                    extra={"reason": "expired", "idle_seconds": round(now - state.last_access)},
+                )
         return expired_states
 
     async def _session_cleanup_loop(self) -> None:
@@ -185,6 +233,14 @@ class SessionMixin:
         else:
             pushed = 0
         removed = removed_state is not None
+        if removed:
+            emit_event(
+                "webinfer",
+                "session_end",
+                level="info",
+                session_id=session_id,
+                extra={"reason": "reset", "pushed": pushed},
+            )
         return web.json_response(
             {
                 "ok": True,

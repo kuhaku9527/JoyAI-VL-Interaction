@@ -14,7 +14,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sqlite3
+import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +28,46 @@ from ..models import MemoryBlock, RecallFilter
 from ..vector_index import VectorIndexStore
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
+try:
+
+    def _ensure_event_json_importable() -> None:
+        """Put ``services/common`` on ``sys.path`` by walking up from this file.
+
+        Returns without inserting if the shared emitter cannot be located;
+        the subsequent import then raises ImportError, which is caught below
+        and downgraded to a logged no-op (约法三章: not silent, just not fatal).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return
+            cur = parent
+
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except ImportError:
+    logging.getLogger(__name__).warning(
+        "event_json emitter unavailable; JSONL event emission disabled "
+        "(packaged build without services/common on path?)"
+    )
+
+    def emit_event(*_args, **_kwargs):
+        """No-op fallback used only when the shared emitter is unavailable.
+
+        Logged once above (not silent) per 约法三章 - never swallow the failure.
+        """
+        return None
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memory_blocks (
@@ -106,7 +148,16 @@ class SqliteBackend:
         embedder: BgeM3Embedder | None = None,
     ):
         self._path = path
-        self._conn = _connect(path)
+        try:
+            self._conn = _connect(path)
+        except Exception as exc:
+            emit_event(
+                "memory-store",
+                "backend_startup_fail",
+                level="error",
+                extra={"path": path, "error_type": type(exc).__name__},
+            )
+            raise
         self._lock = asyncio.Lock()
         default_vec_dir = str(Path(path).parent / "vec")
         self._vectors = VectorIndexStore(vec_dir or default_vec_dir)
@@ -127,8 +178,18 @@ class SqliteBackend:
         """Persist a batch of memory blocks; returns the count stored."""
         if not blocks:
             return 0
-        async with self._lock:
-            await asyncio.to_thread(self._push_sync, session_id, blocks)
+        try:
+            async with self._lock:
+                await asyncio.to_thread(self._push_sync, session_id, blocks)
+        except sqlite3.Error as exc:
+            emit_event(
+                "memory-store",
+                "backend_query_error",
+                level="error",
+                session_id=session_id,
+                extra={"op": "push", "error_type": type(exc).__name__},
+            )
+            raise
         return len(blocks)
 
     def _push_sync(self, session_id: str, blocks: list[MemoryBlock]) -> None:
@@ -251,10 +312,23 @@ class SqliteBackend:
         min_similarity: float = 0.25,
     ) -> list[MemoryBlock]:
         """Recall the top-k blocks for ``query`` (vector path, else FTS5)."""
-        async with self._lock:
-            return await asyncio.to_thread(
-                self._recall_sync, query, top_k, min_score, flt, min_similarity
+        try:
+            async with self._lock:
+                return await asyncio.to_thread(
+                    self._recall_sync, query, top_k, min_score, flt, min_similarity
+                )
+        except sqlite3.Error as exc:
+            emit_event(
+                "memory-store",
+                "backend_query_error",
+                level="error",
+                extra={
+                    "op": "recall",
+                    "error_type": type(exc).__name__,
+                    "query_chars": len(query or ""),
+                },
             )
+            raise
 
     def _expand_namespaces(self, namespaces: list[str]) -> list[str]:
         """Expand ``wiki:*``-style wildcards against existing namespaces."""

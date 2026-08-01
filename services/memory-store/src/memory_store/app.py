@@ -39,6 +39,45 @@ if not logger.handlers:
     logger.setLevel(os.getenv("MEMORY_LOG_LEVEL", "INFO"))
 
 
+# --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
+try:
+
+    def _ensure_event_json_importable() -> None:
+        """Put ``services/common`` on ``sys.path`` by walking up from this file.
+
+        Returns without inserting if the shared emitter cannot be located;
+        the subsequent import then raises ImportError, which is caught below
+        and downgraded to a logged no-op (约法三章: not silent, just not fatal).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return
+            cur = parent
+
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except ImportError:
+    logging.getLogger(__name__).warning(
+        "event_json emitter unavailable; JSONL event emission disabled "
+        "(packaged build without services/common on path?)"
+    )
+
+    def emit_event(*_args, **_kwargs):
+        """No-op fallback used only when the shared emitter is unavailable.
+
+        Logged once above (not silent) per 约法三章 - never swallow the failure.
+        """
+        return None
+
+
 def _build_sqlite_backend() -> SqliteBackend:
     """Assemble sqlite backend with wiki dependencies (embedder, vec dir)."""
     name = os.getenv("MEMORY_BACKEND", "sqlite").lower()
@@ -62,6 +101,12 @@ app.state.embedder = (
     app.state.backend.embedder if isinstance(app.state.backend, SqliteBackend) else None
 )
 logger.info("memory-store v%s loaded backend=%s", __version__, app.state.backend.name())
+emit_event(
+    "memory-store",
+    "backend_switch",
+    level="info",
+    extra={"version": __version__, "backend": app.state.backend.name()},
+)
 
 
 @asynccontextmanager
@@ -137,6 +182,13 @@ async def push_blocks(req: PushRequest) -> PushResponse:
         pushed = await backend.push(req.session_id, req.blocks)
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    emit_event(
+        "memory-store",
+        "block_push",
+        level="info",
+        session_id=req.session_id,
+        extra={"pushed": pushed},
+    )
     return PushResponse(pushed=pushed, session_id=req.session_id)
 
 
@@ -153,6 +205,12 @@ async def recall_blocks(req: RecallRequest) -> RecallResponse:
             blocks = await backend.recall(req.query, req.top_k, req.min_score, req.filter)
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    emit_event(
+        "memory-store",
+        "block_recall",
+        level="info",
+        extra={"query_chars": len(req.query or ""), "results": len(blocks)},
+    )
     return RecallResponse(blocks=blocks)
 
 
@@ -339,6 +397,12 @@ def main() -> int:
         probe.bind((host, port))
     except OSError as exc:
         logger.error("memory-store cannot bind %s:%s: %s", host, port, exc)
+        emit_event(
+            "memory-store",
+            "startup_fail",
+            level="error",
+            extra={"stage": "bind", "host": host, "port": port},
+        )
         probe.close()
         return 2
     probe.close()
@@ -353,6 +417,12 @@ def main() -> int:
         return 0
     except OSError as exc:
         logger.error("memory-store failed to start: %s", exc)
+        emit_event(
+            "memory-store",
+            "startup_fail",
+            level="error",
+            extra={"stage": "start", "host": host, "port": port},
+        )
         return 2
 
 
