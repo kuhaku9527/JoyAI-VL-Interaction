@@ -129,6 +129,18 @@ class BgeM3Embedder:
         if self.provider == "none":
             return False
         if self.provider == "local":
+            # Fail-open: still report available so callers attempt embedding,
+            # but warn loudly if the local weights path is missing. A missing
+            # or wrong EMBEDDING_LOCAL_MODEL is silent config drift (FA-4)
+            # that otherwise only surfaces as empty recall -- never crash here.
+            model_path = os.getenv("EMBEDDING_LOCAL_MODEL", "")
+            if model_path and os.path.isdir(model_path):
+                return True
+            _LOGGER.warning(
+                "local provider selected but EMBEDDING_LOCAL_MODEL=%r is unset or "
+                "not a directory; embedding will fail to load weights",
+                model_path or "(unset)",
+            )
             return True
         return bool(self.api_key)
 
