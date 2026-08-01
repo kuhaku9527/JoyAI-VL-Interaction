@@ -37,6 +37,33 @@ check_port() {  # $1=标签 $2=端口 $3=预期(可选,用于 drift 判定)
   fi
 }
 
+# ---- 废弃端口反向断言 (DRIFT-2 拦截点, D-010 端口铁律) --------------------
+check_port_absent() {  # $1=标签 $2=端口  —— 反向断言：废弃端口不得有任何监听(DRIFT-2 拦截)
+  local label="$1" port="$2" listening=0 probe_rc=1
+  # 裸 TCP 连接探测(不依赖 HTTP /health)：连得上=有监听(违例,FAIL)，连不上(连接被拒)=DOWN(期望,PASS)。
+  # 不能用 curl /health 探测(裸 TCP 监听不返回 HTTP 200，会被误判 absent)；git-bash 的 /dev/tcp 重定向
+  # 在连接被拒时也不报错，不可用；git-bash 的 `python` 是 localhost 连接超时的残缺别名，故优先 python3
+  # (托管 3.13.12，git-bash/Linux CI 均可正常 connect)，回退 curl 退出码(7=被拒)。
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', int(sys.argv[1]))); s.close()" "$port" >/dev/null 2>&1; probe_rc=$?
+  elif command -v python >/dev/null 2>&1; then
+    python -c "import socket,sys; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', int(sys.argv[1]))); s.close()" "$port" >/dev/null 2>&1; probe_rc=$?
+  elif command -v curl >/dev/null 2>&1; then
+    # curl 退出码 7=连接被拒(无监听)；其余(0/28/52)=连上某服务
+    curl -s -o /dev/null -w "%{http_code}" --connect-timeout 1 "http://127.0.0.1:${port}/" >/dev/null 2>&1; probe_rc=$?
+    [ $probe_rc -ne 7 ] && probe_rc=0 || probe_rc=1
+  fi
+  # probe_rc==0 表示连上了某监听(违例)；非0 表示探测失败/无监听(视为 absent，fail-open)
+  [ "$probe_rc" -eq 0 ] && listening=1
+  if [ "$listening" -eq 1 ]; then
+    echo "[FAIL]  $label  :$port  unexpected listener (drift)"
+    fail=$((fail+1)); return 1
+  else
+    echo "[PASS]  $label  :$port  absent (good)"
+    pass=$((pass+1)); return 0
+  fi
+}
+
 # ---- 文本断言 ---------------------------------------------------------------
 grep_file() {  # $1=标签 $2=文件 $3=pattern $4=期望命中(0/非0) $5=drift判定(y/n)
   local label="$1" file="$2" pat="$3" expect="$4" isdrift="${5:-n}"
@@ -70,6 +97,9 @@ check_port "D-045 ASR :8993"                8993
 check_port "D-047 TTS :8985"                8985
 check_port "D-048 Hermes :8642"             8642
 check_port "D-049 background-agent :8079"   8079
+
+# D-010 端口铁律 + DRIFT-2：memory-store 决策态监听 :8997；废弃 :8996 必须 DOWN。
+check_port_absent "D-010 deprecated :8996 must be down" 8996
 
 # ---- D-022 VLM n_ctx 运行态 (决策态 16384) --------------------------------
 LATEST_LOG=$(ls -t logs/llama-main.log 2>/dev/null | head -1)
