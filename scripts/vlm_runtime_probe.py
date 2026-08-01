@@ -33,6 +33,29 @@ import urllib.request
 from pathlib import Path
 
 
+# --- ADR-0014 JSONL event emission bootstrap (best-effort, never crashes) ---
+try:
+    import os
+    def _ensure_event_json_importable():
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return common
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return None
+            cur = parent
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except Exception:
+    def emit_event(*_args, **_kwargs):
+        return None
+
+
 def http_get_json(url: str, timeout: float = 3.0):
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -123,6 +146,7 @@ def main() -> int:
     except OSError as exc:
         print(f"[WARN] failed to write probe history: {exc}", file=sys.stderr)
     n_ctx = snapshot.get("n_ctx")
+    emit_event("vllm-llama", "n_ctx_check", level="info", extra={"n_ctx": n_ctx})
     print(f"wrote {out}  n_ctx={n_ctx}")
     return 0 if n_ctx is not None else 3
 

@@ -12,7 +12,7 @@
 
   Forward-compatible with the Q2 logging spec (ADR-0014): when
   logs/events/*.jsonl exists (or -Jsonl is forced), lines are parsed as JSON
-  events and rendered as "ts | service | event | msg".
+  events and rendered as "ts | service | event | level | extra" per ADR-0014.
 
   Requires PowerShell 7+ (pwsh). Multi-file real-time follow is not supported
   on Windows PowerShell 5.1.
@@ -47,6 +47,7 @@ $colorMap = @{
     "memory-store" = "Cyan"
     "webinfer"     = "Magenta"
     "llama-main"   = "Yellow"
+    "vllm-llama"   = "Yellow"
     "asr"          = "DarkYellow"
     "kws"          = "DarkCyan"
     "tts"          = "DarkGreen"
@@ -121,6 +122,12 @@ if ($useJsonl) {
     $eventFiles = @()
     if (Test-Path $eventsDir) {
         $eventFiles = @(Get-ChildItem -Path $eventsDir -Filter "*.jsonl" -File | Select-Object -ExpandProperty FullName)
+        if ($Services.Count -gt 0) {
+            $eventFiles = @($eventFiles | Where-Object {
+                $svcName = ($_.BaseName -split '-')[0]
+                $Services -contains $svcName
+            })
+        }
     }
     if ($eventFiles.Count -eq 0) {
         Write-Host "[tail_logs] JSONL dir not present; falling back to text mode." -ForegroundColor DarkGray
@@ -136,17 +143,26 @@ if ($useJsonl) {
         Get-Content -Path $eventFiles -Wait:(-not $Once) -Tail $Tail | ForEach-Object {
             $raw = $_
             try { $ev = $raw | ConvertFrom-Json } catch { Write-Host $raw -ForegroundColor DarkGray; return }
-            $ts = if ($ev.ts) { $ev.ts } else { "" }
+            $ts  = if ($ev.ts) { $ev.ts } else { "" }
             $svc = if ($ev.service) { $ev.service } else { "?" }
             $evt = if ($ev.event) { $ev.event } else { "" }
-            $msg = if ($ev.extra -and $ev.extra.msg) { $ev.extra.msg } elseif ($ev.msg) { $ev.msg } else { "" }
+            $lvl = if ($ev.level) { $ev.level } else { "info" }
+            # ADR-0014 has no top-level 'msg'; surface the optional 'extra' payload
+            # as a compact one-liner so events stay readable.
+            $msg = ""
+            if ($ev.extra) {
+                try { $msg = ($ev.extra | ConvertTo-Json -Compress -Depth 4) } catch { $msg = "$($ev.extra)" }
+            }
             if ($cutoff -and $ts) {
                 try { if ([datetime]::Parse($ts) -lt $cutoff) { return } } catch { }
             }
-            if ($Filter -and ($msg -notmatch $Filter) -and ($evt -notmatch $Filter)) { return }
+            if ($Filter -and ($msg -notmatch $Filter) -and ($evt -notmatch $Filter) -and ($lvl -notmatch $Filter)) { return }
             $col = ColorFor $svc
-            $line = "{0} | {1} | {2} | {3}" -f $ts, $svc, $evt, $msg
-            if ($evt -match 'error') { $col = "Red" } elseif ($evt -match 'warn') { $col = "Yellow" }
+            if ($lvl -match 'error|critical') { $col = "Red" }
+            elseif ($lvl -match 'warn') { $col = "Yellow" }
+            elseif ($lvl -match 'debug') { $col = "DarkGray" }
+            elseif ($lvl -match 'info') { $col = "Gray" }
+            $line = "{0} | {1} | {2} | {3} | {4}" -f $ts, $svc, $evt, $lvl, $msg
             Write-Host $line -ForegroundColor $col
         }
     } finally {
