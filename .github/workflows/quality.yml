@@ -93,6 +93,15 @@ jobs:
         working-directory: services/webui
         run: ruff format --check .
 
+  drift-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run decision-contract checks (static subset, fail-closed)
+        # D-019 v2 轻量门禁：仅跑静态 grep 子集（不需起服务），
+        # 任一 [FAIL] 即非零退出、阻断合并；运行时/端口检查 fail-open（需起服务，本地跑）。
+        run: bash scripts/verify.sh --ci
+
   package-smoke:
     runs-on: ubuntu-latest
     steps:
