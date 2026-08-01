@@ -6,7 +6,8 @@
 # 只读、不改任何文件。输出 [PASS]/[FAIL]/[DRIFT] 表格 + 汇总。
 #
 # 用法:
-#   bash scripts/verify.sh            # 全部校验
+#   bash scripts/verify.sh            # 全部校验(端口+运行时+静态)
+#   bash scripts/verify.sh --ci       # CI 模式：仅静态 grep 子集(fail-closed)，跳过端口/运行时
 #   bash scripts/verify.sh --quiet    # 仅列出非 PASS 项
 #
 # 注意: 端口校验依赖服务当前是否在运行；DOWN 表示该服务此刻未起，
@@ -17,14 +18,22 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-QUIET="${1:-}"
+QUIET=""
+CI_MODE=""
+for _a in "$@"; do
+  case "$_a" in
+    --ci) CI_MODE=1 ;;
+    --quiet) QUIET="--quiet" ;;
+  esac
+done
 pass=0; fail=0; drift=0; down=0
 
 # ---- 端口健康检查 ----------------------------------------------------------
 check_port() {  # $1=标签 $2=端口 $3=预期(可选,用于 drift 判定)
   local label="$1" port="$2"
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:${port}/health" 2>/dev/null || echo "000")
+  code=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:${port}/health" 2>/dev/null)
+  code=${code:-000}
   if [ "$code" = "200" ]; then
     echo "[PASS]  $label  :$port  health=200"
     pass=$((pass+1)); return 0
@@ -44,7 +53,8 @@ grep_file() {  # $1=标签 $2=文件 $3=pattern $4=期望命中(0/非0) $5=drift
     echo "[DOWN]  $label  (文件不存在: $file)"; down=$((down+1)); return 0
   fi
   local n
-  n=$(grep -cE "$pat" "$file" 2>/dev/null || echo 0)
+  n=$(grep -cE "$pat" "$file" 2>/dev/null)
+  n=${n:-0}
   if { [ "$expect" = "0" ] && [ "$n" -eq 0 ]; } || { [ "$expect" != "0" ] && [ "$n" -gt 0 ]; }; then
     echo "[PASS]  $label  ($file 命中 $n)"; pass=$((pass+1)); return 0
   else
@@ -62,6 +72,9 @@ echo " 决策书校验  $(date '+%Y-%m-%d %H:%M')"
 echo "==================================================================="
 
 # ---- L2 服务端口 (D-020/023/032/040/045/047/048/049) ----------------------
+# CI 模式(--ci)跳过运行时/端口检查：它们需服务起停，在 CI 中必为 [DOWN]，
+# 属 fail-open 维度，由本地/运行时 job 负责，不进合并门禁。
+if [ -z "$CI_MODE" ]; then
 check_port "D-020/021 VLM :7060"            7060
 check_port "D-023 webinfer :8070"           8070
 check_port "D-032 webui :8099"              8099
@@ -84,6 +97,9 @@ if [ -n "$LATEST_LOG" ]; then
   fi
 else
   echo "[DOWN]  D-022 无 llama-main.log (VLM 未运行)"; down=$((down+1))
+fi
+else
+  echo "[SKIP]  运行时/端口检查 (--ci 模式跳过；需起服务，属 fail-open)"
 fi
 
 # ---- D-030 webinfer timeout 300 -------------------------------------------
