@@ -1,6 +1,6 @@
 """memory-store v0.2 client.
 
-Thin async wrapper over the memory-store JSON API (port 8996 by default).
+Thin async wrapper over the memory-store JSON API (port 8997 by default).
 All operations are fail-soft: if the upstream is unreachable, calls return
 empty results and log a single warning; the live adapter never raises to
 its caller.
@@ -39,7 +39,7 @@ import httpx
 
 LOGGER = logging.getLogger("streaming_infer_adapter.memory_client")
 
-DEFAULT_BASE_URL = "http://127.0.0.1:8996"
+DEFAULT_BASE_URL = "http://127.0.0.1:8997"
 DEFAULT_TIMEOUT_S = 5.0
 
 
@@ -85,9 +85,16 @@ class MemoryStoreClient:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         enabled: bool = True,
     ) -> None:
+        used_default = base_url is None and not os.environ.get("MEMORY_STORE_URL")
         self.base_url = (base_url or os.environ.get("MEMORY_STORE_URL") or DEFAULT_BASE_URL).rstrip(
             "/"
         )
+        if used_default:
+            LOGGER.warning(
+                "MEMORY_STORE_URL not set and no explicit base_url; falling back to "
+                "DEFAULT_BASE_URL=%s (the real memory-store). Set MEMORY_STORE_URL to be explicit.",
+                self.base_url,
+            )
         self.timeout_s = float(timeout_s)
         self.enabled = bool(enabled)
         # We avoid eagerly opening the client so a misconfigured URL does not
@@ -105,6 +112,12 @@ class MemoryStoreClient:
         # network. A successful call resets the counter and re-closes.
         self._cb_failure_count: int = 0
         self._cb_open_until_monotonic: float = 0.0
+        # Observability (T-05, 2026-08-01): surface silent failures that the
+        # fail-open circuit breaker would otherwise swallow.
+        self._last_push_count: int = 0
+        self._last_push_at: str | None = None
+        self._last_failure_at: str | None = None
+        self._last_error: str | None = None
 
     # Circuit breaker thresholds (module-level constants for easy tuning).
     _CB_FAILURE_THRESHOLD = 3
@@ -118,14 +131,18 @@ class MemoryStoreClient:
         """
         return self._cb_open_until_monotonic > time.monotonic()
 
-    def _record_failure(self) -> None:
+    def _record_failure(self, error: str | None = None) -> None:
         self._cb_failure_count += 1
+        self._last_failure_at = _now_iso()
+        if error:
+            self._last_error = str(error)
         if self._cb_failure_count >= self._CB_FAILURE_THRESHOLD:
             self._cb_open_until_monotonic = time.monotonic() + self._CB_COOLDOWN_S
             LOGGER.warning(
-                "memory-store circuit OPEN for %.0fs after %d failures",
+                "memory-store circuit OPEN for %.0fs after %d failures (last error: %s)",
                 self._CB_COOLDOWN_S,
                 self._cb_failure_count,
+                self._last_error,
             )
 
     def _record_success(self) -> None:
@@ -203,7 +220,7 @@ class MemoryStoreClient:
             resp = await client.post("/v1/blocks/recall", json=payload)
         except httpx.HTTPError as exc:
             LOGGER.warning("memory-store warmup failed for %s: %s", session_id, exc)
-            self._record_failure()
+            self._record_failure(str(exc))
             return []
         if resp.status_code != 200:
             LOGGER.warning(
@@ -212,7 +229,7 @@ class MemoryStoreClient:
                 resp.status_code,
                 resp.text[:200],
             )
-            self._record_failure()
+            self._record_failure(resp.text[:200])
             return []
         self._record_success()
         try:
@@ -260,7 +277,7 @@ class MemoryStoreClient:
             resp = await client.post("/v1/blocks/recall", json=payload)
         except httpx.HTTPError as exc:
             LOGGER.warning("memory-store recall failed: %s", exc)
-            self._record_failure()
+            self._record_failure(str(exc))
             return []
         if resp.status_code != 200:
             LOGGER.warning(
@@ -268,7 +285,7 @@ class MemoryStoreClient:
                 resp.status_code,
                 resp.text[:200],
             )
-            self._record_failure()
+            self._record_failure(resp.text[:200])
             return []
         self._record_success()
         try:
@@ -312,7 +329,7 @@ class MemoryStoreClient:
             resp = await client.post("/v1/blocks/push", json=payload)
         except httpx.HTTPError as exc:
             LOGGER.warning("memory-store push failed for %s: %s", session_id, exc)
-            self._record_failure()
+            self._record_failure(str(exc))
             return 0
         if resp.status_code != 200:
             LOGGER.warning(
@@ -321,13 +338,16 @@ class MemoryStoreClient:
                 resp.status_code,
                 resp.text[:200],
             )
-            self._record_failure()
+            self._record_failure(resp.text[:200])
             return 0
         self._record_success()
         try:
-            return int(resp.json().get("pushed", 0))
+            pushed = int(resp.json().get("pushed", 0))
         except ValueError:
-            return 0
+            pushed = 0
+        self._last_push_count = pushed
+        self._last_push_at = _now_iso()
+        return pushed
 
     async def push_block(
         self,
@@ -344,9 +364,31 @@ class MemoryStoreClient:
     def health_snapshot(self) -> dict[str, Any]:
         """Return a cached health view (no IO). Useful in sync handler paths.
 
-        Reads the last cached ``_healthy`` value set by :meth:`ping`. Returns
-        ``healthy=None`` when ping has never been called yet.
+        v0.3 (T-05, 2026-08-01): now also surfaces circuit-breaker state and the
+        last push/failure so silent wiki-recall outages become observable instead
+        of being swallowed by the fail-open breaker.
         """
+        circuit_open = self._circuit_open()
+        cooldown_remaining = 0.0
+        if circuit_open:
+            cooldown_remaining = max(0.0, self._cb_open_until_monotonic - time.monotonic())
+        snap: dict[str, Any] = {
+            "enabled": self.enabled,
+            "healthy": self._healthy,
+            "url": self.base_url,
+            "circuit_open": circuit_open,
+            "failure_count": self._cb_failure_count,
+            "cooldown_remaining_s": round(cooldown_remaining, 1),
+            "last_push": {
+                "count": self._last_push_count,
+                "at": self._last_push_at,
+            },
+            "last_failure": {
+                "at": self._last_failure_at,
+                "error": self._last_error,
+            },
+        }
         if not self.enabled:
-            return {"enabled": False, "healthy": False, "url": self.base_url}
-        return {"enabled": True, "healthy": self._healthy, "url": self.base_url}
+            snap["enabled"] = False
+            snap["healthy"] = False
+        return snap

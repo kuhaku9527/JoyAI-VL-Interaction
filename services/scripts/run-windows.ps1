@@ -111,7 +111,7 @@ $P = @{
     VoiceClone  = if ($env:VOICE_CLONE_PORT)      { [int]$env:VOICE_CLONE_PORT }      else { 8985 }
     AsrModel    = if ($env:ASR_MODEL_PORT)        { [int]$env:ASR_MODEL_PORT }        else { 8993 }
     AsrAdapter  = if ($env:ASR_ADAPTER_PORT)      { [int]$env:ASR_ADAPTER_PORT }      else { 8994 }
-    MemoryStore = if ($env:MEMORY_PORT) { [int]$env:MEMORY_PORT } else { 8996 }
+    MemoryStore = if ($env:MEMORY_PORT) { [int]$env:MEMORY_PORT } else { 8997 }
 }
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -451,6 +451,13 @@ function Start-Webinfer {
         "ADAPTER_PORT" = "$($P.Webinfer)"
         "MAIN_API_BASE" = "http://127.0.0.1:$($P.Main)/v1"
         "SUMMARIZER_API_BASE" = "http://127.0.0.1:$($P.Main)/v1"
+        # v0.3 (2026-07-29): webinfer's MemoryStoreClient reads MEMORY_STORE_URL
+        # (memory_store_client.py:88). run-windows.env already sets it to :8997,
+        # but inject it explicitly here so webinfer never falls back to the
+        # DEFAULT_BASE_URL (the deprecated :8996 empty shell) when started
+        # standalone or when the session env is not propagated. Mirrors the
+        # JOYAI_MEMORY_STORE_URL injection done for webui above.
+        "MEMORY_STORE_URL" = if ($env:MEMORY_STORE_URL) { $env:MEMORY_STORE_URL } else { "http://127.0.0.1:$($P.MemoryStore)" }
     }
     if ($env:CHARACTER_PROMPT_PATH) { $envs["CHARACTER_PROMPT_PATH"] = $env:CHARACTER_PROMPT_PATH }
     if ($env:LOG_LEVEL) { $envs["LOG_LEVEL"] = $env:LOG_LEVEL }
