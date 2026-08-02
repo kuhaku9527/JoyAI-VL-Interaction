@@ -10,8 +10,8 @@ import base64
 import io
 import json
 import logging
-import time as _time_for_accesslog
 import os as _os_for_accesslog  # access log path
+import time as _time_for_accesslog
 
 _access_logger = logging.getLogger("joyai.access")
 if not _access_logger.handlers:
@@ -28,10 +28,10 @@ if not _access_logger.handlers:
         _access_logger.setLevel(logging.INFO)
     except OSError:
         pass  # access log is best-effort; do not break the webui if logs/ is unwritable
-import os
-import sys
-import time
-import uuid
+import os  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+import uuid  # noqa: E402
 
 # Fix double-module-load bug: when run via `python -m joy_interaction_webui.server`,
 # Python executes this file as __main__ and *also* registers a separate module
@@ -44,22 +44,22 @@ import uuid
 # resolve to the SAME module instance. See doc/subsystems/jarvis-mode.md changelog v3.22.
 if __name__ == "__main__":
     sys.modules.setdefault("joy_interaction_webui.server", sys.modules["__main__"])
-from collections import defaultdict
+from collections import defaultdict  # noqa: E402
 
-import aiohttp
-from aiohttp import web
-from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaRelay
+import aiohttp  # noqa: E402
+from aiohttp import web  # noqa: E402
+from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription  # noqa: E402
+from aiortc.contrib.media import MediaRelay  # noqa: E402
 
-from .asr import setup_asr_routes
-from .audio_processor import MicAudioTrack
-from .background_model import BackgroundModelService
-from .jarvis_mode import JarvisState
-from .jarvis_routes import bind_audio, setup_jarvis_routes
-from .jarvis_session import JarvisSessionManager
-from .local_file_server import setup_local_file_routes
-from .tts import setup_tts_routes
-from .vlm_service import VLMService
+from .asr import setup_asr_routes  # noqa: E402
+from .audio_processor import MicAudioTrack  # noqa: E402
+from .background_model import BackgroundModelService  # noqa: E402
+from .jarvis_mode import JarvisState  # noqa: E402
+from .jarvis_routes import bind_audio, setup_jarvis_routes  # noqa: E402
+from .jarvis_session import JarvisSessionManager  # noqa: E402
+from .local_file_server import setup_local_file_routes  # noqa: E402
+from .tts import setup_tts_routes  # noqa: E402
+from .vlm_service import VLMService  # noqa: E402
 
 # Background task registry: keep strong refs to fire-and-forget tasks so they
 # are not garbage-collected before completion (satisfies ruff RUF006).
@@ -1250,7 +1250,7 @@ def main():
                     "latency_ms": latency_ms,
                 }, ensure_ascii=False)
                 _access_logger.info(line)
-            except Exception:
+            except Exception:  # noqa: S110
                 pass  # never let logging fail a request
 
     async def _health_handler(request):
