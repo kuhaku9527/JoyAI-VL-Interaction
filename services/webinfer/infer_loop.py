@@ -18,7 +18,6 @@ from typing import Any
 
 from adapter_types import SessionState
 from aiohttp import web
-from config import reset_chunk_state
 from openai import AsyncOpenAI
 from prompt_building import (
     _compute_prompt_guard_max_chars,
@@ -50,6 +49,8 @@ from time_ranges import (
     _parse_start_second,
     _strip_time_range_from_text,
 )
+
+from config import reset_chunk_state
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 

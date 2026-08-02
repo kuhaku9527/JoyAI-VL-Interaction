@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any
 
 from adapter_types import AdapterConfig, SessionState
-from config import _env_bool, _env_float, _env_int, _split_paths
 from infer_loop import InferLoopMixin
 from memory_io import MemoryIOMixin
 from memory_store_client import MemoryStoreClient
@@ -42,6 +41,8 @@ from prompt_building import (
 from response_format import _chat_completion_response, _openai_error_response, _short
 from session import SessionMixin
 from summarizer_routing import SummarizerRoutingMixin
+
+from config import _env_bool, _env_float, _env_int, _split_paths
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 

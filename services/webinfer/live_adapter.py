@@ -11,7 +11,6 @@ from __future__ import annotations
 from adapter_core import StreamingInferAdapter
 from adapter_types import AdapterConfig, SessionState
 from app import create_app, main, parse_args
-from config import _env_bool, _env_float, _env_int, _split_paths, reset_chunk_state
 from io_utils import (
     derive_light_out_dir,
     derive_model_output_name,
@@ -34,6 +33,8 @@ from response_format import (
     extract_response_payload,
     normalize_model_output,
 )
+
+from config import _env_bool, _env_float, _env_int, _split_paths, reset_chunk_state
 
 __all__ = [
     # public API

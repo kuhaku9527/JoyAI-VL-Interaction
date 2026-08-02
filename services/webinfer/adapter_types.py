@@ -9,8 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from config import reset_chunk_state
 from prompt_constants import DEFAULT_SYSTEM_PROMPT_EN
+
+from config import reset_chunk_state
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 

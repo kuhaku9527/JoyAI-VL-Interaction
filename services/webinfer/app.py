@@ -11,7 +11,6 @@ from datetime import datetime
 from adapter_core import StreamingInferAdapter
 from adapter_types import AdapterConfig
 from aiohttp import web
-from config import _env_bool, _env_float, _env_int, _split_paths
 from io_utils import (
     derive_light_out_dir,
     derive_model_output_name,
@@ -22,6 +21,8 @@ from prompt_constants import DEFAULT_SAVE_ROOT, DEFAULT_SYSTEM_PROMPT_EN
 from system_prompts import (
     resolve_prompt_paths,
 )
+
+from config import _env_bool, _env_float, _env_int, _split_paths
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
