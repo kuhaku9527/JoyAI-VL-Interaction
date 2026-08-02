@@ -17,6 +17,7 @@ LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
 def sanitize_output_name(name: str, max_len: int = 120) -> str:
+    """Sanitize a name into a safe, filesystem-compatible output string."""
     safe_chars = []
     for ch in str(name or ""):
         is_ascii_alnum = ("a" <= ch <= "z") or ("A" <= ch <= "Z") or ("0" <= ch <= "9")
@@ -26,6 +27,7 @@ def sanitize_output_name(name: str, max_len: int = 120) -> str:
 
 
 def derive_model_output_name(model_path: str) -> str:
+    """Derive a sanitized output name from a model path."""
     normalized = os.path.normpath(str(model_path or "model"))
     model_name = os.path.basename(normalized) or "model"
     parent_name = os.path.basename(os.path.dirname(normalized))
@@ -35,6 +37,7 @@ def derive_model_output_name(model_path: str) -> str:
 
 
 def resolve_save_dir(path: str | None, root: str = DEFAULT_SAVE_ROOT) -> str | None:
+    """Resolve a possibly-relative save directory against the default root."""
     if path is None:
         return None
     path = str(path).strip()
@@ -46,6 +49,7 @@ def resolve_save_dir(path: str | None, root: str = DEFAULT_SAVE_ROOT) -> str | N
 
 
 def derive_light_out_dir(out_dir: str) -> str:
+    """Derive the light-weight output directory for a given output directory."""
     normalized_out_dir = os.path.normpath(out_dir)
     parent_dir = os.path.dirname(normalized_out_dir)
     base_name = os.path.basename(normalized_out_dir)

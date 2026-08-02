@@ -291,6 +291,8 @@ def _encode_image_base64(image_path: str, max_pixels: int = 0) -> str:
 
 
 class SummarizerModel:
+    """OpenAI-compatible client wrapper for mid/long-term summarization models."""
+
     def __init__(
         self,
         model_name: str = "/tmp/models/Qwen3-VL-4B-Instruct",  # noqa: S108
@@ -455,6 +457,7 @@ class SummarizerModel:
         return self._tokenizer
 
     def estimate_tokens(self, text: str) -> int:
+        """Estimate the token count of ``text`` via a tokenizer or heuristic."""
         if not text:
             return 0
         tokenizer = self._get_tokenizer()

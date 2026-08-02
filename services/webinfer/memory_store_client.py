@@ -49,9 +49,9 @@ def _now_iso() -> str:
 
 
 def _normalize_block(raw: dict[str, Any]) -> dict[str, Any] | None:
-    """Trim/validate an upstream memory-store block to the keys live_adapter
-    actually consumes. Return ``None`` if the row is unusable so callers
-    can skip it without crashing.
+    """Trim/validate an upstream memory-store block to the keys live_adapter actually consumes.
+
+    Return ``None`` if the row is unusable so callers can skip it without crashing.
     """
     if not isinstance(raw, dict):
         return None
@@ -111,7 +111,7 @@ class MemoryStoreClient:
     _CB_COOLDOWN_S = 30.0
 
     def _circuit_open(self) -> bool:
-        """True iff the breaker is currently OPEN (calls short-circuit).
+        """Return True iff the breaker is currently OPEN (calls short-circuit).
 
         Time-based; if the cooldown has elapsed the breaker is auto-closed
         on the next check so a single probe is allowed through.
@@ -148,6 +148,7 @@ class MemoryStoreClient:
             return self._client
 
     async def aclose(self) -> None:
+        """Close the underlying httpx client if it was opened."""
         if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
 
@@ -157,8 +158,10 @@ class MemoryStoreClient:
         return self.enabled
 
     async def ping(self) -> bool:
-        """Probe /health. Caches the result once a success has been seen so
-        the live adapter does not log a warning every chunk.
+        """Probe ``/health``.
+
+        Caches the result once a success has been seen so the live adapter
+        does not log a warning every chunk.
         """
         if not self.enabled:
             return False
@@ -230,8 +233,9 @@ class MemoryStoreClient:
         min_score: float = 0.0,
         namespaces: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Pull blocks similar to ``query``. Optional ``session_id`` and
-        ``namespaces`` filters.
+        """Pull blocks similar to ``query``.
+
+        Optional ``session_id`` and ``namespaces`` filters.
 
         ``namespaces`` is the ADR-0012 L1 isolation gate: the backend filters
         untrusted wiki scrubs from the same session view by routing the
@@ -282,8 +286,9 @@ class MemoryStoreClient:
         session_id: str,
         blocks: Iterable[dict[str, Any]],
     ) -> int:
-        """Push a batch of blocks. Returns count actually accepted; 0 on
-        failure (never raises).
+        """Push a batch of blocks.
+
+        Returns count actually accepted; 0 on failure (never raises).
         """
         if not self.enabled or not session_id:
             return 0
@@ -335,7 +340,7 @@ class MemoryStoreClient:
         content: str,
         score: float = 1.0,
     ) -> int:
-        """Convenience helper for the ``_memory_push`` flush path."""
+        """Return a convenience helper for the ``_memory_push`` flush path."""
         return await self.push(
             session_id,
             [{"content": content, "score": score}],

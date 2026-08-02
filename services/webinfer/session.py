@@ -31,6 +31,7 @@ class SessionMixin:
     """Session lifecycle, persistence, and meta route handlers."""
 
     def get_session(self, session_id: str) -> SessionState:
+        """Return the session state for ``session_id``, creating it if absent."""
         session_id = _safe_session_id(session_id or "default")
         state = self.sessions.get(session_id)
         if state is None:
@@ -92,6 +93,7 @@ class SessionMixin:
                 LOGGER.exception("session cleanup error")
 
     def start_background_tasks(self) -> None:
+        """Start the background session-cleanup loop if not already running."""
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.ensure_future(self._session_cleanup_loop())
 
@@ -141,6 +143,7 @@ class SessionMixin:
             state.debug_input_dir.mkdir(parents=True, exist_ok=True)
 
     async def handle_models(self, request: web.Request) -> web.Response:
+        """Handle ``GET /v1/models`` (list available model identifiers)."""
         del request
         now = int(time.time())
         data = [
@@ -155,6 +158,7 @@ class SessionMixin:
         return web.json_response({"object": "list", "data": data})
 
     async def handle_health(self, request: web.Request) -> web.Response:
+        """Handle ``GET /health`` (liveness and status snapshot)."""
         del request
         return web.json_response(
             {
@@ -168,6 +172,7 @@ class SessionMixin:
         )
 
     async def handle_reset(self, request: web.Request) -> web.Response:
+        """Handle ``POST /v1/streaming/reset`` (drop a session and flush)."""
         payload = await _read_json(request)
         session_id = _request_session_id(request, payload)
         session_id = _safe_session_id(session_id)
@@ -190,6 +195,7 @@ class SessionMixin:
         )
 
     async def handle_prompts_active(self, request: web.Request) -> web.Response:
+        """Handle ``GET /v1/prompts/active`` (prompt cache view)."""
         del request
         paths = self.active_character_prompt_paths()
         return web.json_response(
@@ -205,6 +211,7 @@ class SessionMixin:
         )
 
     async def handle_prompts_reload(self, request: web.Request) -> web.Response:
+        """Handle ``POST /v1/prompts/reload`` (reload character prompts)."""
         del request
         try:
             profiles = self.reload_character_prompts()
