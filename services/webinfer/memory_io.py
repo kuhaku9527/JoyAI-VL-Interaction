@@ -208,7 +208,8 @@ class MemoryIOMixin:
             except Exception as exc:  # fail-open: never raise
                 LOGGER.warning(
                     "wiki background recall failed for %s: %s",
-                    state.session_id, exc,
+                    state.session_id,
+                    exc,
                 )
                 return
             if wiki_blocks:
@@ -237,7 +238,9 @@ class MemoryIOMixin:
         if not settings["enabled"]:
             return []
         client = getattr(self, "memory_store", None)
-        if client is None or not bool(getattr(client, "is_enabled", getattr(client, "enabled", False))):
+        if client is None or not bool(
+            getattr(client, "is_enabled", getattr(client, "enabled", False))
+        ):
             return []
         try:
             blocks = await client.recall(

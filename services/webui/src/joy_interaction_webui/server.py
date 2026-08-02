@@ -18,10 +18,23 @@ if not _access_logger.handlers:
     # Default: write one JSONL per line to logs/webui-access-<UTC>.log (rotated daily
     # by launcher path). No-op if logs/ cannot be created. Format: one JSON
     # object per request with ts, method, path, status, latency_ms.
-    _log_dir = _os_for_accesslog.path.join(_os_for_accesslog.path.dirname(_os_for_accesslog.path.abspath(__file__)), "..", "..", "..", "logs")
+    _log_dir = _os_for_accesslog.path.join(
+        _os_for_accesslog.path.dirname(_os_for_accesslog.path.abspath(__file__)),
+        "..",
+        "..",
+        "..",
+        "logs",
+    )
     try:
         _os_for_accesslog.makedirs(_log_dir, exist_ok=True)
-        _ts = _os_for_accesslog.path.join(_log_dir, ("webui-access-" + _time_for_accesslog.strftime("%Y-%m-%d", _time_for_accesslog.gmtime()) + ".log"))
+        _ts = _os_for_accesslog.path.join(
+            _log_dir,
+            (
+                "webui-access-"
+                + _time_for_accesslog.strftime("%Y-%m-%d", _time_for_accesslog.gmtime())
+                + ".log"
+            ),
+        )
         _fh = logging.FileHandler(_ts, encoding="utf-8")
         _fh.setFormatter(logging.Formatter("%(message)s"))
         _access_logger.addHandler(_fh)
@@ -1242,13 +1255,18 @@ def main():
         finally:
             try:
                 latency_ms = int((time.perf_counter() - t0) * 1000)
-                line = json.dumps({
-                    "ts": _time_for_accesslog.strftime("%Y-%m-%dT%H:%M:%SZ", _time_for_accesslog.gmtime()),
-                    "method": request.method,
-                    "path": request.path,
-                    "status": status,
-                    "latency_ms": latency_ms,
-                }, ensure_ascii=False)
+                line = json.dumps(
+                    {
+                        "ts": _time_for_accesslog.strftime(
+                            "%Y-%m-%dT%H:%M:%SZ", _time_for_accesslog.gmtime()
+                        ),
+                        "method": request.method,
+                        "path": request.path,
+                        "status": status,
+                        "latency_ms": latency_ms,
+                    },
+                    ensure_ascii=False,
+                )
                 _access_logger.info(line)
             except Exception:  # noqa: S110
                 pass  # never let logging fail a request

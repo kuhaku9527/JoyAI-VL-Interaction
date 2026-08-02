@@ -124,7 +124,8 @@ class MemoryStoreClient:
             self._cb_open_until_monotonic = time.monotonic() + self._CB_COOLDOWN_S
             LOGGER.warning(
                 "memory-store circuit OPEN for %.0fs after %d failures",
-                self._CB_COOLDOWN_S, self._cb_failure_count,
+                self._CB_COOLDOWN_S,
+                self._cb_failure_count,
             )
 
     def _record_success(self) -> None:
