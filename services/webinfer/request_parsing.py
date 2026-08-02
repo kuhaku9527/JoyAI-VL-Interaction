@@ -72,10 +72,7 @@ def _extract_first_image_ref(
             if not isinstance(item, dict) or item.get("type") != "image_url":
                 continue
             image_url = item.get("image_url")
-            if isinstance(image_url, dict):
-                url = image_url.get("url")
-            else:
-                url = image_url
+            url = image_url.get("url") if isinstance(image_url, dict) else image_url
             if isinstance(url, str) and url:
                 file_path = _file_url_to_path(url)
                 if file_path:
@@ -104,10 +101,7 @@ def _extract_all_image_refs(
             if not isinstance(item, dict) or item.get("type") != "image_url":
                 continue
             image_url = item.get("image_url")
-            if isinstance(image_url, dict):
-                url = image_url.get("url")
-            else:
-                url = image_url
+            url = image_url.get("url") if isinstance(image_url, dict) else image_url
             if isinstance(url, str) and url:
                 file_path = _file_url_to_path(url)
                 if file_path:

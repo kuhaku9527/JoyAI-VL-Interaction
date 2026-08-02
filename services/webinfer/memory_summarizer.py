@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001 RUF003
 """Mid/long-term summarizer model client (vLLM-backed summarization)."""
 
 import base64
@@ -6,6 +7,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 
 from openai import OpenAI
 from PIL import Image
@@ -417,7 +419,7 @@ class SummarizerModel:
         repetition_penalty: float = 1.0,
         presence_penalty: float = 0.0,
         client: OpenAI = None,
-        model_name: str = None,
+        model_name: Optional[str] = None,
     ) -> str:
         """Call the vLLM OpenAI API server."""
         client = client or self._client
@@ -495,7 +497,7 @@ class SummarizerModel:
         if value is None:
             return "0s"
         if abs(value - round(value)) < 1e-6:
-            return f"{int(round(value))}s"
+            return f"{round(value)}s"
         return f"{value:.3f}".rstrip("0").rstrip(".") + "s"
 
     def _build_range_from_frame_indices(
@@ -646,7 +648,7 @@ class SummarizerModel:
         image_paths: list,
         frame_time_ranges: list,
         key_frame_indices: list,
-        cached_frame_payloads: list = None,
+        cached_frame_payloads: Optional[list] = None,
     ) -> list:
         """Select up to key_frames_per_chunk frames and carry cached payloads when available."""
         del key_frame_indices  # Mid-term summaries are now driven only by timestamped frames.

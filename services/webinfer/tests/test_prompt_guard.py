@@ -112,7 +112,7 @@ def test_trim_preserves_at_least_min_recent_turns():
         _msg("user", "u" * 1000),
         _msg("user", "u" * 1000),
     ]
-    out, removed = la._trim_messages_to_ctx(msgs, max_total_chars=10, min_recent=2)
+    out, _removed = la._trim_messages_to_ctx(msgs, max_total_chars=10, min_recent=2)
     # min_recent=2 -> at least last 2 user turns survive
     assert len(out) >= 3  # system + 2 recent
     assert out[0]["content"] == "sys"

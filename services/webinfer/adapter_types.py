@@ -1,3 +1,4 @@
+# ruff: noqa: RUF003
 """Dataclass definitions shared across the webinfer adapter (AdapterConfig, SessionState)."""
 
 from __future__ import annotations

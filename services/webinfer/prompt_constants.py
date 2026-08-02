@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Shared prompt / formatting constants for the webinfer adapter.
 
 Leaf module: imports only the standard library (``re``) so it can be

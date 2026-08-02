@@ -81,10 +81,7 @@ class _StubChatCompletionsAPI:
 
     async def create(self, **kwargs: Any) -> _StubChatCompletion:
         self.last_kwargs = kwargs
-        if not self._scripted:
-            content = "</silence>"
-        else:
-            content = self._scripted.pop(0)
+        content = "</silence>" if not self._scripted else self._scripted.pop(0)
         return _StubChatCompletion(
             choices=[_StubChoice(message=_StubMessage(content=content))],
             usage=_StubUsage(),
@@ -191,7 +188,7 @@ def _post_json(adapter: Any, body: dict[str, Any], session_id=None) -> Any:
 @pytest.mark.asyncio
 async def test_text_chat_returns_clean_text_on_response_token():
     """``</response> hi`` -> 200, content="hi", decision="response"."""
-    adapter, stub = _make_adapter(scripted=["</response> hi"])
+    adapter, _stub = _make_adapter(scripted=["</response> hi"])
 
     resp = await _post_json(
         adapter,
@@ -217,7 +214,7 @@ async def test_text_chat_returns_clean_text_on_response_token():
 @pytest.mark.asyncio
 async def test_text_chat_returns_empty_on_silence_token():
     """``</silence>`` -> 200, content="", decision="silence"."""
-    adapter, stub = _make_adapter(scripted=["</silence>"])
+    adapter, _stub = _make_adapter(scripted=["</silence>"])
 
     resp = await _post_json(
         adapter,
@@ -236,7 +233,7 @@ async def test_text_chat_returns_empty_on_silence_token():
 @pytest.mark.asyncio
 async def test_text_chat_returns_delegation_question_on_delegation_token():
     """``</delegation> Q`` -> decision="delegation", delegation_question="Q", content=""."""
-    adapter, stub = _make_adapter(scripted=["</delegation> 查 RTX 5060 Ti 价格"])
+    adapter, _stub = _make_adapter(scripted=["</delegation> 查 RTX 5060 Ti 价格"])
 
     resp = await _post_json(
         adapter,
@@ -257,7 +254,7 @@ async def test_text_chat_returns_delegation_question_on_delegation_token():
 @pytest.mark.asyncio
 async def test_text_chat_rejects_image_url_content():
     """Any message with image_url content part -> 400."""
-    adapter, stub = _make_adapter(scripted=["</silence>"])
+    adapter, _stub = _make_adapter(scripted=["</silence>"])
 
     resp = await _post_json(
         adapter,
@@ -289,7 +286,7 @@ async def test_text_chat_rejects_data_url_in_text_content():
 
     Catches callers who try to sneak a base64 image through as text.
     """
-    adapter, stub = _make_adapter(scripted=["</silence>"])
+    adapter, _stub = _make_adapter(scripted=["</silence>"])
 
     resp = await _post_json(
         adapter,
@@ -312,7 +309,7 @@ async def test_text_chat_rejects_data_url_in_text_content():
 @pytest.mark.asyncio
 async def test_text_chat_rejects_invalid_role():
     """role outside {system,user,assistant} -> 400."""
-    adapter, stub = _make_adapter(scripted=["</silence>"])
+    adapter, _stub = _make_adapter(scripted=["</silence>"])
 
     resp = await _post_json(
         adapter,
@@ -330,7 +327,7 @@ async def test_text_chat_rejects_invalid_role():
 @pytest.mark.asyncio
 async def test_text_chat_rejects_missing_messages():
     """No messages field -> 400."""
-    adapter, stub = _make_adapter(scripted=["</silence>"])
+    adapter, _stub = _make_adapter(scripted=["</silence>"])
 
     resp = await _post_json(
         adapter,
@@ -374,7 +371,7 @@ async def test_text_chat_forwards_messages_to_main_client():
 @pytest.mark.asyncio
 async def test_text_chat_uses_session_header_for_state_isolation():
     """Two sessions with different headers get independent SessionState."""
-    adapter, stub = _make_adapter(
+    adapter, _stub = _make_adapter(
         scripted=[
             "</response> A1",
             "</response> A2",
