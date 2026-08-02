@@ -91,7 +91,7 @@ async def test_warmup_uses_sentinel(monkeypatch):
     assert blocks[0]["content"] == "hi"
     assert blocks[0]["score"] == 0.9
     assert len(captured["calls"]) == 1
-    method, url, body = captured["calls"][0]
+    method, _url, body = captured["calls"][0]
     assert method == "POST"
     assert body["query"] == "__warmup__"
     assert body["top_k"] == 8

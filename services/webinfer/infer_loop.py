@@ -175,7 +175,7 @@ class InferLoopMixin:
         # Resolve any caller-supplied system message into a flat list.
         caller_messages = [dict(m) for m in api_messages if m.get("role") != "system"]
         if composed_system:
-            http_messages = [{"role": "system", "content": composed_system}] + caller_messages
+            http_messages = [{"role": "system", "content": composed_system}, *caller_messages]
         else:
             http_messages = caller_messages
 

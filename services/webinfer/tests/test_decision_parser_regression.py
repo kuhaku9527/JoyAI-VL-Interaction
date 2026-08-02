@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Regression tests for :func:`parse_model_decision` (#2).
 
 The runtime system prompt teaches the model to emit delegation as
@@ -18,14 +19,14 @@ from response_format import parse_model_decision
 def test_delegation_with_response_prefix_token_not_misclassified():
     """Real-format delegation (</response> note </delegation> Q) -> delegation."""
     raw = "</response> 这个问题我不太确定，转交后台求解器。 </delegation> 查 RTX 5060 Ti 价格"
-    decision, clean_text, question = parse_model_decision(raw)
+    decision, _clean_text, question = parse_model_decision(raw)
     assert decision == "delegation"
     assert question == "查 RTX 5060 Ti 价格"
 
 
 def test_delegation_with_open_tag_still_detected():
     raw = "</response> I'll hand this off. <delegation> what is the capital of France?"
-    decision, clean_text, question = parse_model_decision(raw)
+    decision, _clean_text, question = parse_model_decision(raw)
     assert decision == "delegation"
     assert question == "what is the capital of France?"
 

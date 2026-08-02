@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Character-prompt (persona) loader and composer for the live adapter.
 
 The persona files on disk are wrapped in a ``<character_profile>`` block

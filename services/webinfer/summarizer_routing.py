@@ -336,7 +336,7 @@ class SummarizerRoutingMixin:
                 break
 
             wait_start = time.time()
-            mid_term_entry, summary_time = await job["task"]
+            mid_term_entry, _summary_time = await job["task"]
             wait_time = time.time() - wait_start
             mid_term_entry["async_summary"] = True
             mid_term_entry["turn_count"] = job.get("submitted_turn_count", 0)

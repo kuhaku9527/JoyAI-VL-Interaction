@@ -145,7 +145,7 @@ def _get_response_frame_indices(messages: list[dict[str, Any]]) -> list[int]:
 
 def _format_seconds(value: float) -> str:
     if abs(value - round(value)) < 1e-6:
-        return f"{int(round(value))}s"
+        return f"{round(value)}s"
     return f"{value:.3f}".rstrip("0").rstrip(".") + "s"
 
 

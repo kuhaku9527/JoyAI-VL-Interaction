@@ -208,9 +208,10 @@ class PromptAssemblyMixin:
                 new_message = dict(message)
                 content = message.get("content")
                 if isinstance(content, list):
-                    new_message["content"] = [{"type": "text", "text": prefix_content}] + list(
-                        content
-                    )
+                    new_message["content"] = [
+                        {"type": "text", "text": prefix_content},
+                        *list(content),
+                    ]
                 elif isinstance(content, str):
                     new_message["content"] = prefix_content + "\n\n" + content
                 else:
@@ -239,7 +240,7 @@ class PromptAssemblyMixin:
         # internal_messages[1:] are identical to chunk_msgs[1:], so reuse cache.
         first_msg = _internal_message_to_openai(internal_messages[0])
         remaining = cache[1 : len(internal_messages)]
-        return [first_msg] + remaining
+        return [first_msg, *remaining]
 
     def _build_main_http_messages(
         self,
@@ -267,7 +268,7 @@ class PromptAssemblyMixin:
         messages = list(api_messages)
         system_prompt = self._build_memory_prompt(session_state)
         if system_prompt:
-            messages = [{"role": "system", "content": system_prompt}] + messages
+            messages = [{"role": "system", "content": system_prompt}, *messages]
         if max_total_chars > 0:
             before = len(messages)
             messages, removed = _trim_messages_to_ctx(messages, max_total_chars)
