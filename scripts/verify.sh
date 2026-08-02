@@ -24,7 +24,11 @@ pass=0; fail=0; drift=0; down=0
 check_port() {  # $1=标签 $2=端口 $3=预期(可选,用于 drift 判定)
   local label="$1" port="$2"
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:${port}/health" 2>/dev/null || echo "000")
+  # 注：curl 连接失败时仍会在 stdout 打印 "000" 且退出非 0；若再 `|| echo "000"`
+  # 会追加成 "000000"，导致下方 `[ "$code" = "000" ]` 判等失败、把合法 [DOWN] 误判成 [FAIL]。
+  # 故只取 curl 自身输出，缺失时再兜底为 "000"（不重复追加）。
+  code=$(curl -s -o /dev/null -w "%{http_code}" -m 2 "http://127.0.0.1:${port}/health" 2>/dev/null)
+  code="${code:-000}"
   if [ "$code" = "200" ]; then
     echo "[PASS]  $label  :$port  health=200"
     pass=$((pass+1)); return 0
@@ -76,7 +80,11 @@ grep_file() {  # $1=标签 $2=文件 $3=pattern $4=期望命中(0/非0) $5=drift
     echo "[DOWN]  $label  (文件不存在: $file)"; down=$((down+1)); return 0
   fi
   local n
-  n=$(grep -cE "$pat" "$file" 2>/dev/null || echo 0)
+  # 注：grep -c 在「无命中」时仍向 stdout 打印 "0" 且退出码为 1；若再 `|| echo 0`
+  # 会追加成 "0\n0"，导致下方 `[ "$n" -eq 0 ]` 报 "integer expected"。故只取 grep 自身
+  # 输出，缺失时再兜底为 "0"（不重复追加）。
+  n=$(grep -cE "$pat" "$file" 2>/dev/null)
+  n="${n:-0}"
   if { [ "$expect" = "0" ] && [ "$n" -eq 0 ]; } || { [ "$expect" != "0" ] && [ "$n" -gt 0 ]; }; then
     echo "[PASS]  $label  ($file 命中 $n)"; pass=$((pass+1)); return 0
   else
