@@ -34,6 +34,13 @@ class ReentrantAsyncLock:
     therefore fixes the deadlock without dropping any of the existing lock
     coverage -- concurrent requests on the same session remain mutually
     exclusive, so no new data race is introduced.
+
+    Note: like ``asyncio.Lock``, if a task holding the lock is cancelled
+    mid-acquire (depth > 1) the underlying lock may stay held and
+    ``_owner`` points at a dead task, blocking later acquirers. Current
+    call sites use ``async with`` and run to completion, so this is not
+    exercised in practice; long-held lock sections would need explicit
+    cancellation handling.
     """
 
     def __init__(self) -> None:
@@ -69,9 +76,12 @@ class ReentrantAsyncLock:
     def release(self) -> None:
         """Release one level of lock ownership.
 
-        Mirrors ``asyncio.Lock.release`` for the common case: only the
-        owning task may release. A release by any other task is forwarded
-        to the underlying lock so misuse still surfaces as ``RuntimeError``.
+        Only the owning task may release. A release attempted by any other
+        task is forwarded to the underlying ``asyncio.Lock.release``: that
+        raises ``RuntimeError`` only when the underlying lock is not currently
+        held, and would silently release the owner's lock when it is -- so a
+        non-owner release is unsupported, not a safe misuse check. Always
+        release from the owning task.
         """
         task = asyncio.current_task()
         if task is None:
@@ -83,7 +93,9 @@ class ReentrantAsyncLock:
                 self._depth = 0
                 self._lock.release()
             return
-        # Not the owner: delegate so misuse still raises.
+        # Not the owner: forward to the underlying lock. Raises RuntimeError
+        # only when the underlying lock is free; if the owner holds it this
+        # silently releases the owner's lock, so non-owner release is unsupported.
         self._lock.release()
 
     def locked(self) -> bool:
