@@ -222,9 +222,7 @@ async def test_text_chat_memory_enabled_no_deadlock():
     }
     # Without the re-entrant lock fix this suspends forever on state.lock and
     # wait_for raises TimeoutError (the >=55 min CI hang, reproduced locally).
-    resp = await asyncio.wait_for(
-        _post_json(adapter, body, session_id="mem-on-1"), timeout=5
-    )
+    resp = await asyncio.wait_for(_post_json(adapter, body, session_id="mem-on-1"), timeout=5)
     assert resp.status == 200
     payload = json.loads(resp.text)
     assert payload["choices"][0]["message"]["content"] == "hi"
@@ -238,9 +236,7 @@ async def test_text_chat_memory_disabled_no_deadlock():
         "model": "joyai-vl-interaction-preview",
         "messages": [{"role": "user", "content": "hello"}],
     }
-    resp = await asyncio.wait_for(
-        _post_json(adapter, body, session_id="mem-off-1"), timeout=5
-    )
+    resp = await asyncio.wait_for(_post_json(adapter, body, session_id="mem-off-1"), timeout=5)
     assert resp.status == 200
 
 
@@ -255,7 +251,5 @@ async def test_text_chat_empty_user_text_no_deadlock():
         "model": "joyai-vl-interaction-preview",
         "messages": [{"role": "system", "content": "x"}],
     }
-    resp = await asyncio.wait_for(
-        _post_json(adapter, body, session_id="empty-q-1"), timeout=5
-    )
+    resp = await asyncio.wait_for(_post_json(adapter, body, session_id="empty-q-1"), timeout=5)
     assert resp.status == 200
