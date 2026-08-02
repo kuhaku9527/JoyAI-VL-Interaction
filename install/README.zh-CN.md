@@ -134,7 +134,7 @@ joyvl-tts-adapter smoke --text "Hello." --output /tmp/joyvl_tts_warmup.pcm --tim
 
 安装脚本会写入：
 
-- `services/background-agent/background-agent.env`
+- `services/background-agent/background-agent.env.example`（复制为 `background-agent.env` 并填入真实值；`*.env` 已被 gitignore，真实配置不进 VCS）
 
 启动：
 

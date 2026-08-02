@@ -78,6 +78,7 @@ agent-workspace/
 # Local credentials and certificates
 .env
 .env.*
+*.env
 *.pem
 *.key
 *.crt

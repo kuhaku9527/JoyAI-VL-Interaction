@@ -12,9 +12,14 @@ REPO_ROOT="$(cd -- "$SERVICES_DIR/.." && pwd)"
 DEFAULT_WORKSPACE="$REPO_ROOT/agent-workspace"
 
 if [ -f "$SERVICE_DIR/background-agent.env" ]; then
+  ENV_FILE="$SERVICE_DIR/background-agent.env"
+elif [ -f "$SERVICE_DIR/background-agent.env.example" ]; then
+  ENV_FILE="$SERVICE_DIR/background-agent.env.example"
+fi
+if [ -n "${ENV_FILE:-}" ]; then
   set -a
   # shellcheck source=/dev/null
-  source "$SERVICE_DIR/background-agent.env"
+  source "$ENV_FILE"
   set +a
 fi
 

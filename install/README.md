@@ -135,7 +135,7 @@ Install:
 
 The install script writes:
 
-- `services/background-agent/background-agent.env`
+- `services/background-agent/background-agent.env.example`（复制为 `background-agent.env` 并填入真实值；`*.env` 已被 gitignore，真实配置不进 VCS）
 
 Start:
 

@@ -69,8 +69,8 @@ $SummaryGguf    = Join-Path $ModelsRoot "summary\Qwen2.5-VL-3B-Instruct-GGUF\Qwe
 $SummaryMmproj  = Join-Path $ModelsRoot "summary\Qwen2.5-VL-3B-Instruct-GGUF\Qwen2.5-VL-3B-Instruct-mmproj-f16.gguf"
 $AsrModel       = Join-Path $ModelsRoot "asr\ggml-large-v3-turbo-q5_0.bin"
 
-# run-windows.env
-if (-not $EnvFile) { $EnvFile = Join-Path $ScriptDir "run-windows.env" }
+# run-windows.env (real config); falls back to run-windows.env.example template if absent
+if (-not $EnvFile) { $EnvFile = Join-Path $ScriptDir "run-windows.env"; $envBackup = Join-Path $ScriptDir "run-windows.env.example"; if (-not (Test-Path $EnvFile) -and (Test-Path $envBackup)) { Write-Host "run-windows.env not found; falling back to template $envBackup" -ForegroundColor Yellow; $EnvFile = $envBackup } }
 if (Test-Path $EnvFile) {
     Write-Host "Loading env: $EnvFile" -ForegroundColor DarkGray
     Get-Content $EnvFile | ForEach-Object {
