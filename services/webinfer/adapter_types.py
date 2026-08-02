@@ -16,6 +16,77 @@ from config import reset_chunk_state
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
+class ReentrantAsyncLock:
+    """Asyncio lock that permits re-entrancy from the same task.
+
+    ``asyncio.Lock`` is strictly non-reentrant: a coroutine that already
+    holds the lock will deadlock if it attempts to acquire it again. The
+    memory hooks (``memory_io._memory_warmup`` / ``_memory_recall``) acquire
+    ``SessionState.lock`` internally, while ``handle_text_chat`` holds that
+    same lock across the entire ``_handle_text_payload`` call -- including
+    the ``_memory_recall`` invocation. On the text-chat path this produced a
+    self-deadlock that hung the request forever (CI ``pytest (webinfer)``
+    stalled for >= 55 min).
+
+    This wrapper allows the *owning* task (identified via
+    ``asyncio.current_task()``) to re-enter without blocking, while still
+    serialising distinct tasks through the underlying ``asyncio.Lock``. It
+    therefore fixes the deadlock without dropping any of the existing lock
+    coverage -- concurrent requests on the same session remain mutually
+    exclusive, so no new data race is introduced.
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._owner: asyncio.Task | None = None
+        self._depth = 0
+
+    async def __aenter__(self) -> ReentrantAsyncLock:
+        """Acquire the lock on context entry (re-entrant for the owning task)."""
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release one level of lock ownership on context exit."""
+        self.release()
+
+    async def acquire(self) -> bool:
+        """Acquire the lock, allowing re-entry by the current task.
+
+        Returns ``True`` once acquired, matching ``asyncio.Lock.acquire``.
+        """
+        task = asyncio.current_task()
+        if self._owner is task:
+            self._depth += 1
+            return True
+        await self._lock.acquire()
+        self._owner = task
+        self._depth = 1
+        return True
+
+    def release(self) -> None:
+        """Release one level of lock ownership.
+
+        Mirrors ``asyncio.Lock.release`` for the common case: only the
+        owning task may release. A release by any other task is forwarded
+        to the underlying lock so misuse still surfaces as ``RuntimeError``.
+        """
+        task = asyncio.current_task()
+        if self._owner is task:
+            self._depth -= 1
+            if self._depth <= 0:
+                self._owner = None
+                self._depth = 0
+                self._lock.release()
+            return
+        # Not the owner: delegate so misuse still raises.
+        self._lock.release()
+
+    def locked(self) -> bool:
+        """Return True if held by any task (owner set or underlying lock acquired)."""
+        return self._owner is not None or self._lock.locked()
+
+
 @dataclass
 class AdapterConfig:
     host: str = "127.0.0.1"
@@ -96,7 +167,7 @@ class AdapterConfig:
 @dataclass
 class SessionState:
     session_id: str
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    lock: ReentrantAsyncLock = field(default_factory=ReentrantAsyncLock)
     frame_count: int = 0
     turn_count: int = 0
     chunk_index: int = 1
