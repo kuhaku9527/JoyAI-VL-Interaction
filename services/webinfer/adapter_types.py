@@ -56,6 +56,8 @@ class ReentrantAsyncLock:
         Returns ``True`` once acquired, matching ``asyncio.Lock.acquire``.
         """
         task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("ReentrantAsyncLock must be used inside an asyncio task")
         if self._owner is task:
             self._depth += 1
             return True
@@ -72,6 +74,8 @@ class ReentrantAsyncLock:
         to the underlying lock so misuse still surfaces as ``RuntimeError``.
         """
         task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("ReentrantAsyncLock must be used inside an asyncio task")
         if self._owner is task:
             self._depth -= 1
             if self._depth <= 0:
