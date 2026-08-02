@@ -65,7 +65,7 @@ $gatewayPort = $env:HERMES_GATEWAY_PORT
 if (-not $gatewayPort) { $gatewayPort = "8642" }
 
 # Re-use background-agent.env for shared knobs (port, max subagents, etc.)
-$envFile = Join-Path $PSScriptRoot "..\background-agent.env"; $envEx = Join-Path $PSScriptRoot "..\background-agent.env.example"; if (-not (Test-Path $envFile) -and (Test-Path $envEx)) { $envFile = $envEx }
+$envFile = Join-Path $PSScriptRoot "..\background-agent.env"; $envEx = Join-Path $PSScriptRoot "..\background-agent.env.example"; if (-not (Test-Path $envFile) -and (Test-Path $envEx)) { Write-Host "background-agent.env not found; falling back to template $envEx" -ForegroundColor Yellow; $envFile = $envEx }
 if (Test-Path $envFile) {
     Get-Content $envFile | ForEach-Object {
         $line = $_.Trim()
