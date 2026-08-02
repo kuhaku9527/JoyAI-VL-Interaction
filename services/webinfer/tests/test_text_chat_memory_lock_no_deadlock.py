@@ -193,7 +193,7 @@ def _post_json(adapter, body: dict, session_id: str | None = None):
     headers = {"Content-Type": "application/json"}
     if session_id:
         headers["x-streaming-session"] = session_id
-    loop = asyncio.new_event_loop()
+    loop = asyncio.get_running_loop()
     stream = streams.StreamReader(
         protocol=_StreamProtocol(),
         limit=2**16,

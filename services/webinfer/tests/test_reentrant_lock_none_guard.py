@@ -30,9 +30,12 @@ if str(ROOT) not in sys.path:
 import pytest  # noqa: E402
 from adapter_types import ReentrantAsyncLock  # noqa: E402
 
-# Exact message raised by the guard; asserted so the test proves the guard
-# itself fires (and not ``asyncio.current_task``'s own "no running event
-# loop" error during the no-loop direct-call case).
+# Exact message raised by the guard; asserted in the ``call_soon`` (running
+# loop, non-task callback) subcase so the test proves the guard itself fires
+# -- not ``asyncio.current_task``'s own "no running event loop" error. The
+# no-loop direct-call subcase below also raises RuntimeError, but only
+# asserts *a* RuntimeError (current_task raises first on Python 3.10+), so it
+# is NOT a proof of the guard.
 GUARD_MESSAGE = "ReentrantAsyncLock must be used inside an asyncio task"
 
 
@@ -43,7 +46,10 @@ def test_acquire_outside_task_raises() -> None:
     the "running loop, non-task callback" path where ``current_task`` returns
     ``None`` -- the exact ``None is None`` trap the guard closes.
     """
-    # No running event loop: the owner check must never match on ``None``.
+    # No running event loop: current_task() raises its own RuntimeError here
+    # (the guard line is never reached). This proves a no-task context fails
+    # loudly; the *guard* itself is proven by the call_soon subcase below,
+    # which asserts the exact GUARD_MESSAGE.
     with pytest.raises(RuntimeError):
         ReentrantAsyncLock().acquire().send(None)
 
@@ -63,7 +69,7 @@ def test_acquire_outside_task_raises() -> None:
 
 def test_release_outside_task_raises() -> None:
     """``release()`` must raise when there is no owning task context."""
-    # No running event loop.
+    # No running event loop: same as above -- current_task() raises first.
     with pytest.raises(RuntimeError):
         ReentrantAsyncLock().release()
 
