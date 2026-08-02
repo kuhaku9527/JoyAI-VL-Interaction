@@ -10,6 +10,7 @@ LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
 def reset_chunk_state() -> dict[str, Any]:
+    """Return a fresh, empty chunk-state dictionary for a new session."""
     return {
         "messages": [],
         "response_records": [],

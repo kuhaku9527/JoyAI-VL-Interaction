@@ -15,6 +15,7 @@ LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
 def normalize_model_output(text: str) -> str:
+    """Normalize raw model text into a clean decision token plus response body."""
     raw = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not raw:
         return "</silence>"
@@ -40,6 +41,7 @@ def normalize_model_output(text: str) -> str:
 
 
 def extract_response_payload(text: str) -> str | None:
+    """Extract the response payload from normalized output, or ``None``."""
     normalized = normalize_model_output(text)
     if not normalized.startswith("</response>"):
         return None
@@ -118,6 +120,7 @@ def build_model_input_record(
     prefix_content: str | None = None,
     prompt: str | None = None,
 ) -> dict[str, Any]:
+    """Build the per-chunk model-input record for persistence/debug output."""
     if inference_skipped:
         return {
             "http_payload_skipped": True,
@@ -144,6 +147,7 @@ def archive_chunk_response_records(
     chunk_index: int = 0,
     before_time_sec: float = float("inf"),
 ) -> None:
+    """Archive valid response records into the session QA history."""
     if not current_chunk["response_records"] or not current_query_text:
         return
 

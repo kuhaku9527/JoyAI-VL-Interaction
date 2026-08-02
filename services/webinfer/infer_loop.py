@@ -64,6 +64,7 @@ class InferLoopMixin:
         return self.main_client, self.config.main_model
 
     async def handle_text_chat(self, request: web.Request) -> web.Response:
+        """Handle the text-only chat-completions endpoint."""
         # v3.37 single-LLM-gateway: text-only chat-completion endpoint that
         # runs the same system-prompt + memory + token-guard + decision-token
         # parsing pipeline as the multimodal path, but rejects any image_url
@@ -223,6 +224,7 @@ class InferLoopMixin:
         )
 
     async def handle_chat_completions(self, request: web.Request) -> web.Response:
+        """Handle the multimodal chat-completions endpoint."""
         payload = await _read_json(request)
         session_id = _request_session_id(request, payload)
         requested_model = payload.get("model")

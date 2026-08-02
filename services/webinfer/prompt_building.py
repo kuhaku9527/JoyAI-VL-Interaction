@@ -133,6 +133,7 @@ def build_static_system_content(
     mid_term_summaries: list[dict[str, Any]] | None = None,
     language: str = "en",
 ) -> str:
+    """Compose the static (memory/history) portion of the system prompt."""
     i18n = _get_i18n(language)
     sections: list[str] = []
     for message in extra_system_messages or []:
@@ -159,6 +160,7 @@ def build_dynamic_system_content(
     current_chunk_index: int = 0,
     language: str = "en",
 ) -> str:
+    """Compose the dynamic (query/QA-history) portion of the system prompt."""
     i18n = _get_i18n(language)
     sections: list[str] = []
 

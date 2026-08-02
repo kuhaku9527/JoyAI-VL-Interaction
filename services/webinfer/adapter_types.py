@@ -106,6 +106,8 @@ class ReentrantAsyncLock:
 
 @dataclass
 class AdapterConfig:
+    """Runtime configuration for the streaming-inference adapter service."""
+
     host: str = "127.0.0.1"
     port: int = 8070
     adapter_model: str = "streaming-infer-adapter"
@@ -183,6 +185,8 @@ class AdapterConfig:
 
 @dataclass
 class SessionState:
+    """Per-session mutable state for the streaming-inference adapter."""
+
     session_id: str
     lock: ReentrantAsyncLock = field(default_factory=ReentrantAsyncLock)
     frame_count: int = 0

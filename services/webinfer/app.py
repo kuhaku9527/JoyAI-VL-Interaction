@@ -28,6 +28,7 @@ LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
 def parse_args() -> AdapterConfig:
+    """Parse command-line arguments into an :class:`AdapterConfig`."""
     parser = argparse.ArgumentParser(description="StreamingHarness live OpenAI adapter")
     parser.add_argument("--host", default=os.environ.get("ADAPTER_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=_env_int("ADAPTER_PORT", 8070))
@@ -477,6 +478,7 @@ def parse_args() -> AdapterConfig:
 
 
 def create_app(config: AdapterConfig) -> web.Application:
+    """Build the aiohttp application and register all adapter routes."""
     adapter = StreamingInferAdapter(config)
     app = web.Application(client_max_size=128 * 1024 * 1024)
     app["adapter"] = adapter
@@ -516,6 +518,7 @@ def create_app(config: AdapterConfig) -> web.Application:
 
 
 def main() -> None:
+    """Entry point: parse args, configure logging, and run the adapter."""
     logging.basicConfig(
         level=os.environ.get("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

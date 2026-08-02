@@ -245,8 +245,10 @@ def _clip_memory_blocks(blocks, language):
 
 
 def _clip_wiki_blocks(blocks, language):
-    """Render Local Wiki recall blocks. Mirror of ``_clip_memory_blocks`` but
-    with its own header so the two sections stay separate in the prompt.
+    """Render Local Wiki recall blocks.
+
+    Mirror of ``_clip_memory_blocks`` but with its own header so the two
+    sections stay separate in the prompt.
 
     Same per-block / total char caps as chat memory so the two paths stay
     behaviorally comparable. Each block carries an optional ``source_url``
@@ -295,8 +297,7 @@ def _clip_wiki_blocks(blocks, language):
 def compose_system_prompt_with_memory(
     base, character_prompts=None, language="en", memory_blocks=None, wiki_blocks=None
 ):
-    """Compose system prompt, appending a [Previous Memory] block and a
-    separate [Local Wiki] block at the end.
+    """Compose system prompt, appending a [Previous Memory] block and a separate [Local Wiki] block at the end.
 
     Empty / falsy ``memory_blocks`` degrades to ``compose_system_prompt``
     semantics so callers can always pass the warmup result without branching.
