@@ -57,7 +57,7 @@ git cherry-pick 2c961f5            # Block4 重新叠到 B2/3 之上（仅改 se
 ## 6.1 状态更正（2026-07-21 晚间，主理人补）
 
 - **里程碑2 污染已清理**：本地 `milestone2-adapter-core-split` 现为 `a689329 → 0bddc28 → 082b916`（干净，仅 `services/webui/`，无 P0）；PR #1 远端头同步为 `082b916`。前端对话确认其 `index.html` WIP 原样保留、未触碰。
-- **P0 已重做并推送**：在隔离 git worktree（`D:/AI/workspace/joyai-p0-fix`，与前端分支物理隔离）重做 #2 / #4，推送至 `fix/adapter-p0-correctness`，远端头 `2d53508`。全量 `pytest services/webinfer/tests` **93 passed**（86 基线 + 7 新增回归）。分支含 7 个提交（`a689329..2d53508`），仅改 `services/webinfer/` 与 `doc/adr/`，零 `services/webui/`。
+- **P0 已重做并推送**：在隔离 git worktree（`<workspace>/workspace/joyai-p0-fix`，与前端分支物理隔离）重做 #2 / #4，推送至 `fix/adapter-p0-correctness`，远端头 `2d53508`。全量 `pytest services/webinfer/tests` **93 passed**（86 基线 + 7 新增回归）。分支含 7 个提交（`a689329..2d53508`），仅改 `services/webinfer/` 与 `doc/adr/`，零 `services/webui/`。
 - **§4「待凭据/未推送」已失效**：PR #2 已存在且由后端/测试对话持有，前端对话**勿**合并或修改该分支（约束见 §7）。
 - 工作树现状：共享工作树停在 `fix/webui-live-refs`（前端分支）；后端分支独立成栈，互不影响。
 

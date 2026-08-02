@@ -25,7 +25,7 @@
 - **状态**：CI 绿，**待用户授权合 main**（合后可顺手更新《交叉验证与各端方案-20260727.md》§1.1/§2.1 陈旧 GitHub 状态表）。
 
 ## 3. 起服务验证时的关键发现（防误判）
-- **VLM(llama-main) "exited before ready" 是假警报**：模型 GGUF 实际存在（`D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\`，4.79GB），用正确 Windows 路径 `D:/AI/...` 能正常加载到 "warming up the model"。第一次 bash 探针报 `No such file` 是我误用 `/d/AI/...` POSIX 路径、Windows 原生 exe 不认所致，**不是模型缺失、也不是代码问题**。重新拉带修复的 launcher 时 VLM 应能起来（GPU 识别正常：RTX 5060 Ti 16GB）。
+- **VLM(llama-main) "exited before ready" 是假警报**：模型 GGUF 实际存在（`D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\`，4.79GB），用正确 Windows 路径 `<workspace>/...` 能正常加载到 "warming up the model"。第一次 bash 探针报 `No such file` 是我误用 `/d/AI/...` POSIX 路径、Windows 原生 exe 不认所致，**不是模型缺失、也不是代码问题**。重新拉带修复的 launcher 时 VLM 应能起来（GPU 识别正常：RTX 5060 Ti 16GB）。
 - **另发现本机 PS 5.1 还有 `Start-Process` 因 `Path`/`PATH` 大小写重复键直接抛异常的坑**，与本次修复无关（项目 launcher 用 `New-Object Process` 不受影响）。
 
 ## 4. 启动纪律（固化，跨对话必须遵守）
@@ -47,8 +47,8 @@
 ## 7. 2026-07-28 下午更新：两 PR 已合 + CPU 真机 wiki 实建（防偏移）
 - **状态收口**：#40/#41 均已 squash 合 main，**main=`52fcbb8`**，与 origin/main 同步，工作树干净。
 - **CPU 真机 wiki 建立（本次新做）**：把真实源 `.workbuddy/tmp/wiki-acceptance-corpus/`（3 个 elden-ring md）经 HTTP `POST /v1/external/sync` 建进 `data/`：
-  - 入口：`python -m memory_store.app`（joyai-main venv，torch 2.13.0+cpu + st 5.6.1）+ env `MEMORY_PORT=8997 MEMORY_SQLITE_PATH=data/memory.sqlite MEMORY_VEC_DIR=data/vec MEMORY_BACKEND=sqlite EMBEDDING_PROVIDER=local EMBEDDING_LOCAL_MODEL=D:/AI/models/bge-m3`，`PYTHONPATH=services/memory-store/src`。
-  - 建库 `{namespace:"wiki:elden-ring", dir:"D:/AI/workspace/.../wiki-acceptance-corpus", drop_first:true}` → `files:3, chunks:3, embedded:3, dropped:true, errors:[]`。
+  - 入口：`python -m memory_store.app`（joyai-main venv，torch 2.13.0+cpu + st 5.6.1）+ env `MEMORY_PORT=8997 MEMORY_SQLITE_PATH=data/memory.sqlite MEMORY_VEC_DIR=data/vec MEMORY_BACKEND=sqlite EMBEDDING_PROVIDER=local EMBEDDING_LOCAL_MODEL=<workspace>/models/bge-m3`，`PYTHONPATH=services/memory-store/src`。
+  - 建库 `{namespace:"wiki:elden-ring", dir:"<workspace>/workspace/.../wiki-acceptance-corpus", drop_first:true}` → `files:3, chunks:3, embedded:3, dropped:true, errors:[]`。
   - 落盘：`data/memory.sqlite` 3 行 + `data/vec/wiki-elden-ring.usearch`（12832 bytes）。
   - 端到端离线 recall（Python urllib 显式 UTF-8）：ASCII/中文查询均 200、3 block 命中 score 1.0。
   - ⚠️ curl 在 git-bash 传中文 JSON 报 422 "parsing the body" 是**编码坑、非代码 bug**（用 urllib 发即可）；dir 必须 Windows 原生路径 `D:/...`。

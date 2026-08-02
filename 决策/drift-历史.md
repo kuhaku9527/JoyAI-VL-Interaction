@@ -61,10 +61,10 @@
 
 ---
 
-## DRIFT-5（备注，非运行时）  KWS 训练脚本外溢路径 `/mnt/d/AI`
+## DRIFT-5（备注，非运行时）  KWS 训练脚本外溢路径 `<workspace>`
 
 - **发现日**: 2026-07-28（亲验 `services/kws-training/train_kws.py:5-16`）
-- **事实**: 自训脚本内数据/产物路径写 `/mnt/d/AI/data/kws/...` 与 `/mnt/d/AI/models/sherpa-onnx/...`，属工作区外溢（违反隔离纪律 D-L4-002）。
+- **事实**: 自训脚本内数据/产物路径写 `<workspace>/data/kws/...` 与 `<workspace>/models/sherpa-onnx/...`，属工作区外溢（违反隔离纪律 D-L4-002）。
 - **影响**: 仅限**训练期**（非运行时服务）；运行时 KWS 用进程内 sherpa-onnx 加载，不受影响。
 - **修复**: 建议训练脚本路径改为工作区内（`.cache/` 或 `data/`），与隔离纪律对齐。非阻塞。
 - **关联**: D-046（KWS）/ D-L4-002（隔离）
@@ -96,5 +96,5 @@
 | 2 | memory-store 端口 | 8997 | 8996(默认) | env 无覆盖 | run-windows.env + Start-MemoryStore 默认开 | ✅ 2026-07-29 |
 | 3 | webui 网关端口 | 8997 | 8996(默认) | env 未导出+opt-in | Start-Webui 导 JOYAI_MEMORY_STORE_URL + server.py 9997 | ✅ 2026-07-29 |
 | 4 | bge-m3 provider | local(当前) | nvidia(#38临时) | #38 无 ADR→#42 revert local | 已解决 | ✅ |
-| 5 | KWS 训练路径 | 工作区内 | /mnt/d/AI | 脚本硬编码 | 建议整改 | 🔓 |
+| 5 | KWS 训练路径 | 工作区内 | <workspace> | 脚本硬编码 | 建议整改 | 🔓 |
 | 6 | chat 主路径被 memory-store 拖累 | 独立 | 5s+/条 | inline await + 无熔断器 | D-032/033 fire-and-forget + 熔断器 v0.3 | ✅ 2026-07-29 |

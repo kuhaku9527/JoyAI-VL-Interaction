@@ -109,7 +109,7 @@
 class JarvisASR:
     """流式 ASR 引擎：每片 PCM → sherpa-onnx → yield IS_PARTIAL/IS_FINAL。"""
 
-    def __init__(self, model_dir: str = "D:/AI/models/sherpa-onnx/asr"):
+    def __init__(self, model_dir: str = "<workspace>/models/sherpa-onnx/asr"):
         self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
             tokens=f"{model_dir}/tokens.txt",
             encoder=f"{model_dir}/encoder.int8.onnx",
@@ -394,8 +394,8 @@ CLONE_BACKEND=minimax       # 固定 minimax（已弃用 local_cosyvoice / hybri
 VLM_BACKEND=local           # local | gemini | openai
 
 # sherpa-onnx 本地模型路径
-SHERPA_KWS_MODEL_DIR=D:/AI/models/sherpa-onnx/kws/bt-zai-ma
-SHERPA_ASR_MODEL_DIR=D:/AI/models/sherpa-onnx/asr/paraformer
+SHERPA_KWS_MODEL_DIR=<workspace>/models/sherpa-onnx/kws/bt-zai-ma
+SHERPA_ASR_MODEL_DIR=<workspace>/models/sherpa-onnx/asr/paraformer
 
 # 火山 TTS（云端备选，仅在 TTS_BACKEND=volcano 时生效）
 VOLCANO_TTS_APPID=...

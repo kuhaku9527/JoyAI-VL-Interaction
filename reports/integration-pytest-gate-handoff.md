@@ -35,7 +35,7 @@
 
 **背景修正（重要）**：动手前发现本地 `main` 已先 PR #12（`3ab7881`）合并，而 `test/hermes-api-enrich-glue` 仍基于旧的 `origin/main`(`96aba52`)——即 `6e32123`（jarvis-mode.md 路径引用修正）与 PR #12 内容**重复**。故两分支在 `96aba52` 分叉，**非快进**。
 
-**操作**（独立 worktree `D:/AI/workspace/joyai-merge-wt`，未触碰根树 `ci/add-pytest-gate`）：
+**操作**（独立 worktree `<workspace>/workspace/joyai-merge-wt`，未触碰根树 `ci/add-pytest-gate`）：
 1. `git merge --no-ff test/hermes-api-enrich-glue`（ort 策略）→ 合并提交 `52a6cc6`。git 识别 `6e32123` 的 docs 改动已在 PR #12 落地，故**仅纳入 2 个测试文件**（`conftest.py` + `test_hermes_api_enrich.py`），无冲突、无重复 docs 改动。
 2. 本地验证 7 测试：venv `D:\AI\envs\joyai-main\python.exe`（pytest 9.1.1 / pytest-asyncio 1.4.0 / py3.12，`-o asyncio_mode=auto`）→ **7 passed in 0.47s**（conftest 用 `Path(__file__).parents[1]` 插 `sys.path[0]`，绑定 worktree 内 `services/background-agent`，无 editable-install 陷阱；7 测全 mock `httpx.AsyncClient`，不需起 memory-store）。
 3. 推送：`GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 git push https://x-access-token:$TOK@github.com/... main:main`（gh-proxy/GCM tty 走 token 直连旁路）→ `3ab7881..52a6cc6  main -> main`，**API 复核远端 HEAD=52a6cc6 一致**。

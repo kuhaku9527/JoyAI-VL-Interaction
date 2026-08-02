@@ -193,7 +193,7 @@
 
 ## 8. CI 门禁（必看 landmine）
 
-- 本仓库 `quality.yml` 的 `ruff` job **既跑 `ruff check` 也跑 `ruff format --check`**（services/webinfer 全目录）。**只跑 `ruff check` 绿 ≠ 门禁绿**。改任意 `.py` 后必须用 pinned ruff `0.15.22`（`D:/AI/ruffmig/bin/ruff.exe`）同时验：
+- 本仓库 `quality.yml` 的 `ruff` job **既跑 `ruff check` 也跑 `ruff format --check`**（services/webinfer 全目录）。**只跑 `ruff check` 绿 ≠ 门禁绿**。改任意 `.py` 后必须用 pinned ruff `0.15.22`（`<workspace>/ruffmig/bin/ruff.exe`）同时验：
   ```
   ruff check services/webinfer --extend-ignore <现有 ignore 集>
   ruff format --check services/webinfer

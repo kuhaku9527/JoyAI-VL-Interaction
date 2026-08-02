@@ -203,7 +203,7 @@
 
 ```bash
 # 用 pinned ruff 0.15.22，绕过 ignore 暴露高价值项
-RUFF=D:/AI/ruffmig/bin/ruff.exe
+RUFF=<workspace>/ruffmig/bin/ruff.exe
 HV="B904,B019,B007,B011,B006,S,BLE,C4,UP006,UP007,PL,RUF,F841,F821"
 for d in services/*/; do
   $RUFF check "$d" --select "$HV" \
@@ -253,6 +253,6 @@ done
 ### 结论
 - 报告**核心结论成立**：BLE001 盲异常 ~104 属实、CI 盲区（S/BLE 不在 select）属实、hermes_api:262 静默吞错属实。
 - **修正报告尺度**：S101 / S311 / B007 / F841 四项报告少报，实际生产缺陷比报告写的更多 → 后端 P1 修复清单应扩容（尤其 **S101 97 处生产 assert 在 `python -O` 下全部失效**，比报告估计的 14 严重得多）。
-- 验证原始数据：`D:/AI/workspace/JoyAI-VL-Interaction-main/.workbuddy/tmp/ruff-probe-112845.txt`
+- 验证原始数据：`<workspace>/workspace/JoyAI-VL-Interaction-main/.workbuddy/tmp/ruff-probe-112845.txt`
 
 ```

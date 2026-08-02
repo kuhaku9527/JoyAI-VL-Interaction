@@ -31,7 +31,7 @@
 新增 `<workspace>/.workbuddy/env/cache.env.ps1`，WorkBuddy 启动前 source，把全部缓存收口到 `<workspace>/.cache/`：
 
 ```powershell
-$root = "D:/AI/workspace/JoyAI-VL-Interaction-main"
+$root = "<workspace>/workspace/JoyAI-VL-Interaction-main"
 $env:HF_HOME                  = "$root/.cache/huggingface"
 $env:PIP_CACHE_DIR            = "$root/.cache/pip"
 $env:npm_config_cache         = "$root/.cache/npm"

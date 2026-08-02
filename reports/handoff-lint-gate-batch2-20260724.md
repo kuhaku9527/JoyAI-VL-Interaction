@@ -3,7 +3,7 @@
 **Date:** 2026-07-24
 **Owner:** backend dialogue (code fixes) · architecture dialogue (config diff + this handoff)
 **Source:** `doc/adr/0011-phased-lint-gate.md` (Batch 2)
-**Verification tool:** `D:/AI/ruffmig/bin/ruff.exe` (pinned `0.15.22`, matches CI)
+**Verification tool:** `<workspace>/ruffmig/bin/ruff.exe` (pinned `0.15.22`, matches CI)
 
 ---
 
@@ -39,7 +39,7 @@ sub-rules. Do **not** add the full `S` family or `BLE` (those are Batch 3).
 
 Command to re-list / verify:
 ```bash
-D:/AI/ruffmig/bin/ruff.exe check . --select B019,B007,F841,S104,S108,S110,S112,S310 --output-format concise
+<workspace>/ruffmig/bin/ruff.exe check . --select B019,B007,F841,S104,S108,S110,S112,S310 --output-format concise
 ```
 Target after fixes: **0**.
 

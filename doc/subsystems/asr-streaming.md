@@ -115,7 +115,7 @@ logger = logging.getLogger("joyai.kws")
 class JarvisKWS:
     """KWS 引擎：持续监听唤醒词。"""
     
-    def __init__(self, model_dir: str = "D:/AI/models/sherpa-onnx/models/kws/bt-zai-ma"):
+    def __init__(self, model_dir: str = "<workspace>/models/sherpa-onnx/models/kws/bt-zai-ma"):
         self.model_dir = Path(model_dir)
         if not self.model_dir.exists():
             raise FileNotFoundError(f"KWS 模型目录不存在: {model_dir}")
@@ -193,7 +193,7 @@ class JarvisASR:
     
     def __init__(
         self,
-        model_dir: str = "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en",
+        model_dir: str = "<workspace>/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en",
     ):
         self.model_dir = Path(model_dir)
         if not self.model_dir.exists():

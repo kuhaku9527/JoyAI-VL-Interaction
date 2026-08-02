@@ -26,7 +26,7 @@ Keep KWS as the production wake owner and add diagnostic observability around mi
 ## Implementation Decisions
 
 - `JarvisStateMachine` now records rolling PCM while in `KWS_LISTENING`.
-- Speech-like windows are written to `D:/AI/data/kws/mic_captures/kws_live_*.wav` with peak/RMS in the filename.
+- Speech-like windows are written to `<workspace>/data/kws/mic_captures/kws_live_*.wav` with peak/RMS in the filename.
 - `JARVIS_KWS_SHADOW_ASR=true` enables ASR shadow in listening mode. The shadow path logs text and explicit `KWS MISS` lines when ASR sees a wake pattern but KWS did not fire.
 - ASR shadow never transitions to `WAKE_DETECTED` or `DIALOG_ACTIVE`.
 - `JARVIS_KWS_CAPTURE_*` env knobs control capture directory, window, interval, and peak threshold.
