@@ -97,9 +97,19 @@ limitations under the License.
 
         // Initialize Lucide icons immediately when DOM is ready
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+            document.addEventListener('DOMContentLoaded', () => {
+                lucide.createIcons();
+                // Localize static markup (issue #47): Chinese resolved from
+                // window.JoyI18n.UI_STRING_MAP, never hardcoded in HTML.
+                if (window.JoyI18n && typeof window.JoyI18n.applyUiI18n === 'function') {
+                    window.JoyI18n.applyUiI18n(document);
+                }
+            });
         } else {
             lucide.createIcons();
+            if (window.JoyI18n && typeof window.JoyI18n.applyUiI18n === 'function') {
+                window.JoyI18n.applyUiI18n(document);
+            }
         }
     </script>
 </head>
@@ -122,7 +132,7 @@ limitations under the License.
             </div>
         </div>
         <div class="header-right">
-            <span class="status-badge disconnected" id="connectionStatus" role="status" aria-live="polite">Disconnected</span>
+            <span class="status-badge disconnected" id="connectionStatus" role="status" aria-live="polite" data-i18n>Disconnected</span>
             <span class="status-badge llm-unknown" id="llmServiceStatus" title="LLM (llama-server) reachability -- polled every 3s">LLM ?</span>
             <span class="status-badge llm-unknown" id="ttsServiceStatus" title="TTS (voice_clone_api) reachability -- polled every 3s">TTS ?</span>
             <span class="status-badge llm-unknown" id="kwsServiceStatus" title="KWS (sherpa-onnx wake-word) model presence -- polled every 3s">KWS ?</span>
@@ -135,7 +145,7 @@ limitations under the License.
                 <span id="themeIcon">
                     <i data-lucide="moon"></i>
                 </span>
-                <span id="themeText">Dark</span>
+                <span id="themeText" data-i18n>Dark</span>
             </button>
         </div>
     </div>
@@ -153,12 +163,12 @@ limitations under the License.
         <div class="settings-body">
             <!-- [Local Wiki] F2: API Status panel (top of settings, ADR-0012 §5) -->
             <div class="settings-section" style="grid-column: 1 / -1;">
-                <div class="settings-section-title">API Status</div>
+                <div class="settings-section-title" data-i18n>API Status</div>
                 <div class="api-status-grid" id="apiStatusGrid">
-                    <div class="api-status-item"><span class="status-dot" id="status-main_llm"></span><span class="api-status-name">Main LLM</span><span class="api-status-meta" id="meta-main_llm">--</span></div>
-                    <div class="api-status-item"><span class="status-dot" id="status-summarizer"></span><span class="api-status-name">Summarizer</span><span class="api-status-meta" id="meta-summarizer">--</span></div>
-                    <div class="api-status-item"><span class="status-dot" id="status-embedding"></span><span class="api-status-name">Embedding</span><span class="api-status-meta" id="meta-embedding">--</span></div>
-                    <div class="api-status-item"><span class="status-dot" id="status-memory_store"></span><span class="api-status-name">Memory Store</span><span class="api-status-meta" id="meta-memory_store">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-main_llm"></span><span class="api-status-name" data-i18n>Main LLM</span><span class="api-status-meta" id="meta-main_llm">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-summarizer"></span><span class="api-status-name" data-i18n>Summarizer</span><span class="api-status-meta" id="meta-summarizer">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-embedding"></span><span class="api-status-name" data-i18n>Embedding</span><span class="api-status-meta" id="meta-embedding">--</span></div>
+                    <div class="api-status-item"><span class="status-dot" id="status-memory_store"></span><span class="api-status-name" data-i18n>Memory Store</span><span class="api-status-meta" id="meta-memory_store">--</span></div>
                     <div class="api-status-item"><span class="status-dot" id="status-tts"></span><span class="api-status-name">TTS</span><span class="api-status-meta" id="meta-tts">--</span></div>
                 </div>
                 <button class="icon-btn" id="apiStatusRefresh" type="button" aria-label="Refresh API status"><i data-lucide="refresh-cw"></i> Refresh</button>
@@ -167,12 +177,12 @@ limitations under the License.
             <!-- Column 1: Layout & Visual Effects -->
                 <div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Layout</div>
+                        <div class="settings-section-title" data-i18n>Layout</div>
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Main Content Order</div>
-                                <div class="settings-item-description">Choose which element appears at the top</div>
+                                <div class="settings-item-label" data-i18n>Main Content Order</div>
+                                <div class="settings-item-description" data-i18n>Choose which element appears at the top</div>
                             </div>
                             <select id="layoutOrder" class="settings-select">
                                 <option value="video-first">Camera → VLM Output Info</option>
@@ -182,23 +192,23 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">VLM Output on Camera View</div>
-                                <div class="settings-item-description">Show text overlay directly on video feed</div>
+                                <div class="settings-item-label" data-i18n>VLM Output on Camera View</div>
+                                <div class="settings-item-description" data-i18n>Show text overlay directly on video feed</div>
                             </div>
                             <select id="overlayPosition" class="settings-select">
-                                <option value="none">None</option>
-                                <option value="top">At the top</option>
-                                <option value="bottom">At the bottom</option>
+                                <option value="none" data-i18n>None</option>
+                                <option value="top" data-i18n>At the top</option>
+                                <option value="bottom" data-i18n>At the bottom</option>
                             </select>
                         </div>
                     </div>
 
                     <div class="settings-section">
-                        <div class="settings-section-title">Visual Effects</div>
+                        <div class="settings-section-title" data-i18n>Visual Effects</div>
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Pop-in Animation</div>
+                                <div class="settings-item-label" data-i18n>Pop-in Animation</div>
                                 <div class="settings-item-description">Scale animation when new VLM response arrives</div>
                             </div>
                             <label class="toggle-switch">
@@ -209,8 +219,8 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Green Glow Effect</div>
-                                <div class="settings-item-description">Border glow on new VLM response</div>
+                                <div class="settings-item-label" data-i18n>Green Glow Effect</div>
+                                <div class="settings-item-description" data-i18n>Border glow on new VLM response</div>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="glowToggle" checked>
@@ -220,8 +230,8 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Fade Effect</div>
-                                <div class="settings-item-description">Gradually fade response after 2 seconds</div>
+                                <div class="settings-item-label" data-i18n>Fade Effect</div>
+                                <div class="settings-item-description" data-i18n>Gradually fade response after 2 seconds</div>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="fadeToggle" checked>
@@ -234,12 +244,12 @@ limitations under the License.
                 <!-- Column 2: Input Colors & WebRTC -->
                 <div>
                     <div class="settings-section">
-                        <div class="settings-section-title">Visual Style</div>
+                        <div class="settings-section-title" data-i18n>Visual Style</div>
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Colorful UI Accents</div>
-                                <div class="settings-item-description">Color-coded icons and input focus glows</div>
+                                <div class="settings-item-label" data-i18n>Colorful UI Accents</div>
+                                <div class="settings-item-description" data-i18n>Color-coded icons and input focus glows</div>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="colorfulFocusToggle">
@@ -261,12 +271,12 @@ limitations under the License.
                     </div>
 
                     <div class="settings-section">
-                        <div class="settings-section-title">Audio Output</div>
+                        <div class="settings-section-title" data-i18n>Audio Output</div>
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Speak VLM output</div>
-                                <div class="settings-item-description">Play TTS audio for each visible response</div>
+                                <div class="settings-item-label" data-i18n>Speak VLM output</div>
+                                <div class="settings-item-description" data-i18n>Play TTS audio for each visible response</div>
                             </div>
                             <label class="toggle-switch">
                                 <input type="checkbox" id="ttsEnabledToggle" checked>
@@ -276,11 +286,11 @@ limitations under the License.
                     </div>
 
                     <div class="settings-section">
-                        <div class="settings-section-title">Background Model</div>
+                        <div class="settings-section-title" data-i18n>Background Model</div>
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Enable delegation solver</div>
+                                <div class="settings-item-label" data-i18n>Enable delegation solver</div>
                                 <div class="settings-item-description">Run Qwen3.5-122B-A10B-FP8 for delegated questions, visual reasoning, and chart tasks in the background</div>
                             </div>
                             <label class="toggle-switch">
@@ -291,7 +301,7 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div style="flex: 1; min-width: 0;">
-                                <div class="settings-item-label">Frame multiplier</div>
+                                <div class="settings-item-label" data-i18n>Frame multiplier</div>
                                 <div class="settings-item-description">Background frames per second relative to foreground streaming FPS</div>
                             </div>
                             <input type="number" id="backgroundFrameMultiplier" value="2" min="1" max="10" step="1" style="width: 80px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
@@ -299,7 +309,7 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div style="flex: 1; min-width: 0;">
-                                <div class="settings-item-label">Max background frames</div>
+                                <div class="settings-item-label" data-i18n>Max background frames</div>
                                 <div class="settings-item-description">Recent background frame cache cap; default and maximum are 100</div>
                             </div>
                             <input type="number" id="backgroundMaxFrames" value="100" min="1" max="100" step="1" style="width: 80px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
@@ -307,11 +317,11 @@ limitations under the License.
                     </div>
 
                     <div class="settings-section">
-                        <div class="settings-section-title">Debug</div>
+                        <div class="settings-section-title" data-i18n>Debug</div>
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Show request payload</div>
+                                <div class="settings-item-label" data-i18n>Show request payload</div>
                                 <div class="settings-item-description">Include request JSON (image + prompt) under the prompt area; collapsed by default</div>
                             </div>
                             <label class="toggle-switch">
@@ -322,7 +332,7 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Show response payload</div>
+                                <div class="settings-item-label" data-i18n>Show response payload</div>
                                 <div class="settings-item-description">Include API response JSON under the VLM output; collapsed by default</div>
                             </div>
                             <label class="toggle-switch">
@@ -333,7 +343,7 @@ limitations under the License.
 
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Show memory state</div>
+                                <div class="settings-item-label" data-i18n>Show memory state</div>
                                 <div class="settings-item-description">Display mid-term and long-term memory content below VLM output</div>
                             </div>
                             <label class="toggle-switch">
@@ -345,10 +355,10 @@ limitations under the License.
 
                     <!-- [Local Wiki] F1: Network Proxy block (ADR-0012 §4, config-only for v1) -->
                     <div class="settings-section">
-                        <div class="settings-section-title">Network Proxy</div>
+                        <div class="settings-section-title" data-i18n>Network Proxy</div>
                         <div class="settings-item">
                             <div>
-                                <div class="settings-item-label">Enable proxy</div>
+                                <div class="settings-item-label" data-i18n>Enable proxy</div>
                                 <div class="settings-item-description">Reserve only; v1 traffic stays direct (ADR-0012 §4)</div>
                             </div>
                             <label class="toggle-switch">
@@ -358,13 +368,13 @@ limitations under the License.
                         </div>
                         <div class="settings-item">
                             <div style="flex: 1; min-width: 0;">
-                                <div class="settings-item-label">Proxy host</div>
+                                <div class="settings-item-label" data-i18n>Proxy host</div>
                             </div>
                             <input type="text" id="proxyHost" placeholder="127.0.0.1" style="width: 120px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
                         </div>
                         <div class="settings-item">
                             <div style="flex: 1; min-width: 0;">
-                                <div class="settings-item-label">Proxy port</div>
+                                <div class="settings-item-label" data-i18n>Proxy port</div>
                             </div>
                             <input type="number" id="proxyPort" value="7890" min="1" max="65535" step="1" style="width: 80px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 14px;">
                         </div>
@@ -393,23 +403,23 @@ limitations under the License.
                 <div class="panel-header" onclick="togglePanel('videoSourceConfig')">
                     <div class="panel-title">
                         <span class="panel-icon"><i data-lucide="video"></i></span>
-                        <span class="panel-title-text">Video Source</span>
+                        <span class="panel-title-text" data-i18n>Video Source</span>
                     </div>
                     <span class="panel-toggle collapsed" id="videoSourceConfigToggle">▼</span>
                 </div>
                 <div class="panel-content collapsed" id="videoSourceConfig">
                     <!-- Webcam capture -->
                     <div class="capture-block">
-                        <div class="capture-block-header"><i data-lucide="video"></i> Webcam Capture</div>
+                        <div class="capture-block-header"><i data-lucide="video"></i> <span data-i18n>Webcam Capture</span></div>
                         <div class="form-group">
-                            <label>Camera Selection</label>
-                            <select id="cameraSelect"><option value="">Detecting cameras...</option></select>
+                            <label data-i18n>Camera Selection</label>
+                            <select id="cameraSelect"><option value="" data-i18n>Detecting cameras...</option></select>
                         </div>
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <button class="icon-btn" id="webcamStartBtn" title="Start webcam capture" type="button" aria-label="Start webcam capture"><i data-lucide="play"></i></button>
-                                <button class="icon-btn" id="webcamStopBtn" title="Stop webcam capture" type="button" disabled aria-label="Stop webcam capture"><i data-lucide="square"></i></button>
-                                <span id="webcamStatus" class="input-hint" style="margin: 0;">Idle</span>
+                                <button class="icon-btn" id="webcamStartBtn" title="Start webcam capture" type="button" aria-label="Start webcam capture" data-i18n-title="Start webcam capture" data-i18n-aria="Start webcam capture"><i data-lucide="play"></i></button>
+                                <button class="icon-btn" id="webcamStopBtn" title="Stop webcam capture" type="button" disabled aria-label="Stop webcam capture" data-i18n-title="Stop webcam capture" data-i18n-aria="Stop webcam capture"><i data-lucide="square"></i></button>
+                                <span id="webcamStatus" class="input-hint" style="margin: 0;" data-i18n>Idle</span>
                             </div>
                             <div class="input-hint" style="margin-top: 8px;">Local preview + WebRTC to backend. VLM runs automatically while streaming.</div>
                         </div>
@@ -417,10 +427,10 @@ limitations under the License.
 
                     <!-- RTSP capture -->
                     <div class="capture-block">
-                        <div class="capture-block-header"><i data-lucide="cast"></i> RTSP Stream <span class="beta-badge">BETA</span></div>
+                        <div class="capture-block-header"><i data-lucide="cast"></i> <span data-i18n>RTSP Stream</span> <span class="beta-badge">BETA</span></div>
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 8px;">
-                                <label style="margin-bottom: 0; flex: 1;">RTSP Stream URL</label>
+                                <label style="margin-bottom: 0; flex: 1;" data-i18n>RTSP Stream URL</label>
                                 <button class="icon-btn" id="testRtspBtn" title="Test Connection" aria-label="Test Connection"><i data-lucide="test-tube-diagonal"></i></button>
                             </div>
                             <input type="text" id="rtspUrl" placeholder="rtsp://192.168.1.100:554/stream">
@@ -428,19 +438,19 @@ limitations under the License.
                         </div>
                         <div class="form-group">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <button class="icon-btn" id="rtspStartBtn" title="Start RTSP capture" type="button" aria-label="Start RTSP capture"><i data-lucide="play"></i></button>
-                                <button class="icon-btn" id="rtspStopBtn" title="Stop RTSP capture" type="button" disabled aria-label="Stop RTSP capture"><i data-lucide="square"></i></button>
-                                <span id="rtspCaptureStatus" class="input-hint" style="margin: 0;">Idle</span>
+                                <button class="icon-btn" id="rtspStartBtn" title="Start RTSP capture" type="button" aria-label="Start RTSP capture" data-i18n-title="Start RTSP capture" data-i18n-aria="Start RTSP capture"><i data-lucide="play"></i></button>
+                                <button class="icon-btn" id="rtspStopBtn" title="Stop RTSP capture" type="button" disabled aria-label="Stop RTSP capture" data-i18n-title="Stop RTSP capture" data-i18n-aria="Stop RTSP capture"><i data-lucide="square"></i></button>
+                                <span id="rtspCaptureStatus" class="input-hint" style="margin: 0;" data-i18n>Idle</span>
                             </div>
                             <div id="rtspBetaWarning" class="input-hint" style="margin-top: 8px; color: var(--warning-color);"><strong>Beta:</strong> Tested with Reolink RLC-811A.</div>
                         </div>
                         <div class="form-group">
-                            <label>Processing Interval</label>
+                            <label data-i18n>Processing Interval</label>
                             <input type="number" id="processEvery" value="1" min="0.1" max="60" step="0.1">
                             <div class="input-hint">Seconds between each VLM inference (default: 1s)</div>
                         </div>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <label>Frames per Batch</label>
+                            <label data-i18n>Frames per Batch</label>
                             <input type="number" id="framesPerBatch" value="1" min="1" max="30" step="1">
                             <div class="input-hint">Number of frames batched per inference (default: 1)</div>
                         </div>
@@ -448,13 +458,13 @@ limitations under the License.
 
                     <!-- Screen capture -->
                     <div class="capture-block">
-                        <div class="capture-block-header"><i data-lucide="monitor"></i> Screen Capture</div>
+                        <div class="capture-block-header"><i data-lucide="monitor"></i> <span data-i18n>Screen Capture</span></div>
                         <div class="form-group">
                             <div class="input-hint" style="margin-bottom: 8px;">Browser-native getDisplayMedia, 1 fps JPEG frames.</div>
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button" aria-label="Start screen capture"><i data-lucide="play"></i></button>
-                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled aria-label="Stop screen capture"><i data-lucide="square"></i></button>
-                                <span id="screenStatus" class="input-hint" style="margin: 0;">Idle</span>
+                                <button class="icon-btn" id="screenStartBtn" title="Start screen capture" type="button" aria-label="Start screen capture" data-i18n-title="Start screen capture" data-i18n-aria="Start screen capture"><i data-lucide="play"></i></button>
+                                <button class="icon-btn" id="screenStopBtn" title="Stop screen capture" type="button" disabled aria-label="Stop screen capture" data-i18n-title="Stop screen capture" data-i18n-aria="Stop screen capture"><i data-lucide="square"></i></button>
+                                <span id="screenStatus" class="input-hint" style="margin: 0;" data-i18n>Idle</span>
                             </div>
                         </div>
                     </div>
@@ -466,7 +476,7 @@ limitations under the License.
                 <div class="panel-header" onclick="togglePanel('servicesConfig')">
                     <div class="panel-title">
                         <span class="panel-icon"><i data-lucide="plug"></i></span>
-                        <span class="panel-title-text">Services</span>
+                        <span class="panel-title-text" data-i18n>Services</span>
                     </div>
                     <span class="panel-toggle collapsed" id="servicesConfigToggle">▼</span>
                 </div>
@@ -474,23 +484,23 @@ limitations under the License.
                     <div class="input-hint" style="margin-bottom: 12px;">Four pluggable backends. Save applies at runtime; no service restart.</div>
                     <div class="service-row" data-service="llm">
                         <div class="service-row-header"><i data-lucide="brain"></i><span>LLM</span><span class="service-badge" id="badge-llm">--</span></div>
-                        <div class="form-group"><label>API Base URL</label><input type="text" id="svc-llm-api-base" placeholder="http://127.0.0.1:8070/v1"></div>
-                        <div class="form-group"><label>Model</label><input type="text" id="svc-llm-model" placeholder="joyai-vl-interaction-preview"></div>
-                        <div class="form-group"><label>API Key</label><input type="password" id="svc-llm-api-key" placeholder="optional"></div>
+                        <div class="form-group"><label data-i18n>API Base URL</label><input type="text" id="svc-llm-api-base" placeholder="http://127.0.0.1:8070/v1"></div>
+                        <div class="form-group"><label data-i18n>Model</label><input type="text" id="svc-llm-model" placeholder="joyai-vl-interaction-preview"></div>
+                        <div class="form-group"><label data-i18n>API Key</label><input type="password" id="svc-llm-api-key" placeholder="optional" data-i18n-placeholder="optional"></div>
                     </div>
                     <div class="service-row" data-service="summary">
-                        <div class="service-row-header"><i data-lucide="file-text"></i><span>Summary</span><span class="service-badge" id="badge-summary">--</span></div>
-                        <div class="form-group"><label>API Base URL</label><input type="text" id="svc-summary-api-base" placeholder="http://127.0.0.1:7060/v1"></div>
-                        <div class="form-group"><label>Model</label><input type="text" id="svc-summary-model" placeholder="joyai-vl-interaction-preview"></div>
+                        <div class="service-row-header"><i data-lucide="file-text"></i><span data-i18n>Summary</span><span class="service-badge" id="badge-summary">--</span></div>
+                        <div class="form-group"><label data-i18n>API Base URL</label><input type="text" id="svc-summary-api-base" placeholder="http://127.0.0.1:7060/v1"></div>
+                        <div class="form-group"><label data-i18n>Model</label><input type="text" id="svc-summary-model" placeholder="joyai-vl-interaction-preview"></div>
                     </div>
                     <div class="service-row" data-service="tts">
                         <div class="service-row-header"><i data-lucide="volume-2"></i><span>TTS</span><span class="service-badge" id="badge-tts">--</span></div>
-                        <div class="form-group"><label>API URL</label><input type="text" id="svc-tts-api-base" placeholder="http://127.0.0.1:8985/v1/synthesize"></div>
+                        <div class="form-group"><label data-i18n>API URL</label><input type="text" id="svc-tts-api-base" placeholder="http://127.0.0.1:8985/v1/synthesize"></div>
                     </div>
                     <div class="service-row" data-service="asr">
                         <div class="service-row-header"><i data-lucide="mic"></i><span>ASR</span><span class="service-badge" id="badge-asr">--</span></div>
-                        <div class="form-group"><label>API URL</label><input type="text" id="svc-asr-api-base" placeholder="http://127.0.0.1:8993/v1/transcribe"></div>
-                        <div class="form-group"><label>Model</label><input type="text" id="svc-asr-model" placeholder="ggml-large-v3-turbo"></div>
+                        <div class="form-group"><label data-i18n>API URL</label><input type="text" id="svc-asr-api-base" placeholder="http://127.0.0.1:8993/v1/transcribe"></div>
+                        <div class="form-group"><label data-i18n>Model</label><input type="text" id="svc-asr-model" placeholder="ggml-large-v3-turbo"></div>
                     </div>
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
                         <button class="icon-btn" id="svcSaveBtn" title="Save all service configs and probe" aria-label="Save all service configs and probe"><i data-lucide="save"></i> Save</button>
@@ -504,22 +514,22 @@ limitations under the License.
                 <div class="panel-header" onclick="togglePanel('knowledgeBase')">
                     <div class="panel-title">
                         <span class="panel-icon"><i data-lucide="book-open"></i></span>
-                        <span class="panel-title-text">Knowledge Base</span>
+                        <span class="panel-title-text" data-i18n>Knowledge Base</span>
                     </div>
                     <span class="panel-toggle collapsed" id="knowledgeBaseToggle">▼</span>
                 </div>
                 <div class="panel-content collapsed" id="knowledgeBase">
                     <div class="input-hint" style="margin-bottom: 8px;">Local wiki corpora (per game). Sync a <code>wiki/&lt;game&gt;</code> folder into a vector namespace.</div>
                     <div id="namespaceList" class="namespace-list"></div>
-                    <div id="namespaceEmpty" class="input-hint" style="display: none;">No knowledge bases yet.</div>
+                    <div id="namespaceEmpty" class="input-hint" style="display: none;" data-i18n>No knowledge bases yet.</div>
 
                     <div class="wiki-paste-block">
                         <div class="form-group">
-                            <label>Game / namespace</label>
+                            <label data-i18n>Game / namespace</label>
                             <input type="text" id="wikiNamespace" placeholder="elden-ring">
                         </div>
                         <div class="form-group">
-                            <label>Paste wiki markdown</label>
+                            <label data-i18n>Paste wiki markdown</label>
                             <textarea id="wikiPaste" rows="4" placeholder="Paste攻略 markdown here..."></textarea>
                         </div>
                         <button class="icon-btn" id="wikiPasteBtn" type="button" aria-label="Ingest pasted markdown"><i data-lucide="upload"></i> Ingest</button>
@@ -531,7 +541,7 @@ limitations under the License.
                         <div style="display: flex; gap: 8px; margin-top: 8px;">
                             <button class="icon-btn" id="wikiSyncBtn" type="button" aria-label="Sync folder"><i data-lucide="refresh-cw"></i> Sync</button>
                             <label style="display: flex; align-items: center; gap: 4px;">
-                                <input type="checkbox" id="wikiDropFirst"> <span class="input-hint" style="margin: 0;">Drop first</span>
+                                <input type="checkbox" id="wikiDropFirst"> <span class="input-hint" style="margin: 0;" data-i18n>Drop first</span>
                             </label>
                         </div>
                     </div>
@@ -563,7 +573,7 @@ limitations under the License.
                         <i data-lucide="bot"></i>
                         VLM Output
                     </div>
-                    <div class="vlm-content" id="fullscreenVlmContent">Ready</div>
+                    <div class="vlm-content" id="fullscreenVlmContent" data-i18n>Ready</div>
                     <div class="vlm-metrics" id="fullscreenVlmMetrics"></div>
                 </div>
 
@@ -592,13 +602,13 @@ limitations under the License.
                             Model: <span id="modelName" style="font-weight: 600; color: var(--accent-color);">--</span>
                         </div>
                         <div class="tts-speaking-line" id="ttsSpeakingLine">
-                            <strong>Speaking:</strong> <span id="ttsSpeakingText"></span>
+                            <strong data-i18n>Speaking:</strong> <span id="ttsSpeakingText"></span>
                         </div>
                     </div>
                     <div class="result-header-metrics">
                         <div class="bt-latency-inline" id="btLatencyInline" aria-label="BT chain latency">
                             <span class="bt-latency-chip">MIC <strong id="btMicLevelValue">--</strong></span>
-                            <span class="bt-latency-chip" title="BT listening input device">INPUT <strong id="btMicDeviceValue">--</strong></span>
+                            <span class="bt-latency-chip" title="BT listening input device" data-i18n-title="BT listening input device">INPUT <strong id="btMicDeviceValue">--</strong></span>
                             <span class="bt-latency-chip">ASR <strong id="btAsrLatencyValue">--</strong></span>
                             <span class="bt-latency-chip">LLM <strong id="btLlmLatencyValue">--</strong></span>
                             <span class="bt-latency-chip">TTS <strong id="btTtsLatencyValue">--</strong></span>
@@ -661,11 +671,11 @@ limitations under the License.
                 </div>
                 <div id="memoryStateDebug" class="debug-payload-block" style="display: none; margin-top: 8px;">
                     <details open style="margin: 0;">
-                        <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Mid-term memory</summary>
+                        <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);" data-i18n>Mid-term memory</summary>
                         <pre id="midTermMemoryContent" style="margin: 8px 0 0; padding: 10px; background: var(--bg-secondary); border-radius: 8px; font-size: 11px; overflow: auto; max-height: 300px; white-space: pre-wrap; word-break: break-all;"></pre>
                     </details>
                     <details open style="margin: 4px 0 0;">
-                        <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Long-term memory</summary>
+                        <summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);" data-i18n>Long-term memory</summary>
                         <pre id="longTermMemoryContent" style="margin: 8px 0 0; padding: 10px; background: var(--bg-secondary); border-radius: 8px; font-size: 11px; overflow: auto; max-height: 300px; white-space: pre-wrap; word-break: break-all;"></pre>
                     </details>
                 </div>
@@ -883,7 +893,7 @@ limitations under the License.
                 asrDraftElement.className = 'result-text jarvis-pilot-message asr-draft';
                 const role = document.createElement('span');
                 role.className = 'jarvis-message-role';
-                role.textContent = 'Pilot (listening)';
+                role.textContent = window.JoyI18n.localizeUiString('Pilot (listening)');
                 const body = document.createElement('div');
                 body.className = 'jarvis-message-body';
                 asrDraftElement.appendChild(role);
@@ -1019,14 +1029,14 @@ limitations under the License.
                 cameraSelect.innerHTML = '';
 
                 if (videoDevices.length === 0) {
-                    cameraSelect.innerHTML = '<option value="">No cameras found</option>';
+                    cameraSelect.innerHTML = '<option value="">' + window.JoyI18n.localizeUiString('No cameras found') + '</option>';
                     return;
                 }
 
                 videoDevices.forEach((device, index) => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
-                    option.text = window.JoyI18n.localizeDeviceLabel(device.label) || `Camera ${index + 1}`;
+                    option.text = window.JoyI18n.localizeDeviceLabel(device.label) || (window.JoyI18n.localizeUiString('Camera') + (index + 1));
                     cameraSelect.appendChild(option);
                 });
 
@@ -1036,7 +1046,7 @@ limitations under the License.
                 console.log(`Found ${videoDevices.length} camera(s)`);
             } catch (err) {
                 console.error('Error enumerating cameras:', err);
-                document.getElementById('cameraSelect').innerHTML = '<option value="">Error detecting cameras</option>';
+                document.getElementById('cameraSelect').innerHTML = '<option value="">' + window.JoyI18n.localizeUiString('Error detecting cameras') + '</option>';
             }
         }
 
@@ -1459,7 +1469,7 @@ limitations under the License.
             const contentDiv = document.getElementById('resultTextContent');
             if (markdownEnabled) {
                 markdownIcon.innerHTML = '<i data-lucide="code"></i>';
-                markdownText.textContent = 'Markdown';
+                markdownText.textContent = window.JoyI18n.localizeUiString('Markdown');
                 if (contentDiv) {
                     contentDiv.classList.add('markdown-rendered');
                 } else {
@@ -1467,7 +1477,7 @@ limitations under the License.
                 }
             } else {
                 markdownIcon.innerHTML = '<i data-lucide="file-text"></i>';
-                markdownText.textContent = 'Plain Text';
+                markdownText.textContent = window.JoyI18n.localizeUiString('Plain Text');
                 if (contentDiv) {
                     contentDiv.classList.remove('markdown-rendered');
                 } else {
@@ -3437,11 +3447,11 @@ limitations under the License.
             if (theme === 'light') {
                 document.body.classList.add('light-theme');
                 themeIcon.innerHTML = '<i data-lucide="sun"></i>';
-                themeText.textContent = 'Light';
+                themeText.textContent = window.JoyI18n.localizeUiString('Light');
             } else if (theme === 'dark') {
                 document.body.classList.remove('light-theme');
                 themeIcon.innerHTML = '<i data-lucide="moon"></i>';
-                themeText.textContent = 'Dark';
+                themeText.textContent = window.JoyI18n.localizeUiString('Dark');
             } else { // 'auto' - follow OS preference
                 const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
                 if (prefersLight) {
@@ -3451,7 +3461,7 @@ limitations under the License.
                 }
                 // Always show monitor icon for AUTO mode
                 themeIcon.innerHTML = '<i data-lucide="monitor"></i>';
-                themeText.textContent = 'Auto';
+                themeText.textContent = window.JoyI18n.localizeUiString('Auto');
             }
             lucide.createIcons();
 
@@ -3795,7 +3805,7 @@ limitations under the License.
                 lines.push(`输出：${liveResponse}`);
             }
 
-            return lines.slice(-4).join('\n') || 'Ready';
+            return lines.slice(-4).join('\n') || window.JoyI18n.localizeUiString('Ready');
         }
 
         // ESC key to exit fullscreen
@@ -3891,7 +3901,7 @@ limitations under the License.
             cancelRevealVideoFallback();
             revealVideoAfterMetricsToken = null;
             setVideoWaitingForStream(false);
-            updateStatus('Streaming', 'connected');
+            updateStatus(window.JoyI18n.localizeUiString('Streaming'), 'connected');
         }
 
         function showProcessedVideoStream(stream, token) {
@@ -3907,7 +3917,7 @@ limitations under the License.
                 isAnalysisRunning = true;
                 updatePromptAvailability();
                 if (revealVideoAfterMetricsToken === token) {
-                    updateStatus('Preparing first metrics...', 'processing');
+                    updateStatus(window.JoyI18n.localizeUiString('Preparing first metrics...'), 'processing');
                     cancelRevealVideoFallback();
                     revealVideoFallbackTimeout = setTimeout(() => {
                         revealVideoWhenReady(token);
@@ -3952,7 +3962,7 @@ limitations under the License.
                             const serviceNames = data.detected.map(s => s.name).join(', ');
                             hintDiv.textContent = `Detected: ${serviceNames}`;
                         } else if (service.name === 'NVIDIA API Catalog') {
-                            hintDiv.textContent = 'No local VLM services found. Using NVIDIA API Catalog (requires API key from build.nvidia.com)';
+                            hintDiv.textContent = window.JoyI18n.localizeUiString('No local VLM services found. Using NVIDIA API Catalog (requires API key from build.nvidia.com)');
                         }
                     }
                 }
@@ -4035,7 +4045,7 @@ limitations under the License.
                     api_base: apiBaseUrl.value.trim(),
                     api_key: apiKey.value.trim()
                 }));
-                updateStatus('Model configured', 'connected');
+                updateStatus(window.JoyI18n.localizeUiString('Model configured'), 'connected');
             }
 
             // Trigger flash animation
@@ -4265,7 +4275,7 @@ limitations under the License.
                 }
                 const answer = await response.json();
                 await btListenPeerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                updateStatus('BT listening', 'connected');
+                updateStatus(window.JoyI18n.localizeUiString('BT listening'), 'connected');
                 setBtListeningActive(true);
             } catch (error) {
                 console.error('Error starting BT listening:', error);
@@ -4311,7 +4321,7 @@ limitations under the License.
                     console.warn('BT listening stop failed:', error);
                 }
             }
-            updateStatus('Connected', 'connected');
+            updateStatus(window.JoyI18n.localizeUiString('Connected'), 'connected');
         }
         function syncSpeechButtons() {
             const pressMode = isPressToTalkLayout();
@@ -4654,7 +4664,7 @@ limitations under the License.
                 if (asrWs !== ws) {
                     return;
                 }
-                updateStatus('ASR connection failed', 'disconnected');
+                updateStatus(window.JoyI18n.localizeUiString('ASR connection failed'), 'disconnected');
                 stopSpeech({ sendEnd: false, sendPrompt: false });
                 updatePromptAvailability();
             };
@@ -5682,9 +5692,9 @@ limitations under the License.
                         const llmEl = document.getElementById('llmServiceStatus');
                         const ttsEl = document.getElementById('ttsServiceStatus');
                         const kwsEl = document.getElementById('kwsServiceStatus');
-                        if (llmEl) { llmEl.className = 'status-badge llm-err'; llmEl.textContent = 'LLM ERR'; }
-                        if (ttsEl) { ttsEl.className = 'status-badge llm-err'; ttsEl.textContent = 'TTS ERR'; }
-                        if (kwsEl) { kwsEl.className = 'status-badge llm-err'; kwsEl.textContent = 'KWS ERR'; }
+                        if (llmEl) { llmEl.className = 'status-badge llm-err'; llmEl.textContent = window.JoyI18n.localizeUiString('LLM ERR'); }
+                        if (ttsEl) { ttsEl.className = 'status-badge llm-err'; ttsEl.textContent = window.JoyI18n.localizeUiString('TTS ERR'); }
+                        if (kwsEl) { kwsEl.className = 'status-badge llm-err'; kwsEl.textContent = window.JoyI18n.localizeUiString('KWS ERR'); }
                         return;
                     }
                     const data = await resp.json();
@@ -5695,9 +5705,9 @@ limitations under the License.
                     const llmEl = document.getElementById('llmServiceStatus');
                     const ttsEl = document.getElementById('ttsServiceStatus');
                     const kwsEl = document.getElementById('kwsServiceStatus');
-                    if (llmEl) { llmEl.className = 'status-badge llm-err'; llmEl.textContent = 'LLM ERR'; }
-                    if (ttsEl) { ttsEl.className = 'status-badge llm-err'; ttsEl.textContent = 'TTS ERR'; }
-                    if (kwsEl) { kwsEl.className = 'status-badge llm-err'; kwsEl.textContent = 'KWS ERR'; }
+                    if (llmEl) { llmEl.className = 'status-badge llm-err'; llmEl.textContent = window.JoyI18n.localizeUiString('LLM ERR'); }
+                    if (ttsEl) { ttsEl.className = 'status-badge llm-err'; ttsEl.textContent = window.JoyI18n.localizeUiString('TTS ERR'); }
+                    if (kwsEl) { kwsEl.className = 'status-badge llm-err'; kwsEl.textContent = window.JoyI18n.localizeUiString('KWS ERR'); }
                 }
             }
 
@@ -5764,7 +5774,7 @@ limitations under the License.
 
         function startJarvisStatusPoll() {
             if (_jarvisPollTimer) return;
-            updateStatus('Connected', 'connected');
+            updateStatus(window.JoyI18n.localizeUiString('Connected'), 'connected');
             _jarvisPollTimer = setInterval(pollJarvisStatus, 1000);
         }
 

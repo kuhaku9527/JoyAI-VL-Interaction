@@ -84,7 +84,7 @@
       }
     } catch (_e) {
       const st = document.getElementById('proxyStatus');
-      if (st) st.textContent = 'Failed to load network settings: ' + _e.message;
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Failed to load network settings: ') + _e.message;
     }
   }
 
@@ -96,9 +96,9 @@
 
   async function testConnection() {
     const st = document.getElementById('proxyStatus');
-    if (st) st.textContent = 'Probing providers...';
+    if (st) st.textContent = window.JoyI18n.localizeUiString('Probing providers...');
     await loadHealth();
-    if (st) st.textContent = 'Probe complete (v1 traffic stays direct per ADR-0012 §4).';
+    if (st) st.textContent = window.JoyI18n.localizeUiString('Probe complete (v1 traffic stays direct per ADR-0012 §4).');
   }
 
   // F3: optimistic save -> PUT /v1/settings/network
@@ -114,16 +114,16 @@
     };
     // optimistic: reflect immediately
     if (st) {
-      st.textContent = 'Saving...';
+      st.textContent = window.JoyI18n.localizeUiString('Saving...');
       st.style.color = '';
     }
     try {
       await apiJson('PUT', '/v1/settings/network', payload);
-      if (st) st.textContent = 'Saved. Health re-tested below.';
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Saved. Health re-tested below.');
       await loadHealth();
     } catch (_e) {
       if (st) {
-        st.textContent = 'Save failed: ' + _e.message;
+        st.textContent = window.JoyI18n.localizeUiString('Save failed: ') + _e.message;
         st.style.color = 'var(--warning-color)';
       }
     }
@@ -134,7 +134,7 @@
     const list = document.getElementById('namespaceList');
     const empty = document.getElementById('namespaceEmpty');
     if (!list) return;
-    list.innerHTML = '<div class="input-hint">Loading…</div>';
+    list.innerHTML = '<div class="input-hint">' + window.JoyI18n.localizeUiString('Loading…') + '</div>';
     try {
       const data = await apiJson('GET', '/v1/namespaces');
       const ns = (data && data.namespaces) || [];
@@ -155,14 +155,14 @@
         name.textContent = item.namespace;
         const sub = document.createElement('div');
         sub.className = 'namespace-sub';
-        sub.textContent = (item.blocks || 0) + ' blocks · ' + (item.indexed || 0) + ' indexed';
+        sub.textContent = (item.blocks || 0) + window.JoyI18n.localizeUiString(' blocks · ') + (item.indexed || 0) + window.JoyI18n.localizeUiString(' indexed');
         label.appendChild(name);
         label.appendChild(sub);
         const del = document.createElement('button');
         del.className = 'icon-btn namespace-del';
         del.type = 'button';
-        del.title = 'Delete ' + item.namespace;
-        del.setAttribute('aria-label', 'Delete ' + item.namespace);
+        del.title = window.JoyI18n.localizeUiString('Delete ') + item.namespace;
+        del.setAttribute('aria-label', window.JoyI18n.localizeUiString('Delete ') + item.namespace);
         del.innerHTML = '<i data-lucide="trash-2"></i>';
         del.addEventListener('click', function () {
           deleteNamespace(item.namespace);
@@ -173,7 +173,7 @@
       });
       if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
     } catch (_e) {
-      list.innerHTML = '<div class="input-hint" style="color: var(--warning-color);">Failed to load: ' + (_e.message || _e) + '</div>';
+      list.innerHTML = '<div class="input-hint" style="color: var(--warning-color);">' + window.JoyI18n.localizeUiString('Failed to load: ') + (_e.message || _e) + '</div>';
     }
   }
 
@@ -183,20 +183,20 @@
     const ns = (document.getElementById('wikiNamespace') || {}).value || path.split(/[\\/]/).pop().replace(/^wiki[\\/]?/, '') || '';
     const drop = document.getElementById('wikiDropFirst');
     if (!path) {
-      if (st) st.textContent = 'Enter a wiki/<game> folder path first.';
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Enter a wiki/<game> folder path first.');
       return;
     }
-    if (st) st.textContent = 'Syncing ' + ns + ' ...';
+    if (st) st.textContent = window.JoyI18n.localizeUiString('Syncing ') + ns + ' ...';
     try {
       const data = await apiJson('POST', '/v1/external/sync', {
         namespace: ns,
         dir: path,
         drop_first: !!(drop && drop.checked),
       });
-      if (st) st.textContent = 'Synced ' + ns + ': ' + (data.chunks || 0) + ' chunks, ' + (data.embedded || 0) + ' embedded' + (data.errors && data.errors.length ? (', ' + data.errors.length + ' errors') : '');
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Synced ') + ns + window.JoyI18n.localizeUiString(': ') + (data.chunks || 0) + window.JoyI18n.localizeUiString(' chunks, ') + (data.embedded || 0) + window.JoyI18n.localizeUiString(' embedded') + (data.errors && data.errors.length ? (window.JoyI18n.localizeUiString(', ') + data.errors.length + window.JoyI18n.localizeUiString(' errors')) : '');
       await loadNamespaces();
     } catch (_e) {
-      if (st) st.textContent = 'Sync failed: ' + _e.message;
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Sync failed: ') + _e.message;
     }
   }
 
@@ -205,16 +205,16 @@
     const ns = (document.getElementById('wikiNamespace') || {}).value || '';
     const text = (document.getElementById('wikiPaste') || {}).value || '';
     if (!ns || !text.trim()) {
-      if (st) st.textContent = 'Provide both a namespace (game) and markdown text.';
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Provide both a namespace (game) and markdown text.');
       return;
     }
-    if (st) st.textContent = 'Ingesting ' + ns + ' ...';
+    if (st) st.textContent = window.JoyI18n.localizeUiString('Ingesting ') + ns + ' ...';
     try {
       const data = await apiJson('POST', '/v1/external/ingest-text', {
         namespace: ns,
         text: text,
       });
-      if (st) st.textContent = 'Ingested ' + ns + ': ' + (data.chunks || 0) + ' chunks, ' + (data.embedded || 0) + ' embedded';
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Ingested ') + ns + window.JoyI18n.localizeUiString(': ') + (data.chunks || 0) + window.JoyI18n.localizeUiString(' chunks, ') + (data.embedded || 0) + window.JoyI18n.localizeUiString(' embedded');
       const ta = document.getElementById('wikiPaste');
       if (ta) ta.value = '';
       await loadNamespaces();
@@ -228,10 +228,10 @@
       return;
     }
     const st = document.getElementById('wikiStatus');
-    if (st) st.textContent = 'Deleting ' + ns + ' ...';
+    if (st) st.textContent = window.JoyI18n.localizeUiString('Deleting ') + ns + ' ...';
     try {
       const data = await apiJson('DELETE', '/v1/namespaces/' + encodeURIComponent(ns));
-      if (st) st.textContent = 'Deleted ' + ns + ': ' + (data.deleted_rows || 0) + ' rows removed';
+      if (st) st.textContent = window.JoyI18n.localizeUiString('Deleted ') + ns + window.JoyI18n.localizeUiString(': ') + (data.deleted_rows || 0) + window.JoyI18n.localizeUiString(' rows removed');
       await loadNamespaces();
     } catch (_e) {
       if (st) st.textContent = 'Delete failed: ' + _e.message;
