@@ -626,7 +626,9 @@ async def llm_message(request):
     if image_b64 and len(image_b64) > 3 * 1024 * 1024:
         logger.warning("LLM-message: image_b64 too large (%d bytes), dropped", len(image_b64))
         image_b64 = None
-    task = asyncio.create_task(sm._send_to_llm(text, stream_tts=False, image_b64=image_b64))
+    task = asyncio.create_task(
+        sm._send_to_llm(text, stream_tts=False, image_b64=image_b64, interaction_mode="call")
+    )
     app.setdefault("_llm_tasks", set()).add(task)
     task.add_done_callback(app["_llm_tasks"].discard)
     return web.json_response(

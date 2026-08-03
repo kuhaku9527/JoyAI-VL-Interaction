@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 import time
 import uuid
 from typing import Any
@@ -99,6 +100,35 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, str | None]:
         return "silence", "", None
     # </response>
     return "response", tail, None
+
+
+# All decision-token variants (case-insensitive). The opening ``<...>`` and
+# closing ``</...>`` forms of silence / response / delegation are all control
+# signals that must never reach the end-user ``content`` field. ``<the
+# question>``-style placeholder text in the system prompt is NOT matched
+# because only these three literal tag names are whitelisted.
+_DECISION_TOKEN_RE = re.compile(r"\s*</?(?:silence|response|delegation)>\s*", re.IGNORECASE)
+
+
+def strip_decision_tokens(text: str) -> str:
+    """Strip every decision-token variant from model output text.
+
+    The runtime system prompt teaches the model to bracket its reply with
+    ``</silence>`` / ``</response>`` / ``</delegation>`` (and the opening
+    ``<...>`` forms). Those tokens are control signals consumed by the
+    ``streamingharness.decision`` field and must never reach the end-user
+    ``content`` (issue #44). This removes all six variants (case-insensitive,
+    with any surrounding whitespace) and collapses the result, so
+    ``"</response> hi"`` -> ``"hi"`` and ``"</silence>"`` -> ``""``.
+
+    The ``decision`` / ``delegation_question`` harness fields are derived
+    separately by :func:`parse_model_decision` and are NOT affected by this
+    strip -- callers must keep passing the raw text to that parser.
+    """
+    if not text:
+        return ""
+    cleaned = _DECISION_TOKEN_RE.sub(" ", text)
+    return " ".join(cleaned.split())
 
 
 # Backwards-compatible alias: keeps the existing

@@ -79,3 +79,10 @@ Choose this when you observe something worth reporting or a significant state ch
 
 **Delegate** — when a question is too hard or error-prone to answer reliably yourself, speak a brief note that you're delegating, then hand the question to the background solver:
 </response> Brief note that you're delegating. </delegation> <the question>""".strip()
+
+# --- call-mode system prompt (NO decision-token framework) -------------
+# Used when ``interaction_mode == "call"`` (direct voice-to-text chat, no
+# silence / speak / delegate framework). The decision tokens must not be
+# taught in this mode, otherwise the model emits </silence> etc. that the
+# harness has no use for and that would leak to the UI (issues #44/#45).
+NO_DECISION_SYSTEM_PROMPT = """You are a helpful assistant in a direct voice-to-text conversation with the user. The user speaks to you directly, so reply naturally and concisely in plain text. Do NOT emit any decision tokens such as </silence>, </response>, or </delegation>; this interaction mode has no silence / speak / delegate framework.""".strip()
