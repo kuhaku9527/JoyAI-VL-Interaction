@@ -262,9 +262,7 @@ class InferLoopMixin:
         api_messages = list(payload.get("messages") or [])
         # call mode drops the decision-token framework (issues #44/#45).
         composed_system = (
-            self._build_memory_prompt(
-                state, include_decision_tokens=interaction_mode != "call"
-            )
+            self._build_memory_prompt(state, include_decision_tokens=interaction_mode != "call")
             or ""
         ).strip()
 

@@ -113,9 +113,7 @@ class PromptAssemblyMixin:
         """Return absolute paths of every file that would be loaded."""
         return [str(p) for p in resolve_prompt_paths(self.config.character_prompt_paths)]
 
-    def _build_system_prompt(
-        self, language: str, *, include_decision_tokens: bool = True
-    ) -> str:
+    def _build_system_prompt(self, language: str, *, include_decision_tokens: bool = True) -> str:
         """Return the system prompt for ``language`` with character injection.
 
         Reads character files lazily and caches the composed string on
@@ -127,11 +125,15 @@ class PromptAssemblyMixin:
         swapped to ``NO_DECISION_SYSTEM_PROMPT`` so the model is never taught
         the silence / speak / delegate framework (issues #44/#45).
         """
-        key = self._system_prompt_cache_key(language, include_decision_tokens=include_decision_tokens)
+        key = self._system_prompt_cache_key(
+            language, include_decision_tokens=include_decision_tokens
+        )
         cached = self._system_prompt_cache.get(key)
         if cached is not None:
             return cached
-        base = (self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT) or ""
+        base = (
+            self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT
+        ) or ""
         profiles = self._load_character_profiles()
         composed = _build_system_prompt(base, profiles, language)
         self._system_prompt_cache[key] = composed
@@ -163,7 +165,9 @@ class PromptAssemblyMixin:
             return self._build_system_prompt(
                 self.config.language, include_decision_tokens=include_decision_tokens
             )
-        base = (self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT) or ""
+        base = (
+            self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT
+        ) or ""
         profiles = self._load_character_profiles()
         return compose_system_prompt_with_memory(
             base,
