@@ -47,4 +47,15 @@ describe('JoyRender (markdown / static-text rendering)', () => {
     const out = window.JoyRender.renderMarkdownMath('use `code` and text');
     expect(out).toContain('code');
   });
+
+  it('renderMarkdown does NOT revive decision tokens as escaped visible text', () => {
+    // Regression for issue #44: the old code escaped </silence>/<response> into
+    // &lt;/silence&gt; etc., which re-exposed model decision tokens to the user.
+    // With libs stubbed, the raw token must never appear as an escaped entity.
+    vi.stubGlobal('marked', { setOptions: vi.fn(), parse: (s) => s });
+    vi.stubGlobal('DOMPurify', { sanitize: (h) => h });
+    const out = window.JoyRender.renderMarkdown('</silence> hello </response> world');
+    expect(out).not.toContain('&lt;');
+    expect(out).not.toContain('&gt;');
+  });
 });
