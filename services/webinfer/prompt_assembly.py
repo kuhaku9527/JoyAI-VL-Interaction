@@ -20,6 +20,7 @@ from prompt_building import (
     build_dynamic_system_content,
     build_static_system_content,
 )
+from prompt_constants import NO_DECISION_SYSTEM_PROMPT
 from system_prompts import (
     compose_system_prompt_with_memory,
     load_character_prompts,
@@ -49,14 +50,23 @@ class PromptAssemblyMixin:
             LOGGER.warning("failed to load character prompts: %s", exc)
             return []
 
-    def _system_prompt_cache_key(self, language: str) -> tuple[Any, ...]:
-        """Build a deterministic cache key for the composed system prompt."""
+    def _system_prompt_cache_key(
+        self, language: str, *, include_decision_tokens: bool = True
+    ) -> tuple[Any, ...]:
+        """Build a deterministic cache key for the composed system prompt.
+
+        ``include_decision_tokens`` is part of the key so the no-decision
+        call-mode prompt (``NO_DECISION_SYSTEM_PROMPT``) is cached separately
+        from the default decision-token prompt and never cross-contaminates
+        the live/jarvis cache.
+        """
         return (
-            self.config.system_prompt,
+            self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT,
             language,
             self.config.character_prompts_enabled,
             tuple(self.config.character_prompt_paths),
             self._character_prompt_mtime,
+            include_decision_tokens,
         )
 
     def _refresh_character_prompt_mtime(self) -> float:
@@ -103,25 +113,35 @@ class PromptAssemblyMixin:
         """Return absolute paths of every file that would be loaded."""
         return [str(p) for p in resolve_prompt_paths(self.config.character_prompt_paths)]
 
-    def _build_system_prompt(self, language: str) -> str:
+    def _build_system_prompt(self, language: str, *, include_decision_tokens: bool = True) -> str:
         """Return the system prompt for ``language`` with character injection.
 
         Reads character files lazily and caches the composed string on
         this adapter instance.  The cache is keyed by the base prompt,
         language, character-prompt configuration, and the latest file
         mtime so editing a file on disk transparently invalidates it.
+
+        When ``include_decision_tokens`` is False (call mode), the base is
+        swapped to ``NO_DECISION_SYSTEM_PROMPT`` so the model is never taught
+        the silence / speak / delegate framework (issues #44/#45).
         """
-        key = self._system_prompt_cache_key(language)
+        key = self._system_prompt_cache_key(
+            language, include_decision_tokens=include_decision_tokens
+        )
         cached = self._system_prompt_cache.get(key)
         if cached is not None:
             return cached
-        base = self.config.system_prompt or ""
+        base = (
+            self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT
+        ) or ""
         profiles = self._load_character_profiles()
         composed = _build_system_prompt(base, profiles, language)
         self._system_prompt_cache[key] = composed
         return composed
 
-    def _build_memory_prompt(self, session_state: SessionState | None) -> str:
+    def _build_memory_prompt(
+        self, session_state: SessionState | None, *, include_decision_tokens: bool = True
+    ) -> str:
         """Return system prompt with optional memory blocks appended.
 
         Fast path: when the session has no memory blocks cached, this
@@ -135,12 +155,19 @@ class PromptAssemblyMixin:
         (``_memory_wiki_cache``) and are rendered as a distinct
         ``[Local Wiki]`` section so the rendered prompt keeps chat
         history and looked-up reference material mentally distinct.
+
+        ``include_decision_tokens`` is forwarded to the base-prompt
+        selection so call mode uses ``NO_DECISION_SYSTEM_PROMPT``.
         """
         blocks = list(getattr(session_state, "_memory_block_cache", None) or [])
         wiki = list(getattr(session_state, "_memory_wiki_cache", None) or [])
         if not blocks and not wiki:
-            return self._build_system_prompt(self.config.language)
-        base = self.config.system_prompt or ""
+            return self._build_system_prompt(
+                self.config.language, include_decision_tokens=include_decision_tokens
+            )
+        base = (
+            self.config.system_prompt if include_decision_tokens else NO_DECISION_SYSTEM_PROMPT
+        ) or ""
         profiles = self._load_character_profiles()
         return compose_system_prompt_with_memory(
             base,
@@ -248,6 +275,7 @@ class PromptAssemblyMixin:
         *,
         session_state: SessionState | None = None,
         max_total_chars: int = 0,
+        include_decision_tokens: bool = True,
     ) -> list[dict[str, Any]]:
         """Build the OpenAI chat-completions payload for the main model.
 
@@ -259,6 +287,10 @@ class PromptAssemblyMixin:
         (memory-store v0.2) the cached blocks are appended as a
         [Local Wiki] section via :func:`compose_system_prompt_with_memory`.
 
+        ``include_decision_tokens`` is forwarded to the system-prompt
+        builder so call mode uses ``NO_DECISION_SYSTEM_PROMPT`` (no
+        silence / speak / delegate framework).
+
         v3.34 prompt guard: when ``max_total_chars`` is positive and the
         assembled messages exceed that budget, the oldest user/assistant
         turns are dropped (keeping the system message + the last
@@ -266,7 +298,9 @@ class PromptAssemblyMixin:
         the llama-server -c context window.
         """
         messages = list(api_messages)
-        system_prompt = self._build_memory_prompt(session_state)
+        system_prompt = self._build_memory_prompt(
+            session_state, include_decision_tokens=include_decision_tokens
+        )
         if system_prompt:
             messages = [{"role": "system", "content": system_prompt}, *messages]
         if max_total_chars > 0:

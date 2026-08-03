@@ -998,7 +998,7 @@ class JarvisStateMachine:
                 # <audio> via `playLlmReplyAudio` on llm_reply. Setting
                 # this back to True would replay every reply twice (once
                 # from the browser, once from the WebRTC speaker).
-                await self._send_to_llm(utterance, stream_tts=False)
+                await self._send_to_llm(utterance, stream_tts=False, interaction_mode="jarvis")
 
                 # Resume TTS if paused (LLM response will trigger new TTS)
                 if self.state == JarvisState.TTS_PAUSED and self._tts_task:
@@ -1152,7 +1152,12 @@ class JarvisStateMachine:
     # ------------------------------------------------------------------
 
     async def _send_to_llm(
-        self, text: str, *, stream_tts: bool = True, image_b64: str | None = None
+        self,
+        text: str,
+        *,
+        stream_tts: bool = True,
+        image_b64: str | None = None,
+        interaction_mode: str = "jarvis",
     ):
         """Send user's ASR text to the LLM (llama-server 7060) and stream TTS.
 
@@ -1163,6 +1168,12 @@ class JarvisStateMachine:
         the final user message is shaped as a content array of
         ``[text, image_url]`` so llama.cpp's mmproj path can ground the
         answer in the captured frame. Otherwise we send plain text.
+
+        ``interaction_mode`` is forwarded to webinfer so it can isolate the
+        decision-token framework: ``"jarvis"`` (default) keeps decision tokens
+        (jarvis consumes the ``decision`` field) but disables forced silence;
+        ``"call"`` (voice-to-text direct chat, see server.llm_message) drops
+        the decision-token framework entirely. Issue #45.
         """
         # v3.24: prepend bounded conversation history so BT-7274 retains
         # short-term context across turns without persisting anything.
@@ -1207,6 +1218,7 @@ class JarvisStateMachine:
                         "messages": messages,
                         "max_tokens": 200,
                         "temperature": 0.7,
+                        "interaction_mode": interaction_mode,
                     },
                 )
                 resp.raise_for_status()

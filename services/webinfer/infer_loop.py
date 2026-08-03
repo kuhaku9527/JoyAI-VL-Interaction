@@ -44,6 +44,7 @@ from response_format import (
     extract_response_payload,
     normalize_model_output,
     parse_model_decision,
+    strip_decision_tokens,
 )
 from time_ranges import (
     _extract_time_range_from_text,
@@ -55,6 +56,31 @@ from time_ranges import (
 from config import reset_chunk_state
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
+# Interaction modes isolate the decision-token framework (issues #44/#45).
+#   live   (default): full silence/speak/delegate framework + forced silence
+#                     before a user query is pending (original behaviour).
+#   call   (voice-to-text direct chat): NO decision tokens, forced silence off.
+#   jarvis (wake-word driven): decision tokens KEPT (jarvis consumes the
+#                     `decision` field), but forced silence off (jarvis drives
+#                     its own turn flow).
+_VALID_INTERACTION_MODES = frozenset({"live", "call", "jarvis"})
+
+
+def _normalize_interaction_mode(mode: str | None) -> str:
+    """Resolve an inbound ``interaction_mode`` to a known mode.
+
+    Missing / empty / unrecognized values fall back to ``"live"``. An
+    unknown value is logged (not silently swallowed) so a misconfigured
+    caller cannot arm an unexpected code path.
+    """
+    if not mode:
+        return "live"
+    normalized = mode.strip().lower()
+    if normalized in _VALID_INTERACTION_MODES:
+        return normalized
+    LOGGER.warning("unknown interaction_mode %r; falling back to 'live'", mode)
+    return "live"
 
 
 # --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
@@ -157,13 +183,18 @@ class InferLoopMixin:
 
         session_id = _request_session_id(request, payload)
         requested_model = payload.get("model")
+        interaction_mode = _normalize_interaction_mode(payload.get("interaction_mode"))
         client, model_name = self._resolve_backend(requested_model)
         state = self.get_session(session_id)
         t_start = time.perf_counter()
         async with state.lock:
             try:
                 result = await self._handle_text_payload(
-                    state, payload, client=client, model_name=model_name
+                    state,
+                    payload,
+                    client=client,
+                    model_name=model_name,
+                    interaction_mode=interaction_mode,
                 )
             except web.HTTPException:
                 raise
@@ -194,6 +225,7 @@ class InferLoopMixin:
         *,
         client: AsyncOpenAI | None = None,
         model_name: str | None = None,
+        interaction_mode: str = "live",
     ) -> dict[str, Any]:
         # Single-LLM-gateway text path. Composes the system prompt
         # (character profile + [Local Wiki]), runs the v3.34 prompt
@@ -228,7 +260,11 @@ class InferLoopMixin:
             LOGGER.warning("memory_recall failed for %s: %s", state.session_id, exc)
 
         api_messages = list(payload.get("messages") or [])
-        composed_system = (self._build_memory_prompt(state) or "").strip()
+        # call mode drops the decision-token framework (issues #44/#45).
+        composed_system = (
+            self._build_memory_prompt(state, include_decision_tokens=interaction_mode != "call")
+            or ""
+        ).strip()
 
         # Resolve any caller-supplied system message into a flat list.
         caller_messages = [dict(m) for m in api_messages if m.get("role") != "system"]
@@ -285,13 +321,19 @@ class InferLoopMixin:
         payload = await _read_json(request)
         session_id = _request_session_id(request, payload)
         requested_model = payload.get("model")
+        interaction_mode = _normalize_interaction_mode(payload.get("interaction_mode"))
         client, model_name = self._resolve_backend(requested_model)
         state = self.get_session(session_id)
         t_start = time.perf_counter()
         async with state.lock:
             try:
                 result = await self._handle_chat_payload(
-                    state, payload, request, client=client, model_name=model_name
+                    state,
+                    payload,
+                    request,
+                    client=client,
+                    model_name=model_name,
+                    interaction_mode=interaction_mode,
                 )
             except web.HTTPException:
                 raise
@@ -323,6 +365,7 @@ class InferLoopMixin:
         *,
         client: AsyncOpenAI | None = None,
         model_name: str | None = None,
+        interaction_mode: str = "live",
     ) -> dict[str, Any]:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
@@ -333,6 +376,7 @@ class InferLoopMixin:
 
         ctx = SimpleNamespace()
         ctx.t_start = t_start
+        ctx.interaction_mode = interaction_mode
         await self._chat_payload_resolve_frames(
             state, request, payload, messages, client, model_name, ctx
         )
@@ -341,7 +385,9 @@ class InferLoopMixin:
 
         await self._chat_payload_advance_chunk(state, ctx)
         self._chat_payload_append_turn(state, ctx)
-        await self._chat_payload_build_and_infer(state, payload, client, model_name, messages, ctx)
+        await self._chat_payload_build_and_infer(
+            state, payload, client, model_name, messages, ctx, interaction_mode=interaction_mode
+        )
         return self._chat_payload_finalize(state, model_name, ctx)
 
     async def _chat_payload_resolve_frames(
@@ -484,6 +530,19 @@ class InferLoopMixin:
             )
         ctx.user_message = user_message
 
+    def _is_forced_silence(self, state: SessionState, interaction_mode: str) -> bool:
+        """Decide whether this turn is a forced-silence (no-inference) turn.
+
+        Forced silence only applies to the ``live`` mode: it suppresses model
+        inference when no user query is pending, so the assistant stays quiet
+        between events. ``call`` (direct voice-to-text) and ``jarvis``
+        (wake-word driven) modes never force silence -- they drive their own
+        turn flow and always want a real model response (issue #45).
+        """
+        if interaction_mode != "live":
+            return False
+        return self.config.force_silence_before_query and not state.current_query_text
+
     async def _chat_payload_build_and_infer(
         self,
         state: SessionState,
@@ -492,6 +551,8 @@ class InferLoopMixin:
         model_name: str,
         messages: list[dict[str, Any]],
         ctx: SimpleNamespace,
+        *,
+        interaction_mode: str = "live",
     ) -> None:
         """Assemble the model input and run the main-model call (incl. forced-silence branch)."""
         turn_input_record = {
@@ -507,7 +568,9 @@ class InferLoopMixin:
             "frame_time_ranges": list(state.current_chunk["frame_time_ranges"]),
         }
 
-        is_forced_silence = self.config.force_silence_before_query and not state.current_query_text
+        is_forced_silence = self._is_forced_silence(state, interaction_mode)
+        # call / jarvis must never teach the model the decision-token framework.
+        include_decision_tokens = interaction_mode != "call"
         inference_start = None
         inference_time = 0.0
         chunk_start_model_input_path = None
@@ -537,7 +600,9 @@ class InferLoopMixin:
             internal_messages, prefix_content = self._build_main_internal_messages(state)
             api_messages = self._build_cached_api_messages(state, internal_messages)
             generation_kwargs = self._main_generation_kwargs(payload)
-            http_messages = self._build_main_http_messages(api_messages, session_state=state)
+            http_messages = self._build_main_http_messages(
+                api_messages, session_state=state, include_decision_tokens=include_decision_tokens
+            )
             # DEBUG v0.2: print first message roles + system content length
             try:
                 roles = [m.get("role") for m in http_messages]
@@ -691,7 +756,7 @@ class InferLoopMixin:
         decision, _, delegation_question = parse_model_decision(ctx.raw_text or "")
         result = _chat_completion_response(
             model=self.config.adapter_model,
-            content=ctx.generated_text,
+            content=strip_decision_tokens(ctx.generated_text),
             usage=ctx.usage,
             raw_model=model_name,
             raw_text=ctx.raw_text,

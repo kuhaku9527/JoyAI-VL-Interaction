@@ -175,7 +175,7 @@ def _make_adapter(*, memory_blocks: list[dict], memory_enabled: bool):
     adapter._character_prompt_mtime = 0.0
     adapter._system_prompt_cache = {}
     adapter._invalidate_system_prompt_cache = lambda: None
-    adapter._build_memory_prompt = lambda state: "COMPOSED-SYS"
+    adapter._build_memory_prompt = lambda state, **kwargs: "COMPOSED-SYS"
     adapter.memory_store = _StubMemoryClient(memory_blocks, enabled=memory_enabled)
 
     stub = _StubAsyncOpenAI(scripted=["</response> hi"])

@@ -127,7 +127,7 @@ async def test_text_chat_includes_character_profile_in_system(tmp_path):
     # Override the character_prompt_paths to point at our tmp file.
     adapter.config.character_prompt_paths = (str(char_path),)
     adapter._load_character_profiles = lambda: [char_body]
-    adapter._build_memory_prompt = lambda state: (
+    adapter._build_memory_prompt = lambda state, **kwargs: (
         f"<character_profile>{char_body}</character_profile>\n\nbase decision prompt"
     )
 
@@ -158,7 +158,7 @@ async def test_text_chat_includes_local_wiki_when_memory_warms():
             },
         ],
     )
-    adapter._build_memory_prompt = lambda state: (
+    adapter._build_memory_prompt = lambda state, **kwargs: (
         "[Local Wiki]\nb1: X-Wing pilot ace maneuver is reverse-thrust\nbase"
     )
 
@@ -184,7 +184,7 @@ async def test_text_chat_replaces_caller_system_with_composed():
     Avoids two-system-message drift between video and voice paths.
     """
     adapter, stub = _make_adapter(scripted=["</response> ok"])
-    adapter._build_memory_prompt = lambda state: "COMPOSED-SYS"
+    adapter._build_memory_prompt = lambda state, **kwargs: "COMPOSED-SYS"
 
     resp = await _post_json(
         adapter,
@@ -209,7 +209,7 @@ async def test_text_chat_replaces_caller_system_with_composed():
 async def test_text_chat_prepends_composed_when_no_caller_system():
     """No caller system -> composed goes in front, then user/assistant."""
     adapter, stub = _make_adapter(scripted=["</response> ok"])
-    adapter._build_memory_prompt = lambda state: "COMPOSED-SYS"
+    adapter._build_memory_prompt = lambda state, **kwargs: "COMPOSED-SYS"
 
     resp = await _post_json(
         adapter,
@@ -241,7 +241,7 @@ async def test_text_chat_skips_compose_when_no_prompt_and_no_memory():
     means the caller's messages are forwarded verbatim (degenerate case).
     """
     adapter, stub = _make_adapter(scripted=["</response> ok"])
-    adapter._build_memory_prompt = lambda state: ""
+    adapter._build_memory_prompt = lambda state, **kwargs: ""
 
     resp = await _post_json(
         adapter,

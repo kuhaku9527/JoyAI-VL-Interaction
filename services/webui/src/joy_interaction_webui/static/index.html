@@ -1392,33 +1392,53 @@ limitations under the License.
             }
         });
 
+        // Single source of truth for stripping model decision/control tokens
+        // from text before it reaches the chat UI. The VLM may emit internal
+        // decision markers (</silence>, </response>, <delegation>/</delegation>,
+        // and the open-tag variants) that must never be shown to the end user.
+        // Callers must route VLM output through this before rendering.
         function getVlmDisplayText(text) {
             if (!text) return '';
 
             const rawText = String(text);
-            const lowerText = rawText.toLowerCase();
-            if (rawText.trim() === 'Initializing...') {
+            if (rawText.trim() === '' || rawText.trim() === 'Initializing...') {
                 return '';
             }
 
-            if (lowerText.includes('</silence>')) {
+            // <silence> or </silence> means the model chose not to speak — show nothing.
+            if (/<\/?silence>/i.test(rawText)) {
+                if (/<\/?(?:response|delegation|silence)>/i.test(rawText)) {
+                    console.debug('[vlm] dropped silent output containing decision tokens');
+                }
                 return '';
             }
 
-            const openTag = '<response>';
-            const closeTag = '</response>';
-            const openIndex = lowerText.lastIndexOf(openTag);
-
-            if (openIndex !== -1) {
-                const responseStart = openIndex + openTag.length;
-                const closeIndex = lowerText.indexOf(closeTag, responseStart);
-                const responseText = closeIndex === -1
-                    ? rawText.slice(responseStart)
-                    : rawText.slice(responseStart, closeIndex);
-                return responseText.trim();
+            // Strip the remaining control tokens, keeping the surrounding reply text
+            // (e.g. the reply body that follows </response>, or the delegated question).
+            const cleaned = rawText.replace(/<\/?(?:response|delegation|silence)>/gi, '');
+            if (cleaned !== rawText) {
+                console.debug('[vlm] stripped decision tokens from display text');
             }
+            return cleaned.trim();
+        }
 
-            return rawText.replace(/<\/response>/gi, '').trim();
+        // Recursively strip decision tokens from any string value inside a debug
+        // payload so the raw API response JSON view never exposes them either.
+        function sanitizeDebugPayload(value) {
+            if (typeof value === 'string') {
+                return value.replace(/<\/?(?:response|delegation|silence)>/gi, '');
+            }
+            if (Array.isArray(value)) {
+                return value.map(sanitizeDebugPayload);
+            }
+            if (value && typeof value === 'object') {
+                const out = {};
+                for (const key of Object.keys(value)) {
+                    out[key] = sanitizeDebugPayload(value[key]);
+                }
+                return out;
+            }
+            return value;
         }
 
         // Markdown rendering helpers moved to render_markdown.js (window.JoyRender).
@@ -5427,7 +5447,8 @@ limitations under the License.
                     const pre = document.getElementById('responsePayloadContent');
                     if (block && pre && document.getElementById('debugShowResponsePayload')?.checked) {
                         block.style.display = 'block';
-                        pre.textContent = JSON.stringify(data.response_payload, null, 2);
+                        // Redact model decision tokens before exposing the raw payload.
+                        pre.textContent = JSON.stringify(sanitizeDebugPayload(data.response_payload), null, 2);
                     }
                 }
                 if (data.memory_state) {

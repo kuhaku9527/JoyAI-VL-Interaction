@@ -114,9 +114,6 @@
       return escapeHtml(rawText);
     }
     try {
-      // Preserve special VLM tokens (e.g. </silence>, </response>) by escaping angle brackets
-      text = rawText.replace(/<\/(silence|response)>/g, '&lt;/$1&gt;');
-      text = text.replace(/<(silence|response)>/g, '&lt;$1&gt;');
       text = renderMarkdownMath(text);
       // Configure marked options
       marked.setOptions({
