@@ -237,7 +237,7 @@ ADR-0012: bge-m3 嵌入部署形态
 | T-C2 | **`health()` / `available()` 与 `/v1/providers/health`**：本地服务走 HTTP 真实 ping；云端仅启用时 ping | C | T-C1 | P0 |
 | T-C3 | **配置默认值与 `client_factory`**：`EMBEDDING_PROVIDER=local_server`、API base 指向 localhost、fallback env 门控；local_server 无代理、云端保留代理 | C | T-C1 | P0 |
 | T-C4 | **fail-open 链更新**：本地服务 →（可选）云端 → FTS5 BM25 → web search；FTS5 降为末端 | C | T-C1, T-C3 | P1 |
-| T-C5 | **测试与 B9 金标验证**：`verify_nvidia_recall.py` 适配本地；int8 vs fp16 召回质量对比，作为合并门禁 | C | T-D3, T-C1 | P0 |
+| T-C5 | **测试与 B9 金标验证**：`services/memory-store/tools/verify_nvidia_recall.py` 适配本地；int8 vs fp16 召回质量对比，作为合并门禁 | C | T-D3, T-C1 | P0 |
 
 ### 执行顺序建议
 
@@ -246,7 +246,7 @@ ADR-0012: bge-m3 嵌入部署形态
 3. **T-D3 + T-C1 就绪后跑 T-C5（B9 验证）**，通过方可合 PR（建议将 int8 不劣于 fp16 阈值设为合并门禁）。
 4. **T-D4** 与 D 系列并行收尾（配置模板 / 离线分发文档）。
 
-> 说明：T-C1~T-C5 对应 PR #38 中 `embedder.py` 的修订（该 PR 当前待合，可在此一并纳入全本地化改造）。
+> 说明：T-C1~T-C5 对应 PR #38 中 `embedder.py` 的修订（该 PR 已于 2026-07-27 合入，`services/memory-store/tools/` 下 B9 金标验证脚手架 `golden_recall_set.json` / `verify_nvidia_recall.py` / `eval_golden_recall.py` 已落地）。
 
 ---
 
@@ -255,7 +255,7 @@ ADR-0012: bge-m3 嵌入部署形态
 - **本地服务可用性与自愈**：服务崩溃 / 重启如何自愈（systemd `Restart=always` 或 compose `restart: unless-stopped`）；memory-store 侧需带重试与短暂降级到 `local`(A)。
 - **与主 VLM 显存争用**：需实测宿主 GPU 显存余量；int8(~600MB) 通常可控，fp16(~2.3GB) 需评估；必要时嵌入服务绑定独立 GPU 或走 CPU 降级。
 - **模型权重分发**：~2.3GB(fp16) / ~600MB(int8) 下载与缓存位置、是否随镜像预置、离线环境如何分发。
-- **int8 是否损召回质量**：必须用现有 B9 金标集（`tools/golden_recall_set.json` + `tools/verify_nvidia_recall.py`）验证；建议将「int8 召回不劣于 fp16 阈值」作为合并门禁。
+- **int8 是否损召回质量**：必须用现有 B9 金标集（`services/memory-store/tools/golden_recall_set.json` + `services/memory-store/tools/verify_nvidia_recall.py`）验证；建议将「int8 召回不劣于 fp16 阈值」作为合并门禁。
 - **冷启动对 memory-store 启动的影响**：编排需等服务 ready，避免建库 / 召回在权重未加载时失败；可加 readiness 探针。
 - **B 实现选型未定**：TEI vs FastAPI+FlagEmbedding vs 本地 NIM——建议以「最低运维摩擦 + 内置健康端点」为准，TEI 优先。
 - **端口规划**：嵌入服务端口（建议 7999）须避开 8996 / 8099 / B3 / B4，确认不与现网冲突。
