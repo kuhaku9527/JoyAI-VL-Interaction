@@ -41,8 +41,8 @@
     }
 
     const constraints = options.constraints || {
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
     };
     const sessionId = options.sessionId || (window.sessionId || 'default');
     const onState = typeof options.onState === 'function' ? options.onState : null;

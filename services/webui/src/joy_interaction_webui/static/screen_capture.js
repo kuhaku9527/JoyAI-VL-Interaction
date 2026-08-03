@@ -116,7 +116,7 @@
           } else if (screenCaptureVideo) {
             ctx.drawImage(screenCaptureVideo, 0, 0, width, height);
           }
-          const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
           // tEncode = 编码 done (toDataURL returned — suspected bottleneck).
           const tEncode = performance.now();
           const base64 = jpegDataUrl.split(',')[1];
