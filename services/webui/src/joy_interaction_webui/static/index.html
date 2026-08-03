@@ -91,6 +91,7 @@ limitations under the License.
     <script src="./config_services.js"></script>
     <script src="./wiki_frontend.js"></script>
     <script src="./joy_ws.js"></script>
+    <script src="./i18n_device_label.js"></script>
     <script>
         document.title = 'JoyAI VL Live';
 
@@ -1025,7 +1026,7 @@ limitations under the License.
                 videoDevices.forEach((device, index) => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
-                    option.text = device.label || `Camera ${index + 1}`;
+                    option.text = window.JoyI18n.localizeDeviceLabel(device.label) || `Camera ${index + 1}`;
                     cameraSelect.appendChild(option);
                 });
 
@@ -4090,7 +4091,7 @@ limitations under the License.
 
         function setBtMicLevel(levelText, deviceText) {
             if (btMicLevelValue) btMicLevelValue.textContent = levelText || '--';
-            if (deviceText !== undefined && btMicDeviceValue) btMicDeviceValue.textContent = deviceText || '--';
+            if (deviceText !== undefined && btMicDeviceValue) btMicDeviceValue.textContent = window.JoyI18n.localizeDeviceLabel(deviceText) || '--';
         }
 
         function stopBtMicLevelMonitor() {
