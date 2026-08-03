@@ -1,0 +1,25 @@
+# Force LF line endings for source/config/doc files.
+# Prevents Windows clients from pushing CRLF, which breaks shell scripts on
+# Linux CI runners (e.g. drift-gate job failing with
+# "set: pipefail: invalid option name" and "': '\r': command not found").
+* text=auto eol=lf
+
+# Source / scripts
+*.sh text eol=lf
+*.py text eol=lf
+
+# CI / config
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Docs
+*.md text eol=lf
+
+# Binary files: leave as binary, do NOT apply text/eol normalization.
+*.png binary
+*.ico binary
+*.woff2 binary
+*.ttf binary
+*.woff binary
+*.gz binary
+*.zip binary
