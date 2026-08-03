@@ -137,6 +137,8 @@ limitations under the License.
             <span class="status-badge llm-unknown" id="ttsServiceStatus" title="TTS (voice_clone_api) reachability -- polled every 3s">TTS ?</span>
             <span class="status-badge llm-unknown" id="kwsServiceStatus" title="KWS (sherpa-onnx wake-word) model presence -- polled every 3s">KWS ?</span>
             <span class="status-badge jarvis-disconnected" id="jarvisStatus" title="Jarvis state machine (KWS_LISTENING -> WAKE_DETECTED -> DIALOG_ACTIVE) -- polled every 1s">Jarvis ?</span>
+            <span class="status-badge llm-unknown" id="memoryBadge" title="Memory (memory-store) 健康状态" role="status" aria-live="polite">记忆 ?</span>
+            <span class="status-badge llm-unknown" id="wikiBadge" title="[Local Wiki] 召回健康状态" role="status" aria-live="polite">知识库 ?</span>
 
             <button class="settings-btn" id="settingsBtn" title="Settings" aria-label="Settings">
                 <i data-lucide="settings"></i>
@@ -5790,6 +5792,82 @@ limitations under the License.
             }
         }
 
+        // ====================================================================
+        // Extended health badges: Memory / Wiki (#46)
+        // Polls /api/services/extended-status every 5s; renders two header
+        // badges with 3-state coloring (green / gray / red).
+        // ====================================================================
+        function renderExtBadge(el, info, kind) {
+            if (!el || !info) return;
+            const zh = kind === 'memory' ? '记忆' : '知识库';
+            const envFlag = kind === 'memory' ? 'JOYAI_ENABLE_MEMORY_STORE=1' : 'WIKI_RECALL_ENABLED=1';
+            let cls, text;
+            if (!info.enabled) {
+                cls = 'llm-unknown';
+                text = zh + ' 未启用';
+            } else if (!info.reachable) {
+                cls = 'llm-unknown';
+                text = zh + ' 离线';
+            } else if (info.ok === true) {
+                cls = 'llm-ok';
+                text = zh + ' 在线';
+            } else if (info.ok === false) {
+                cls = 'llm-err';
+                text = zh + ' 异常';
+            } else {
+                cls = 'llm-unknown';
+                text = zh + ' ?';
+            }
+            el.className = 'status-badge ' + cls;
+            el.textContent = text;
+            const detail = info.reason || (info.enabled ? '' : ('可选功能，未启用（设 ' + envFlag + ' 启用）'));
+            el.title = zh + ' 状态' + (detail ? '：' + detail : '');
+            if (info.ok === false && info.enabled) {
+                el.style.cursor = 'pointer';
+                el.onclick = function () {
+                    const sm = document.getElementById('settingsModal');
+                    if (sm) sm.classList.add('show');
+                    if (kind === 'wiki') {
+                        const kb = document.getElementById('knowledgeBaseToggle');
+                        if (kb) kb.click();
+                        if (window.JoyWiki) window.JoyWiki.loadHealth();
+                    }
+                };
+            } else {
+                el.style.cursor = '';
+                el.onclick = null;
+            }
+        }
+
+        async function pollExtendedStatus() {
+            try {
+                const resp = await fetch('/api/services/extended-status');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                renderExtBadge(document.getElementById('memoryBadge'), data.memory, 'memory');
+                renderExtBadge(document.getElementById('wikiBadge'), data.wiki, 'wiki');
+            } catch (err) {
+                const fallback = { enabled: false, reachable: false, ok: null, reason: String((err && err.message) || err) };
+                renderExtBadge(document.getElementById('memoryBadge'), fallback, 'memory');
+                renderExtBadge(document.getElementById('wikiBadge'), fallback, 'wiki');
+            }
+        }
+
+        let _extPollTimer = null;
+        function startExtendedStatusPoll() {
+            if (_extPollTimer) return;
+            pollExtendedStatus();
+            _extPollTimer = setInterval(pollExtendedStatus, 5000);
+        }
+        function stopExtendedStatusPoll() {
+            if (_extPollTimer) {
+                clearInterval(_extPollTimer);
+                _extPollTimer = null;
+            }
+        }
+        window.startExtendedStatusPoll = startExtendedStatusPoll;
+        window.stopExtendedStatusPoll = stopExtendedStatusPoll;
+
         // Auto-start alongside the other status polls.
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', startJarvisStatusPoll);
@@ -5802,6 +5880,13 @@ limitations under the License.
                 document.addEventListener('DOMContentLoaded', startServiceStatusPoll);
             } else {
                 startServiceStatusPoll();
+            }
+
+            // Auto-start extended health badges poll (#46)
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', startExtendedStatusPoll);
+            } else {
+                startExtendedStatusPoll();
             }
         })();
 
