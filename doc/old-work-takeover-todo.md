@@ -24,6 +24,7 @@
 - **spec/adr 痕迹**：ADR-0014 + `doc/specs/log-event-schema` ✅ 齐全，框得住。
 - **复活**：`git branch feat-q2-emit archive/feat-q2-emit`
 - **开工核验**：比对标签版 memory_io.py / memory_store_client.py 与 main 同名文件，找出缺的 logger 调用
+- **收尾（2026-08-03 ✅）**：实际从 `integrate/q2-emit-logging` 走 **PR #68**（squash → main `5eeec8a`）合入，reviewer 约法三章门禁 **PASS**（5 条全过、6 历史 BLOCKING 清）。`package-smoke` 修复 = 7 个 caller 由 fail-loud `raise` 改 logged no-op。旧的 `feat-q2-emit` 本地分支已 stale（内容已由 PR #68 交付，`archive/feat-q2-emit` 标签仍兜底），留待分支大扫除。`log_with_timestamp.py` 在 checkout 时被误删出工作树，已从 HEAD 还原（无回归）。
 
 ### ② `feat-drift-gate-runtime-v2.1` —— 大概率跳过，待精确核验
 - **内容**：drift-gate v2.1 运行时门禁 + D-038 决策 + T-06 spec
@@ -81,10 +82,10 @@
 
 ## 状态追踪（每条开工 / 合入后更新）
 
-- [ ] ① feat-q2-emit — 待接手
+- [x] ① feat-q2-emit — 已合入 ✅ PR #68（squash → main 5eeec8a，约法三章门禁 PASS）
 - [ ] ② feat-drift-gate-runtime-v2.1 — 待核验（大概率跳过）
 - [ ] ③ fix-backend-p3-swallow-logging — 待接手
 - [ ] ④ fix-backend-p1-asr-kwstraining-s101 — 待接手
 - [ ] ⑤ fix-backend-p1-kws-datamodule-b019 — 待接手
 - [ ] ⑥ fix-webinfer-context-overflow-bound — 待接手
-- [ ] ⑦ feat-webui-i18n-tests — 待定
+- [ ] ⑦ feat-webui-i18n-tests — 接手中（spec 已写 `doc/specs/webui-device-label-i18n.md`；前端 agent 实现中：port 2 文件 + 接线 index.html）
