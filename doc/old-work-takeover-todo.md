@@ -33,6 +33,7 @@
 - **spec/adr 痕迹**：spec `drift-gate-harness-spec` + main 已含 ADR-0015 ✅ 齐全。
 - **复活**：`git branch feat-drift-gate-runtime-v2.1 archive/feat-drift-gate-runtime-v2.1`
 - **精确核验（2026-08-03）**：功能性门禁**已在 main**（`quality.yml` 的 `drift-gate-runtime` job + 新 `scripts/verify.sh` drift 校验 + `ADR-0015`）。标签独有、main 仍缺的**安全高价值**部分：(1) `.gitattributes`（强制 LF，修反复踩的 CRLF CI 坑）；(2) `doc/specs/drift-gate-runtime-v2.1-spec.md` + `doc/adr/ADR-0012-v6-proposal.md`（框定特征，仓库 spec 驱动）。❌ **不删** `scripts/drift_gate.py`/`drift_gate_smoke_test.py`/`config/drift-contract.json`：grep 全仓确认仍被 `vlm_runtime_probe.py`/`log_maintenance.ps1`/`run-windows.ps1`/`doc/specs/drift-gate-harness-spec.md` 引用，删=回归（约法三章 3.4 零引用才删）。**处置：接手 (1)+(2) 纯新增，跳过删除与 决策/报告等已演进内容。**
+- **收尾（2026-08-03 ✅）**：实际走 **PR #70**（squash → main 0e0a5fe）合入，reviewer 约法三章门禁 **PASS**。原计划的第 3 文件 `doc/specs/drift-gate-runtime-v2.1-spec.md` 经双重核验在源标签 `archive/feat-drift-gate-runtime-v2.1` 不存在（标签内仅 `drift-gate-harness-spec.md` 等），按方案 A 仅合入实际可用的 2 文件收口。reviewer nits（ADR 内称"现有"的 `tools/golden_recall_set.json`/`tools/verify_nvidia_recall.py` 实由 PR #38 引入、`drift_gate_smoke_test.py` 主杆缺失）为非阻塞 follow-up。
 
 ### ③ `fix-backend-p3-swallow-logging` —— 建议接手（直接对应用户痛点）
 - **内容**：记录 `webinfer/session.py` 与 `memory-store/sqlite_backend.py` 里被静默吞掉的异常
@@ -88,7 +89,7 @@
 ## 状态追踪（每条开工 / 合入后更新）
 
 - [x] ① feat-q2-emit — 已合入 ✅ PR #68（squash → main 5eeec8a，约法三章门禁 PASS）
-- [ ] ② feat-drift-gate-runtime-v2.1 — 接手中：补 .gitattributes + spec/ADR 文档，不动 live drift_gate.py（仍被引用）
+- [x] ② feat-drift-gate-runtime-v2.1 — 已合入 ✅ PR #70（squash → main 0e0a5fe，约法三章门禁 PASS；2 文件纯新增：.gitattributes 强制 LF + ADR-0012-v6-proposal；不删仍被引用的 drift_gate 文件）
 - [x] ③ fix-backend-p3-swallow-logging — 已随 PR #27 落地 ✅ 无需单独 PR（精确核验）
 - [x] ④ fix-backend-p1-asr-kwstraining-s101 — 已随 PR #25/#27 落地 ✅ 无需单独 PR（精确核验）
 - [x] ⑤ fix-backend-p1-kws-datamodule-b019 — 已随 PR #25 等落地 ✅ 无需单独 PR（精确核验）
