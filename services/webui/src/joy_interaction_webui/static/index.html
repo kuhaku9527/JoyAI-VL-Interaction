@@ -1069,6 +1069,12 @@ limitations under the License.
                         constraints,
                         sessionId: window.sessionId,
                     });
+                    // 切换摄像头后同样接本地预览流到显示区
+                    const camStream = window.getWebcamStream && window.getWebcamStream();
+                    if (camStream && typeof videoElement !== "undefined" && videoElement) {
+                        videoElement.classList.remove("mirrored");
+                        videoElement.srcObject = camStream;
+                    }
                 } catch (err) {
                     console.error('Error switching camera:', err);
                 }
@@ -1198,6 +1204,12 @@ limitations under the License.
                             constraints: constraints,
                             sessionId: window.sessionId,
                         });
+                        // 接本地预览流到主显示区（与屏幕采集路径对齐：getScreenCaptureStream -> videoElement.srcObject，修复 OBS VC 黑屏）
+                        const camStream = window.getWebcamStream && window.getWebcamStream();
+                        if (camStream && typeof videoElement !== "undefined" && videoElement) {
+                            videoElement.classList.remove("mirrored");
+                            videoElement.srcObject = camStream;
+                        }
                         setStatus(status, "Streaming", "var(--success-color, #4caf50)");
                     } catch (err) {
                         console.error("startWebcamCapture:", err);
