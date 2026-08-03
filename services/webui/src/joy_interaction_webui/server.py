@@ -1030,6 +1030,62 @@ async def _proxy_to_memory_store(request: web.Request) -> web.Response:
         )
 
 
+async def extended_status(request: web.Request) -> web.Response:
+    """Aggregate Memory-store + [Local Wiki] status for the header badges (#46).
+
+    Three visual states per service:
+      - enabled=False            -> gray  "未启用"  (opt-in flag off)
+      - enabled=True & !reachable -> gray  "离线"    (probe failed)
+      - enabled=True & reachable & ok=False -> red "异常" (health error)
+      - enabled=True & reachable & ok=True  -> green "在线"
+    Wiki recall (``WIKI_RECALL_ENABLED``) is configured in webinfer, but its
+    corpus backend IS memory-store, so wiki reachability/health reuses the same
+    probe. Probe failures are reported explicitly (never a silent 500).
+    """
+    memory_enabled = os.environ.get("JOYAI_ENABLE_MEMORY_STORE") == "1"
+    wiki_enabled = os.environ.get("WIKI_RECALL_ENABLED") == "1"
+    ok: bool | None = None
+    reachable = False
+    reason = ""
+    latency_ms = None
+    try:
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2)) as session,
+            session.get(MEMORY_STORE_URL + "/health") as resp,
+        ):
+            if resp.status == 200:
+                data = await resp.json()
+                ok = bool(data.get("ok"))
+                reachable = True
+                latency_ms = data.get("latency_ms")
+                if not ok:
+                    reason = str(data.get("error") or data.get("hint") or "health reported not ok")
+            else:
+                reason = f"memory-store /health HTTP {resp.status}"
+    except Exception as exc:
+        reachable = False
+        ok = None
+        reason = str(exc)
+        logger.warning("extended_status: memory-store probe failed: %s", exc)
+    payload = {
+        "memory": {
+            "enabled": memory_enabled,
+            "ok": ok,
+            "reachable": reachable,
+            "reason": reason,
+            "latency_ms": latency_ms,
+        },
+        "wiki": {
+            "enabled": wiki_enabled,
+            "ok": ok,
+            "reachable": reachable,
+            "reason": reason,
+            "latency_ms": latency_ms,
+        },
+    }
+    return web.json_response(payload)
+
+
 async def _ingest_text_handler(request: web.Request) -> web.Response:
     """POST /v1/external/ingest-text (F4 pasted-markdown entry).
 
@@ -1306,6 +1362,7 @@ def main():
     app.router.add_post("/offer", offer)
     app.router.add_post("/api/session/cleanup", session_cleanup)
     app.router.add_get("/api/llm/status", llm_status)
+    app.router.add_get("/api/services/extended-status", extended_status)
     app.router.add_get("/api/tts/health", tts_health)
     app.router.add_post("/api/llm/message", llm_message)
     app.router.add_post("/api/tts/synthesize", _tts_synthesize_handler)
