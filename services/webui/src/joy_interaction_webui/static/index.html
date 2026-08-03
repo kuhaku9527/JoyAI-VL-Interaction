@@ -3101,8 +3101,15 @@ limitations under the License.
         }
 
         function renderVlmHistory({ animateLast = false } = {}) {
+            // Latency instrumentation (issue #43): tRenderStart marks the moment
+            // just before the VLM assistant response(s) are committed to the chat
+            // DOM. The duration below measures DOM insertion cost — render segment.
+            const tRenderStart = performance.now();
             const contentDiv = document.getElementById('resultTextContent');
-            if (!contentDiv) return;
+            if (!contentDiv) {
+                console.info('[latency][render]', { skipped: true, reason: 'resultTextContent missing' });
+                return;
+            }
 
             const shouldAutoScroll = isVlmHistoryNearBottom(contentDiv);
 
@@ -3121,6 +3128,10 @@ limitations under the License.
                 }
             });
             contentDiv.appendChild(fragment);
+            console.info('[latency][render]', {
+                ms: performance.now() - tRenderStart,
+                entries: vlmHistory.length,
+            });
 
             resultText.style.display = shouldShowVlmHistoryShell() ? "flex" : "none";
             syncVlmHistoryEmpty();

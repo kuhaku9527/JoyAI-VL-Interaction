@@ -15,6 +15,15 @@
 //
 // v3.38: extracted from index.html global startWebcam() so each video source
 // has its own start/stop API and the global start() dispatcher can go away.
+//
+// NOTE (issue #43 latency methodology): the webcam / OBS Virtual Camera path
+// ships frames via a WebRTC RTCPeerConnection. Capture AND encode happen in the
+// browser/OS media stack off the main thread (hardware or libwebrtc encoder),
+// so per-frame capture/encode durations are NOT measurable from JS the way the
+// screen-capture toDataURL path is. Therefore this file intentionally carries
+// no latency instrumentation — the screen_capture.js path is the measurable
+// 采集/编码 segment; webcam timing belongs to the WebRTC stack and is excluded
+// from the JS-side breakdown.
 
 (function () {
   let webcamStream = null;

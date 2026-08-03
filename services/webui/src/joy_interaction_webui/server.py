@@ -304,8 +304,10 @@ async def websocket_handler(request):
                             try:
                                 from PIL import Image as _PILImage
 
+                                t_arrive = time.perf_counter()
                                 raw = base64.b64decode(payload)
                                 img = _PILImage.open(io.BytesIO(raw)).convert("RGB")
+                                t_decoded = time.perf_counter()
                                 meta = {
                                     "source": data.get("source") or "screen",
                                     "format": data.get("format") or "jpeg",
@@ -315,9 +317,16 @@ async def websocket_handler(request):
                                 }
                                 await svc.process_frame(img, frame_metadata=meta)
                                 response, _ = svc.get_current_response()
+                                t_processed = time.perf_counter()
                                 metrics = svc.get_metrics()
                                 if response:
                                     get_session_callback(session_id)(response, metrics)
+                                logger.info(
+                                    "latency[transport+infer-screen]: arrive->processed_ms=%.1f decode_ms=%.1f seq=%s",
+                                    (t_processed - t_arrive) * 1000,
+                                    (t_decoded - t_arrive) * 1000,
+                                    data.get("frame_seq"),
+                                )
                             except Exception as frame_exc:
                                 logger.warning("frame decode/process failed: %s", frame_exc)
                     elif t == "background_request":
