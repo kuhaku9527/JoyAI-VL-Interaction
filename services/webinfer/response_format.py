@@ -107,7 +107,7 @@ def parse_model_decision(raw_text: str) -> tuple[str, str, str | None]:
 # signals that must never reach the end-user ``content`` field. ``<the
 # question>``-style placeholder text in the system prompt is NOT matched
 # because only these three literal tag names are whitelisted.
-_DECISION_TOKEN_RE = re.compile(r"\s*</?(?:silence|response|delegation)>\s*", re.IGNORECASE)
+_DECISION_TOKEN_RE = re.compile(r"\s*</?\s*(?:silence|response|delegation)\s*>\s*", re.IGNORECASE)
 
 
 def strip_decision_tokens(text: str) -> str:

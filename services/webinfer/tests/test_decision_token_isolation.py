@@ -190,6 +190,30 @@ def test_strip_decision_tokens_keeps_placeholder_text() -> None:
     assert strip_decision_tokens("</response> <the question>") == "<the question>"
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # Internal-whitespace variants that the first regex leaked (reviewer gap).
+        ("</Silence >", ""),
+        ("</RESPONSE >", ""),
+        ("< silence >", ""),
+        ("<delegation > ask the agent", "ask the agent"),
+        # Mixed body text around the internally-spaced token must collapse cleanly.
+        ("see < response > hi", "see hi"),
+        ("before </ Delegation > the question", "before the question"),
+    ],
+)
+def test_strip_decision_tokens_internal_whitespace(raw: str, expected: str) -> None:
+    """Tokens with whitespace after '<'/'</' or before '>' are fully stripped (#44 regression).
+
+    The backend reviewer flagged that ``</Silence >`` and ``</RESPONSE >`` still
+    leaked to the UI because the original regex required the tag brackets to be
+    adjacent to the tag name. The tightened regex allows optional internal
+    whitespace so these variants are matched and removed.
+    """
+    assert strip_decision_tokens(raw) == expected
+
+
 def test_strip_decision_tokens_preserves_decision_parsing_inputs() -> None:
     """Stripping content does not alter what parse_model_decision sees.
 
