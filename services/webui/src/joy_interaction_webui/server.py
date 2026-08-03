@@ -1049,22 +1049,20 @@ async def extended_status(request: web.Request) -> web.Response:
     reason = ""
     latency_ms = None
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=2)
-        ) as session:
-            async with session.get(MEMORY_STORE_URL + "/health") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    ok = bool(data.get("ok"))
-                    reachable = True
-                    latency_ms = data.get("latency_ms")
-                    if not ok:
-                        reason = str(
-                            data.get("error") or data.get("hint") or "health reported not ok"
-                        )
-                else:
-                    reason = f"memory-store /health HTTP {resp.status}"
-    except Exception as exc:  # noqa: BLE001 - probe must report, never 500
+        async with (
+            aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2)) as session,
+            session.get(MEMORY_STORE_URL + "/health") as resp,
+        ):
+            if resp.status == 200:
+                data = await resp.json()
+                ok = bool(data.get("ok"))
+                reachable = True
+                latency_ms = data.get("latency_ms")
+                if not ok:
+                    reason = str(data.get("error") or data.get("hint") or "health reported not ok")
+            else:
+                reason = f"memory-store /health HTTP {resp.status}"
+    except Exception as exc:
         reachable = False
         ok = None
         reason = str(exc)
