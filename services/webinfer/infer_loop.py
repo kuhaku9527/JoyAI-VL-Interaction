@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import re
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -53,6 +55,45 @@ from time_ranges import (
 from config import reset_chunk_state
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
+
+
+# --- ADR-0014 JSONL event emission (services/common/event_json.py) ----------
+try:
+
+    def _ensure_event_json_importable() -> None:
+        """Put ``services/common`` on ``sys.path`` by walking up from this file.
+
+        Returns without inserting if the shared emitter cannot be located;
+        the subsequent import then raises ImportError, which is caught below
+        and downgraded to a logged no-op (约法三章: not silent, just not fatal).
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        cur = here
+        while True:
+            common = os.path.join(cur, "services", "common")
+            if os.path.exists(os.path.join(common, "event_json.py")):
+                if common not in sys.path:
+                    sys.path.insert(0, common)
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                return
+            cur = parent
+
+    _ensure_event_json_importable()
+    from event_json import emit_event
+except ImportError:
+    logging.getLogger(__name__).warning(
+        "event_json emitter unavailable; JSONL event emission disabled "
+        "(packaged build without services/common on path?)"
+    )
+
+    def emit_event(*_args, **_kwargs):
+        """No-op fallback used only when the shared emitter is unavailable.
+
+        Logged once above (not silent) per 约法三章 - never swallow the failure.
+        """
+        return None
 
 
 class InferLoopMixin:
@@ -118,6 +159,7 @@ class InferLoopMixin:
         requested_model = payload.get("model")
         client, model_name = self._resolve_backend(requested_model)
         state = self.get_session(session_id)
+        t_start = time.perf_counter()
         async with state.lock:
             try:
                 result = await self._handle_text_payload(
@@ -127,7 +169,22 @@ class InferLoopMixin:
                 raise
             except Exception as exc:
                 LOGGER.exception("text chat completion failed")
+                emit_event(
+                    "webinfer",
+                    "infer_error",
+                    level="error",
+                    session_id=session_id,
+                    extra={"error_type": type(exc).__name__, "path": "text_chat"},
+                )
                 return _openai_error_response(str(exc), status=502)
+        emit_event(
+            "webinfer",
+            "webinfer_request",
+            level="info",
+            session_id=session_id,
+            latency_ms=round((time.perf_counter() - t_start) * 1000),
+            extra={"model": model_name, "path": "text_chat"},
+        )
         return web.json_response(result)
 
     async def _handle_text_payload(
@@ -230,6 +287,7 @@ class InferLoopMixin:
         requested_model = payload.get("model")
         client, model_name = self._resolve_backend(requested_model)
         state = self.get_session(session_id)
+        t_start = time.perf_counter()
         async with state.lock:
             try:
                 result = await self._handle_chat_payload(
@@ -239,7 +297,22 @@ class InferLoopMixin:
                 raise
             except Exception as exc:
                 LOGGER.exception("chat completion failed")
+                emit_event(
+                    "webinfer",
+                    "infer_error",
+                    level="error",
+                    session_id=session_id,
+                    extra={"error_type": type(exc).__name__, "path": "chat_completions"},
+                )
                 return _openai_error_response(str(exc), status=502)
+        emit_event(
+            "webinfer",
+            "webinfer_request",
+            level="info",
+            session_id=session_id,
+            latency_ms=round((time.perf_counter() - t_start) * 1000),
+            extra={"model": model_name, "path": "chat_completions"},
+        )
         return web.json_response(result)
 
     async def _handle_chat_payload(

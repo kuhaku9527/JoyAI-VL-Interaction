@@ -200,6 +200,8 @@ function Stop-ByName {
     $pidV = Get-Pid $Name
     if ($pidV -and (Test-Pid-Alive $pidV)) {
         Write-Info "Stopping $Name (PID $pidV)"
+        Emit-Event launcher service_down -Extra @{ name = $Name }
+        if ($Name -eq "llama-main") { Emit-Event vllm-llama shutdown }
         try { Stop-Process -Id $pidV -Force -ErrorAction SilentlyContinue } catch {}
         $deadline = (Get-Date).AddSeconds($GraceSec)
         while ((Get-Date) -lt $deadline -and (Test-Pid-Alive $pidV)) {
@@ -218,6 +220,35 @@ function Stop-ByName {
 $script:Started = @{}
 function Get-AllStarted { return ($script:Started.Values | Where-Object { $_ }) }
 
+# --- Q2 JSONL event emission (ADR-0014) ----------------------------------
+# Appends one JSON object per event to logs/events/<service>-<UTC-date>.jsonl,
+# mirroring the schema produced by services/common/event_json.py (Python side).
+# Best-effort: any failure is swallowed so event logging never breaks launch.
+function Emit-Event {
+    param(
+        [string]$Service,
+        [string]$Event,
+        [string]$Level = "info",
+        [hashtable]$Extra = @{}
+    )
+    try {
+        $eventsDir = Join-Path $RepoRoot "logs" "events"
+        if (-not (Test-Path $eventsDir)) { New-Item -ItemType Directory -Path $eventsDir -Force | Out-Null }
+        $now = (Get-Date).ToUniversalTime()
+        $ts = $now.ToString("yyyy-MM-ddTHH:mm:ss.") + "{0:000}Z" -f $now.Millisecond
+        $obj = [ordered]@{
+            ts      = $ts
+            level   = $Level
+            service = $Service
+            event   = $Event
+        }
+        if ($Extra -and $Extra.Count -gt 0) { $obj["extra"] = $Extra }
+        $date = $now.ToString("yyyy-MM-dd")
+        $file = Join-Path $eventsDir ("{0}-{1}.jsonl" -f $Service, $date)
+        Add-Content -Path $file -Value ($obj | ConvertTo-Json -Compress -Depth 4) -Encoding utf8
+    } catch { }
+}
+
 function Wait-Http {
     param(
         [string]$Name,
@@ -232,6 +263,7 @@ function Wait-Http {
             $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3 -Method GET
             if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500) {
                 Write-Ok "$Name is up (HTTP $($resp.StatusCode))"
+                Emit-Event launcher service_up -Extra @{ name = $Name; status = $resp.StatusCode }
                 return $true
             }
         } catch { }
@@ -347,10 +379,12 @@ function Start-LlamaMain {
     $envs = @{
         "PATH" = "$llamaDir;$env:PATH"
     }
-    return (Start-Background "llama-main" $LlamaServer $args `
+    $ok = (Start-Background "llama-main" $LlamaServer $args `
         -Workdir $llamaDir `
         -LogBase (Join-Path $LogDir "llama-main") `
         -ExtraEnv $envs)
+    Emit-Event vllm-llama startup
+    return $ok
 }
 
 function Start-VoiceClone {
@@ -679,6 +713,7 @@ $script:Stopping = $false
 function Stop-All {
     if ($script:Stopping) { return }
     $script:Stopping = $true
+    Emit-Event launcher stop
     Write-Host ""
     Write-Host "Stopping services..." -ForegroundColor Yellow
     foreach ($k in $plan.Keys) {
@@ -697,6 +732,7 @@ $consoleCancel = [System.ConsoleCancelEventHandler]{
 [Console]::add_CancelKeyPress($consoleCancel)
 
 try {
+    Emit-Event launcher start -Extra @{ launch_time = $script:LaunchTime; mode = $script:LaunchMode }
     $ordered = @("llama-main", "llama-summary", "whisper", "voice-clone",
                  "hermes-gateway", "background-agent", "webinfer", "asr-adapter", "webui",
                  "memory-store"
@@ -749,6 +785,7 @@ try {
     $probeOut = Join-Path $RepoRoot "logs\vlm-runtime-props.json"
     if ($plan["llama-main"] -and (Test-Path $probeScript)) {
         $py = "D:\AI\envs\joyai-main\python.exe"
+        Emit-Event launcher probe_refresh -Extra @{ base_url = ("http://127.0.0.1:" + $P.Main) }
         & $py $probeScript --base-url ("http://127.0.0.1:" + $P.Main) --out $probeOut --wait 5 2>&1 | Out-Null
     }
     Write-Host " All services ready. WebUI is running in the foreground." -ForegroundColor Green
