@@ -16,6 +16,7 @@ export default [
         window: 'writable',
         document: 'readonly',
         console: 'readonly',
+        performance: 'readonly',
         navigator: 'readonly',
         WebSocket: 'readonly',
         RTCPeerConnection: 'readonly',

@@ -22,6 +22,13 @@
   let screenCaptureInterval = null;
   let screenCaptureVideo = null;
 
+  // Latency instrumentation (issue #43): additive only, no behavior change.
+  // frameSeq is the monotonic per-frame id sent to the backend for correlation
+  // across the 采集→编码→传输→推理→渲染 segments. prevT0 tracks the scheduled
+  // capture time of the previous frame so we can measure interval cadence/drift.
+  let frameSeq = 0;
+  let prevT0 = null;
+
   function resolveWebSocket(ws) {
     if (ws && ws.readyState !== undefined) return ws;
     if (typeof window !== 'undefined' && window.websocket) return window.websocket;
@@ -78,6 +85,8 @@
       track.addEventListener('ended', () => stopScreenCapture());
 
       screenCaptureInterval = setInterval(async () => {
+        // t0 = scheduled capture time (first line of the callback).
+        const t0 = performance.now();
         try {
           const liveWs = resolveWebSocket(ws);
           if (!liveWs || liveWs.readyState !== WebSocket.OPEN) {
@@ -96,6 +105,8 @@
           } else {
             return;
           }
+          // tGrab = 采集 done (grabFrame resolved).
+          const tGrab = performance.now();
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
@@ -106,7 +117,12 @@
             ctx.drawImage(screenCaptureVideo, 0, 0, width, height);
           }
           const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          // tEncode = 编码 done (toDataURL returned — suspected bottleneck).
+          const tEncode = performance.now();
           const base64 = jpegDataUrl.split(',')[1];
+          // Increment once per frame actually shipped (the frame_id for backend
+          // correlation). Kept inside the send path so frame_seq matches payloads.
+          frameSeq += 1;
           liveWs.send(JSON.stringify({
             type: 'frame',
             format: 'jpeg',
@@ -115,7 +131,27 @@
             data: base64,
             timestamp: Date.now(),
             source: 'screen',
+            frame_seq: frameSeq,
           }));
+          // tSend = 传输 send done (send() returned).
+          const tSend = performance.now();
+
+          // Build the latency sample and maintain a small in-memory ring buffer.
+          const sample = {
+            seq: frameSeq,
+            grab_ms: tGrab - t0,
+            encode_ms: tEncode - tGrab,
+            send_ms: tSend - tEncode,
+            interval_ms: prevT0 === null ? null : (t0 - prevT0),
+            ts: Date.now(),
+          };
+          prevT0 = t0;
+          if (!window.__screenLatency) window.__screenLatency = [];
+          window.__screenLatency.push(sample);
+          if (window.__screenLatency.length > 120) {
+            window.__screenLatency.shift();
+          }
+          console.info('[latency][screen]', sample);
         } catch (err) {
           console.error('Screen capture frame error:', err);
         }

@@ -647,6 +647,7 @@ class InferLoopMixin:
             )
             t_prompt_build_end = time.perf_counter()
             inference_start = time.time()
+            t_infer_start = time.perf_counter()
             raw_text, usage = await self._call_main_model(
                 payload,
                 api_messages,
@@ -658,6 +659,10 @@ class InferLoopMixin:
             )
             inference_time = time.time() - inference_start
             t_inference_end = time.perf_counter()
+            LOGGER.info(
+                "latency[infer]: model_call_ms=%.1f",
+                (t_inference_end - t_infer_start) * 1000,
+            )
             generated_text = (
                 normalize_model_output(raw_text)
                 if self.config.normalize_output
