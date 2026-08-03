@@ -32,6 +32,7 @@
 - **判断**：主体已落地；15 个提交可能是 D-086 微调或后续。复活后精确比对，大概率无活儿可接。
 - **spec/adr 痕迹**：spec `drift-gate-harness-spec` + main 已含 ADR-0015 ✅ 齐全。
 - **复活**：`git branch feat-drift-gate-runtime-v2.1 archive/feat-drift-gate-runtime-v2.1`
+- **精确核验（2026-08-03）**：功能性门禁**已在 main**（`quality.yml` 的 `drift-gate-runtime` job + 新 `scripts/verify.sh` drift 校验 + `ADR-0015`）。标签独有、main 仍缺的**安全高价值**部分：(1) `.gitattributes`（强制 LF，修反复踩的 CRLF CI 坑）；(2) `doc/specs/drift-gate-runtime-v2.1-spec.md` + `doc/adr/ADR-0012-v6-proposal.md`（框定特征，仓库 spec 驱动）。❌ **不删** `scripts/drift_gate.py`/`drift_gate_smoke_test.py`/`config/drift-contract.json`：grep 全仓确认仍被 `vlm_runtime_probe.py`/`log_maintenance.ps1`/`run-windows.ps1`/`doc/specs/drift-gate-harness-spec.md` 引用，删=回归（约法三章 3.4 零引用才删）。**处置：接手 (1)+(2) 纯新增，跳过删除与 决策/报告等已演进内容。**
 
 ### ③ `fix-backend-p3-swallow-logging` —— 建议接手（直接对应用户痛点）
 - **内容**：记录 `webinfer/session.py` 与 `memory-store/sqlite_backend.py` 里被静默吞掉的异常
@@ -39,6 +40,7 @@
 - **判断**：小修复、正面（符合约法三章「要有 log」），价值高、风险低。
 - **spec/adr 痕迹**：与日志 schema(ADR-0014) 沾边 ✅ 部分（非专门 spec，属小修复，按治理可不强制 spec）。
 - **复活**：`git branch fix/backend-p3-swallow-logging archive/fix-backend-p3-swallow-logging`
+- **精确核验（2026-08-03 ✅）**：**无需接手**。标签改动已随 **PR #27 (`8c34f46`)** 落地 main——`session.py:158-162`（`CancelledError` 拆分支 + `LOGGER.warning("cleanup task raised during shutdown...")`）与 `sqlite_backend.py:510-511`（`_LOGGER.warning("sqlite connection close failed...")`）逐字一致，且 sqlite 还多了 vector store close 日志。pickaxe 确认交付 commit 为 `8c34f46`。`LOGGER` 在 main 的 `session.py:28` 已定义（`logging.getLogger("streaming_infer_adapter")`），无 NameError 风险。
 
 ### ④ `fix-backend-p1-asr-kwstraining-s101` —— 接手
 - **内容**：把 asr/kws/hermes 里的生产 `assert` 换成显式 `raise` + 测试（`test_hermes_api_enrich_guard.py`）
@@ -46,6 +48,7 @@
 - **判断**：方向正确（把静默 assert 变显式 raise，正是约法三章鼓励的）。复活后核验 main 是否已有等价。
 - **spec/adr 痕迹**：对应 ADR-0008（p0-adapter-fixes）✅。
 - **复活**：`git branch fix/backend-p1-asr-kwstraining-s101 archive/fix-backend-p1-asr-kwstraining-s101`
+- **精确核验（2026-08-03 ✅）**：**无需接手**。全部 6 文件改动已随 **PR #25 (`6037348`)** + `38444e6` 落地 main：asr.py/kws.py 的 `raise ValueError`、hermes_api/main.py 的 logged `except`、summarizer_routing.py 的 `raise RuntimeError`、export_kws_onnx.py 的 `raise ValueError`、kws_data_module.py 的 `@cached_property`，以及新增回归测试 `test_hermes_api_enrich_guard.py`（main blob `d8677fe` 与标签完全一致）。pickaxe 确认交付 commit `6037348`/`38444e6`。
 
 ### ⑤ `fix-backend-p1-kws-datamodule-b019` —— 接手
 - **内容**：`lru_cache` 误用在实例方法的修复
@@ -53,6 +56,7 @@
 - **判断**：小修复，低风险。
 - **spec/adr 痕迹**：对应 ADR-0008（p0-adapter-fixes）✅。
 - **复活**：`git branch fix/backend-p1-kws-datamodule-b019 archive/fix-backend-p1-kws-datamodule-b019`
+- **精确核验（2026-08-03 ✅）**：**无需接手**。3 文件改动已随早期 PR（#25 等）落地 main：`hermes_api/main.py` 的 logged except、`kws_data_module.py` 的 `@cached_property`（:80/89/94）、`summarizer_routing.py` 的 `raise RuntimeError`（:105/154）均已在 main。与 ④ 大量重叠，属同一批 assert→raise 改造。
 
 ### ⑥ `fix-webinfer-context-overflow-bound` —— 接手
 - **内容**：webinfer 上下文溢出边界测试 + 实现边界
@@ -60,6 +64,7 @@
 - **判断**：测试类，低风险，接手。
 - **spec/adr 痕迹**：ADR-0013 + spec `memory-client-resilience` ✅ 齐全。
 - **复活**：`git branch fix/webinfer-context-overflow-bound archive/fix-webinfer-context-overflow-bound`
+- **精确核验（2026-08-03 ✅）**：**无需接手**。5 文件改动已全部在 main：`memory_io.py:411-412`（`qa_history_window` 边界）、`summarizer_routing.py:194-215`（`long_term_memory_max_tokens` token budget 循环 + `_rebuild_long_term_memory`）、`adapter_types.py:140,165`（两 config 字段）、`test_context_overflow_bounds.py`（blob `5f44f35` 与标签逐字一致）。三点 diff 虽非空（标签分支自 merge-base 前偏离），grep main 工作树确认代码已通过别的路径落地。另：3 条他人远端 webinfer 分支（nit-cleanup / reentrant-lock / text-chat-deadlock）只动锁/deadlock 测试，与 ⑥ 无重叠。
 
 ### ⑦ `feat-webui-i18n-tests` —— 待定（前端测试）
 - **内容**：前端 device-label i18n 抽出做测试
@@ -83,9 +88,9 @@
 ## 状态追踪（每条开工 / 合入后更新）
 
 - [x] ① feat-q2-emit — 已合入 ✅ PR #68（squash → main 5eeec8a，约法三章门禁 PASS）
-- [ ] ② feat-drift-gate-runtime-v2.1 — 待核验（大概率跳过）
-- [ ] ③ fix-backend-p3-swallow-logging — 待接手
-- [ ] ④ fix-backend-p1-asr-kwstraining-s101 — 待接手
-- [ ] ⑤ fix-backend-p1-kws-datamodule-b019 — 待接手
-- [ ] ⑥ fix-webinfer-context-overflow-bound — 待接手
+- [ ] ② feat-drift-gate-runtime-v2.1 — 接手中：补 .gitattributes + spec/ADR 文档，不动 live drift_gate.py（仍被引用）
+- [x] ③ fix-backend-p3-swallow-logging — 已随 PR #27 落地 ✅ 无需单独 PR（精确核验）
+- [x] ④ fix-backend-p1-asr-kwstraining-s101 — 已随 PR #25/#27 落地 ✅ 无需单独 PR（精确核验）
+- [x] ⑤ fix-backend-p1-kws-datamodule-b019 — 已随 PR #25 等落地 ✅ 无需单独 PR（精确核验）
+- [x] ⑥ fix-webinfer-context-overflow-bound — 已随早期 PR 落地 ✅ 无需单独 PR（精确核验）
 - [x] ⑦ feat-webui-i18n-tests — 已合入 ✅ PR #69（squash → main 8828e1b，约法三章门禁 PASS，CI 9/9 绿）
