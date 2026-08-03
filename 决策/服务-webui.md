@@ -101,6 +101,18 @@
 
 ---
 
+## D-2026-08-03-004  UI 文案必须走 i18n（禁硬编码未映射英文用户可见文案）
+
+- **事实**: 所有面向用户的 UI 文案必须通过 `window.JoyI18n` 落地中文，禁止在 `index.html` / 静态 JS 中硬编码未映射的英文用户可见文案。基线：PR #69 落地设备名 i18n（`localizeDeviceLabel` + `DEVICE_LABEL_MAP`，见 `doc/specs/webui-device-label-i18n.md`）；issue #47 收口时将通用 UI 文案（状态栏/按钮/面板标题/菜单/提示语/模式标签/tooltip 等）扩展进同一 `window.JoyI18n` 模块（如 `localizeUiString`）。
+- **来源**: 用户指令 2026-08-03（"顺便规定之后的 ui 都要汉化"）；issue #47（WebUI 关键面板汉化，E5）
+- **校验**: `grep -n "window.JoyI18n" services/webui/src/joy_interaction_webui/static/i18n_device_label.js` → IIFE 挂载；新增 UI 文案接入点应经 `window.JoyI18n.localizeXxx(...)`；PR/自检须 `npx vitest run` + `npx eslint` 通过
+- **预期**: 新增面板/组件时同步补中文映射并配套 vitest（jsdom）测试；技术术语（WebSocket/WebRTC/VLM/RTSP 等）可保留英文；未知/已是中文/falsy 文案透传不改（显式语义，非静默兜底）
+- **Drift**: 前瞻约束，落地后核验
+- **Owner**: 前端
+- **锁定**: 🔒
+
+---
+
 ## 关联索引
 
 - 后端网关契约 / 端口：见 `服务-webinfer.md`、`跨域铁律.md`
