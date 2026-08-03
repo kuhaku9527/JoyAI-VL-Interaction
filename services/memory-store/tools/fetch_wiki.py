@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-_UA = "JoyAI-LocalWikiFetcher/0.1 (+https://github.com/kuhaku9527/JoyAI-VL-Interaction)"
+_UA = "JoyAI-LocalWikiFetcher/0.1 (+https://github.com/kuhaku9527/vl-interaction-dev)"
 
 
 def _api_get(api: str, params: dict, rate: float) -> dict:
