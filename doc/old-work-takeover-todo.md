@@ -88,4 +88,4 @@
 - [ ] ④ fix-backend-p1-asr-kwstraining-s101 — 待接手
 - [ ] ⑤ fix-backend-p1-kws-datamodule-b019 — 待接手
 - [ ] ⑥ fix-webinfer-context-overflow-bound — 待接手
-- [ ] ⑦ feat-webui-i18n-tests — 接手中（spec 已写 `doc/specs/webui-device-label-i18n.md`；前端 agent 实现中：port 2 文件 + 接线 index.html）
+- [x] ⑦ feat-webui-i18n-tests — 已合入 ✅ PR #69（squash → main 8828e1b，约法三章门禁 PASS，CI 9/9 绿）
