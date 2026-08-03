@@ -184,7 +184,7 @@ when present, otherwise fall through to the single main client.
 | `ASYNC_SUMMARY_LEAD_FRAMES` | Script default `20` | Generate summaries asynchronously ahead of the chunk boundary to reduce waiting. |
 | `FRAME_SECONDS` | `1.0` | Estimated frame duration when explicit timestamps are absent. |
 | `SUMMARIZER_KEY_FRAMES` | `0` | `0` uses all frames in a chunk for summarization; values greater than 0 sample frames uniformly. |
-| `SUMMARIZER_MAX_PIXELS` | `262144` | Maximum input image pixels for summarization. |
+| `SUMMARIZER_MAX_PIXELS` | `1048576` | Maximum input image pixels for summarization. |
 | `SUMMARIZER_API_BASE` | `http://127.0.0.1:8065/v1` | Summary model OpenAI API shared by intermediate summaries and long-term memory compression. |
 | `SUMMARIZER_MODEL` | `/tmp/models/Qwen3-VL-4B-Instruct` | Model name sent to summary vLLM. |
 | `LIVE_SAVE_OUTPUTS` | Script default `true` | Whether to save live output JSON. |
