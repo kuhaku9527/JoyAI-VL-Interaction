@@ -143,7 +143,9 @@ def _image_to_data_url(image: Image.Image, mime_type: str, quality: int | None =
         mime_type = "image/jpeg"
         if image.mode not in ("RGB", "L"):
             image = image.convert("RGB")
-        image.save(buffer, format="JPEG", quality=quality if quality is not None else _DEFAULT_JPEG_QUALITY)
+        image.save(
+            buffer, format="JPEG", quality=quality if quality is not None else _DEFAULT_JPEG_QUALITY
+        )
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
 
