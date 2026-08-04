@@ -559,6 +559,10 @@ function Start-MemoryStore {
         "MEMORY_PORT"        = "$($P.MemoryStore)"
         "MEMORY_BACKEND"     = if ($env:MEMORY_BACKEND)     { $env:MEMORY_BACKEND }     else { "sqlite" }
         "MEMORY_SQLITE_PATH" = if ($env:MEMORY_SQLITE_PATH) { $env:MEMORY_SQLITE_PATH } else { (Join-Path $workdir "data\memory.sqlite") }
+        # 2026-08-05 (D-2026-08-05-001): 硬编码 bge-m3 本地模型默认路径进版本控制，
+        # 彻底定死（run-windows.env 被 .gitignore 忽略，不进版本）。env 文件若已设则优先，
+        # 否则回退到仓库外有效权重 D:/AI/models/bge-m3（避免默认去仓库内坏缓存加载 -> providers/health 500）。
+        "EMBEDDING_LOCAL_MODEL" = if ($env:EMBEDDING_LOCAL_MODEL) { $env:EMBEDDING_LOCAL_MODEL } else { "D:/AI/models/bge-m3" }
     }
     return (Start-Background "memory-store" $VenvPy $args `
         -Workdir $workdir `
