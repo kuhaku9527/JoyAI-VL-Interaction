@@ -182,7 +182,7 @@ python services/webinfer/live_adapter.py     --main-api-base http://127.0.0.1:70
 | `ASYNC_SUMMARY_LEAD_FRAMES` | 脚本默认 `20` | 在 chunk 边界前异步生成摘要，以减少等待。 |
 | `FRAME_SECONDS` | `1.0` | 缺少显式时间戳时的估算帧时长。 |
 | `SUMMARIZER_KEY_FRAMES` | `0` | `0` 表示用 chunk 中所有帧做摘要；大于 0 时均匀采样帧。 |
-| `SUMMARIZER_MAX_PIXELS` | `262144` | 摘要输入图像的最大像素数。 |
+| `SUMMARIZER_MAX_PIXELS` | `1048576` | 摘要输入图像的最大像素数。 |
 | `SUMMARIZER_API_BASE` | `http://127.0.0.1:8065/v1` | 中间摘要和长期记忆压缩共用的摘要模型 OpenAI API。 |
 | `SUMMARIZER_MODEL` | `/tmp/models/Qwen3-VL-4B-Instruct` | 发送给摘要 vLLM 的模型名称。 |
 | `LIVE_SAVE_OUTPUTS` | 脚本默认 `true` | 是否保存实时输出 JSON。 |

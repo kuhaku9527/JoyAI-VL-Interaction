@@ -117,7 +117,7 @@ class AdapterConfig:
     api_key: str = "EMPTY"
     allowed_local_image_roots: tuple[str, ...] = ()
     frame_seconds: float = 1.0
-    max_pixels: int = 262144
+    max_pixels: int = 1048576
     main_max_tokens: int = 128
     # v3.34: llama-server -c context window (sync with run-windows.env MAIN_CTX_TOKENS).
     # Visual pipeline + 3-layer memory + accumulated turns can blow past it.
@@ -144,7 +144,7 @@ class AdapterConfig:
     summarizer_api_base: str = "http://127.0.0.1:8065/v1"
     longterm_model: str = "/tmp/models/Qwen3-VL-4B-Instruct"  # noqa: S108
     longterm_api_base: str = "http://127.0.0.1:8065/v1"
-    summarizer_max_pixels: int = 262144
+    summarizer_max_pixels: int = 1048576
     summarizer_key_frames: int = 0
     summarizer_phase_seconds: float = 10.0
     mid_term_max_tokens: int = 4000

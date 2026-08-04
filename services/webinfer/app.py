@@ -53,7 +53,7 @@ def parse_args() -> AdapterConfig:
     )
     parser.add_argument("--api-key", default=os.environ.get("MODEL_API_KEY", "EMPTY"))
     parser.add_argument("--frame-seconds", type=float, default=_env_float("FRAME_SECONDS", 1.0))
-    parser.add_argument("--max-pixels", type=int, default=_env_int("MAX_PIXELS", 262144))
+    parser.add_argument("--max-pixels", type=int, default=_env_int("MAX_PIXELS", 1048576))
     parser.add_argument("--main-max-tokens", type=int, default=_env_int("MAIN_MAX_TOKENS", 128))
     parser.add_argument(
         "--main-ctx-tokens",
@@ -164,7 +164,7 @@ def parse_args() -> AdapterConfig:
     parser.add_argument(
         "--summarizer-max-pixels",
         type=int,
-        default=_env_int("SUMMARIZER_MAX_PIXELS", 262144),
+        default=_env_int("SUMMARIZER_MAX_PIXELS", 1048576),
     )
     parser.add_argument(
         "--summarizer-key-frames",
