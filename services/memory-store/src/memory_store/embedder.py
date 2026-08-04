@@ -237,7 +237,15 @@ class BgeM3Embedder:
             # being populated.
             name = self.model if self.model else os.getenv("EMBEDDING_LOCAL_MODEL", _DEFAULT_MODEL)
             _LOGGER.info("loading local embedding model %s ...", name)
-            self._local_model = SentenceTransformer(name)
+            try:
+                self._local_model = SentenceTransformer(name)
+            except Exception as exc:
+                # Sentences / HF may raise ValueError(JSONDecodeError) or
+                # OSError on a corrupt or missing weights checkout (e.g. an
+                # empty cached config.json). Surface it as EmbedderError so
+                # health()/sync degrade gracefully instead of blowing up the
+                # request with an untyped 500.
+                raise EmbedderError(f"local model load failed: {exc}") from exc
         return self._local_model
 
 

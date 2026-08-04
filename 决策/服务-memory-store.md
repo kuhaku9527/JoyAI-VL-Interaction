@@ -124,6 +124,31 @@
 
 ---
 
+### D-2026-08-05-001 | bge-m3 local 模型路径 / HF 缓存坏 → /v1/providers/health 500 根因 + 修复
+| 字段 | 内容 |
+|---|---|
+| **事实** | memory-store local 嵌入（`EMBEDDING_PROVIDER=local`，PR #42 已将 #38 的 nvidia 改回 local）加载模型时：`EMBEDDING_LOCAL_MODEL` 未设 → 默认 `BAAI/bge-m3`；`HF_HOME` 被重定向到仓库内 `<ws>/.cache/huggingface`，该缓存 `config.json` 为**空文件** → `sentence_transformers` 加载时 `json.load` 抛 `JSONDecodeError`（ValueError 子类，**不是** `EmbedderError`）→ `embedder.health()` 仅 `except EmbedderError`，`providers_health()` 调 `embedder.health()` 未套 try → 原始异常冒泡 → **HTTP 500**。仓库外 `D:/AI/models/bge-m3/` 有完整有效模型（2.27GB，config.json 正常）。 |
+| **来源** | 2026-08-05 实测 + kb-runner 同款 venv 复现（100% 确认）。`services/memory-store/src/memory_store/embedder.py:240` `_get_local_model`。 |
+| **校验** | `curl -s --max-time 12 http://127.0.0.1:8997/v1/providers/health` → 应 200 且 `embedding.ok=true, model="D:/AI/models/bge-m3"`。修复前基线为 500。 |
+| **预期** | 200，embedding.ok=true，不再 500。 |
+| **修复** | ①代码守卫：`embedder.py:_get_local_model` 把 `SentenceTransformer(name)` 包进 `try/except Exception → raise EmbedderError(...)`（health/sync 优雅降级，不再 500）。②运行时定址：`run-windows.env` 追加 `EMBEDDING_LOCAL_MODEL=D:/AI/models/bge-m3`（指向仓库外有效权重）。 |
+| **Drift** | 🟥 默认去仓库内坏缓存（空 config.json）加载，而非仓库外有效模型；且 `run-windows.env` 被 `.gitignore`（`*.env`）忽略，env 写入**不进版本控制**——若该文件被重置，需重设 `EMBEDDING_LOCAL_MODEL`。embedder.py 守卫是版本控制层的兜底（模型加载失败 → ok=false 而非 500）。后续建议：在 `run-windows.ps1`（git 跟踪）硬编码 `EMBEDDING_LOCAL_MODEL` 默认值以彻底版本控制定住。 |
+| **Owner** | 后端 |
+| **锁定** | ✅ |
+
+### D-2026-08-05-002 | memory-store 与 Local Wiki 同进程同端口（8997）；驳"共用端口冲突"误解
+| 字段 | 内容 |
+|---|---|
+| **事实** | Local Wiki **不是独立服务**，是 memory-store 的功能模块：其全部后端端点（`POST /v1/external/sync`、`GET /v1/namespaces`、`POST /v1/blocks/recall`、`GET /v1/providers/health`）全挂在 `services/memory-store/src/memory_store/app.py`。`services/` 顶层**无独立 local-wiki 服务**。`ADR-0012-v6` 讨论的"独立服务（建议 :7999）"指 **embedding 嵌入推理服务**（方案 B，显存隔离），**非** Local Wiki；且 ADR-0012 最终落地默认**方案 A（进程内 local 直载）**。Local Wiki 数据+API 始终在 memory-store(:8997)。 |
+| **来源** | 2026-08-05 查证 `services/` 结构 + `doc/adr/ADR-0012-v6-proposal.md`。 |
+| **校验** | `ls services/`（无 local-wiki）；`grep -nE "@app.(get|post)" services/memory-store/src/memory_store/app.py`（wiki 端点均在 memory-store）。 |
+| **预期** | Local Wiki 后端 = memory-store(:8997)，单一进程单一端口。 |
+| **Drift** | 用户曾疑"memory-store 与 local wiki 共用端口冲突"——不成立，本就同端口同进程；ADR-0012 的 :7999 是 embedding 服务非 Local Wiki。 |
+| **Owner** | 后端/运维 |
+| **锁定** | ✅ |
+
+---
+
 ## Drifts（漂移历史，仅追加）
 
 ### 2026-07-27 22:35 — B3/B4 缺口翻案
@@ -139,11 +164,16 @@
 ### 2026-07-27 — bge-m3 默认 provider 漂移（P1）
 - #38 把默认改 `nvidia`，无 ADR 记录，国内通常不可达 → 待裁决（见 D-033）
 
+### 2026-08-05 — 语义召回两条已知局限（实测确认）
+- **局限 1｜裸 recall 掉 BM25 兜底返回空**：语义召回（bge-m3 余弦）**必须由显式 `filter.namespaces` 触发**；裸 `recall`（不带 namespaces）会掉进 FTS5 BM25 分支，对**无空格中文整句**匹配失败 → 返回空。即：想要语义命中必须先指定 namespace，否则退化为全文检索且中文整句几乎必空。
+- **局限 2｜返回的 `score` 恒 1.0，非余弦相似度**：`recall_blocks` 返回的 `score` 字段是**块存储相关性分**（命中即 1.0），**不是**向量余弦距离；前端/调用方不能用该 `score` 做相似度排序或阈值过滤，会全部相等。语义相关性需日后改为回传真实 cosine 值或 HNSW 距离。
+- **影响**：调用方若指望裸 recall 做中文语义搜索、或用 score 排序，都会踩坑。两条均已在 kb-runner A/B 实测中复现（4 条中文语义 query 显式带 namespace → top-1 全命中对应 BOSS；裸 recall → 空）。
+
 ---
 
 ## 待补充
 
 - D-XXX：memory-store 数据持久化路径（`data/memory.sqlite` 默认）
-- D-XXX：embedding 模型切换 ENV（EMBEDDING_LOCAL_MODEL / EMBEDDING_PROVIDER）
+- ~~D-XXX：embedding 模型切换 ENV（EMBEDDING_LOCAL_MODEL / EMBEDDING_PROVIDER）~~ → 已补：见 D-2026-08-05-001
 - D-XXX：recall 默认参数（top_k / min_score / namespaces 列表）
 - D-XXX：mock 模式 vs 真实模式（env 变量）
