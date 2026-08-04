@@ -1,6 +1,6 @@
 # 服务-VLM / :7060 llama-server（主模型）
 
-> 范围：`:7060` 主 VLM 推理服务（llama-server.exe + IQ4_NL 8B 量化）。
+> 范围：`:7060` 主 VLM 推理服务（llama-server.exe + IQ4_NL 8B 量化 **纯文本 LLM** + mmproj F16 **视觉投影器**；二者经 `-m --mmproj` 组合成多模态，真实视觉编码器是 mmproj，非 IQ4_NL）。
 > 真相源：`services/scripts/run-windows.ps1` + `services/webinfer` 调用约定 + 实测。
 > **修改走 §0 治理协议（AI 提议 → 用户同意 → 落盘）。**
 
@@ -22,11 +22,11 @@
 ### D-2026-07-13-021 | VLM 模型精确路径
 | 字段 | 内容 |
 |---|---|
-| **事实** | 主模型 = `D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\joyai-vl-interaction-preview-iq4_nl-imat.gguf`（8B 参数，IQ4_NL 4.5 bpw 量化，n_embd=4096；**上下文窗口 `n_ctx` 是运行时启动参数，非模型固有属性，见 D-2026-07-13-027**） |
+| **事实** | 主模型 LLM = `D:\AI\models\main\JoyAI-VL-Interaction-Preview-IQ4_NL-GGUF\joyai-vl-interaction-preview-iq4_nl-imat.gguf`（8B 参数，IQ4_NL 4.5 bpw 量化，**纯文本，无视觉能力**）；**视觉投影器 mmproj = `D:\AI\models\main\mmproj\mmproj-joyai-vl-interaction-preview-f16.gguf`（F16，FP16 无损，图像→embedding 的真实视觉编码器）**。二者由 llama-server 经 `-m $GGUF --mmproj $MMPROJ` 组合为多模态（见 `run-windows.ps1:367-368`）。**上下文窗口 `n_ctx` 是运行时启动参数，非模型固有属性，见 D-2026-07-13-027** |
 | **来源** | `services/scripts/run-windows.ps1` + `curl :7060/v1/models` 实测（快照 2026-07-13 起） |
 | **校验** | `curl -fsS http://127.0.0.1:7060/v1/models -m 3 | jq -r '.data[0].id'` |
 | **预期** | 输出路径以 `...joyai-vl-interaction-preview-iq4_nl-imat.gguf` 结尾 |
-| **Drift** | 2026-07-25 误以为模型在 `D:\AI\bin\llama.cpp\models\` |
+| **Drift** | 2026-07-25 误以为模型在 `D:\AI\bin\llama.cpp\models\`；🟥 2026-08-04 发现本条目**通篇未记录 mmproj**，导致认知漂移——把 IQ4_NL（纯文本 LLM）误当"有视觉能力的 VLM"，并误判"IQ4_NL 量化影响视觉识别"。已补录 mmproj 路径与角色（真实视觉编码器是 F16 mmproj，非 IQ4_NL） |
 | **Owner** | 运维 |
 | **锁定** | ✅ |
 
