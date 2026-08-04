@@ -3,7 +3,7 @@
 JoyAI 持久化记忆骨架（spec §`doc/specs/memory-store-skeleton-spec.md`）。当前 v0.1
 **只**实现：
 
-- `SqliteBackend`（FTS5 BM25，schema 完整 / score + last_hit_at + hit_count schema 留位运行时未维护）
+- `SqliteBackend`（向量语义召回 via bge-m3 余弦；`score`/`last_hit_at`/`hit_count` schema 留位运行时未维护；FTS5 BM25 兜底已删，详见 `决策/服务-memory-store.md` D-2026-08-05-003）
 - `POST /v1/blocks/push` / `POST /v1/blocks/recall` / `GET /health` / `GET /v1/backends`
 - `PsqlBackend` / `ObsidianBackend` 占位（`NotImplementedError`）
 

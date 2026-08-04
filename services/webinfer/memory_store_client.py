@@ -242,7 +242,8 @@ class MemoryStoreClient:
         """Pull blocks scoped to ``session_id``.
 
         Uses the spec ``query="__warmup__"`` convention so the backend
-        skips BM25 reranking and returns the most recent ``top_k`` rows.
+        returns the most recent ``top_k`` rows via a dedicated SQL path
+        (``_recall_recent``) without running vector or BM25 ranking.
         Safe to call before the first user message.
         """
         if not self.enabled or not session_id:

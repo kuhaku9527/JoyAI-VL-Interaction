@@ -50,7 +50,11 @@ _EMBED_DIM = 1024
 
 
 class EmbedderError(RuntimeError):
-    """Raised when embedding fails; callers fall back to FTS5 BM25."""
+    """Raised when embedding fails; callers must surface it as a 5xx error.
+
+    The vector recall path has no BM25 fallback (D-2026-08-05-003), so an
+    unavailable embedder is an explicit failure, not a silent degrade.
+    """
 
 
 def content_hash(text: str) -> str:

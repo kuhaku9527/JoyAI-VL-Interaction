@@ -8,6 +8,19 @@ from datetime import datetime
 import httpx
 import pytest
 from memory_store import app as app_module
+from memory_store.embedder import EmbedderError
+
+
+class _FailingEmbedder:
+    """Embedder that is 'available' but raises on embed_query (simulates down)."""
+
+    provider = "fail"
+
+    def available(self) -> bool:
+        return True
+
+    def embed_query(self, text: str):
+        raise EmbedderError("simulated embedder down")
 
 
 @pytest.fixture
@@ -58,9 +71,12 @@ async def test_push_and_recall_endpoints(client):
         assert body1["pushed"] == 1
         assert body1["session_id"] == "sess-X"
 
+        # Recall now uses the vector semantic path only (FTS5 BM25 removed);
+        # the embedder-free "__warmup__" path verifies push→recall retrieval
+        # without needing the real bge-m3 weights.
         r2 = await c.post(
             "/v1/blocks/recall",
-            json={"query": "BT-7274 VLM", "top_k": 5, "min_score": 0.0, "filter": None},
+            json={"query": "__warmup__", "top_k": 5, "min_score": 0.0, "filter": None},
         )
         assert r2.status_code == 200
         body2 = r2.json()
@@ -89,10 +105,12 @@ async def test_recall_filter_session_ids(client):
         payload["blocks"][0]["content"] = "alpha bravo delta"
         await c.post("/v1/blocks/push", json=payload)
 
+        # Warmup path (no embedder) keeps the session_ids filter contract
+        # intact without relying on the removed FTS5 fallback.
         r = await c.post(
             "/v1/blocks/recall",
             json={
-                "query": "alpha",
+                "query": "__warmup__",
                 "top_k": 10,
                 "min_score": 0.0,
                 "filter": {"session_ids": ["sess-B"]},
@@ -107,6 +125,32 @@ async def test_recall_missing_query_returns_422(client):
     async with client as c:
         r = await c.post("/v1/blocks/recall", json={"top_k": 5, "min_score": 0.0})
     assert r.status_code == 422
+
+
+async def test_recall_bare_requires_namespaces_returns_400(client):
+    # No filter.namespaces -> vector path rejected before any embedder use.
+    async with client as c:
+        r = await c.post(
+            "/v1/blocks/recall",
+            json={"query": "not a warmup", "top_k": 5, "min_score": 0.0, "filter": None},
+        )
+    assert r.status_code == 400
+
+
+async def test_recall_embedder_down_returns_503(client):
+    # Swap in a failing embedder; a namespaced recall must surface 503, not 200.
+    app_module.app.state.backend._embedder = _FailingEmbedder()
+    async with client as c:
+        r = await c.post(
+            "/v1/blocks/recall",
+            json={
+                "query": "q",
+                "top_k": 5,
+                "min_score": 0.0,
+                "filter": {"namespaces": ["wiki:test"]},
+            },
+        )
+    assert r.status_code == 503
 
 
 async def test_push_block_with_uuid_generated_on_blank(client):

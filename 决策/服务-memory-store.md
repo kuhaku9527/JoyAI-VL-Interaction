@@ -149,16 +149,16 @@
 
 ---
 
-### D-2026-08-05-003 | recall 删除 FTS5 BM25 兜底，只留向量语义路径（锁定设计，待代码落地）
+### D-2026-08-05-003 | recall 删除 FTS5 BM25 兜底，只留向量语义路径（已落地，锁定）
 | 字段 | 内容 |
 |---|---|
-| **事实** | 语义召回 `recall` **只保留向量（bge-m3 余弦）路径，删除 FTS5 BM25 兜底分支**：不再 `if namespaces and embedder: vector else fts`；改为 `if embedder available: vector(filter.namespaces 为可选作用域筛选) else: 显式报错(EmbedderError → HTTP 5xx)`。杜绝静默降级到对中文整句不友好的 BM25（裸 recall 返回空、看起来像"算法坏了"）。 |
+| **事实** | 语义召回 `recall` **只保留向量（bge-m3 余弦）路径，删除 FTS5 BM25 兜底分支**：不再 `if namespaces and embedder: vector else fts`；改为 **`filter.namespaces` 必填（作用域）→ 向量语义召回；embedder 不可用 → 抛 `EmbedderError`（HTTP 5xx）；裸 recall（无 namespace）→ 显式报错（HTTP 400）**。杜绝静默降级到对中文整句不友好的 BM25（裸 recall 返回空、看起来像"算法坏了"）。 |
 | **来源** | 用户 2026-08-05 裁定："不要设置 fallback，不要两条路，不要 # FTS5 BM25（兜底）；我只要向量语义路径"。旧行为局限见上方 Drifts「语义召回两条已知局限·局限 1」。 |
-| **设计** | ①删 `_recall_fts` 函数及其路由；②`recall` 仅向量：embedder 不可用 → 抛 `EmbedderError`（明确失败，**不静默**）；③`filter.namespaces` 作为**可选**作用域筛选：提供则限定对应 namespace 向量索引；不提供 → **显式报错**（明确错误），**禁止**静默空结果或回退 BM25；④`score` 恒 1.0 局限本轮不动（见 Drifts），后续回传真 cosine/HNSW 距离。 |
+| **设计** | ①删 `_recall_fts` 函数及其路由（含 FTS5 虚拟表/触发器，确认无引用后）；②`recall` 仅向量：**`filter.namespaces` 必填**——裸 recall（无 namespace）→ 显式报错（HTTP 400，**禁止**静默空/落 BM25）；embedder 不可用 → 抛 `EmbedderError`（HTTP 5xx，明确失败**不静默**）；③`__warmup__`（取最近块）抽为独立 SQL 路径，不依赖 BM25；④向量结果补 `session_ids`/`created_after` 后过滤（原 BM25 能力，避免回归）；⑤`score` 恒 1.0 局限本轮不动（见 Drifts），后续回传真 cosine/HNSW 距离。 |
 | **校验** | 裸 `recall`（无 namespace）不再静默空/落 BM25，而是明确错误；embedder down 时 recall 返回明确错误而非 200 空。需 grep 所有 `recall` 调用方确认都带 `filter.namespaces`，缺者补 scope 或更新调用。 |
 | **Drift** | 旧 BM25 分支注释自称 "legacy FTS5 BM25 path … fail-open fallback when the embedding API is down"——违反约法三章「禁 fallback / 禁静默返回」（`决策/AI代码质量约法三章.md`），故删。 |
 | **Owner** | 后端 |
-| **锁定** | ✅（设计锁；代码落地前裸 recall 仍走旧 BM25，待任务 #33 执行） |
+| **锁定** | ✅（设计锁 + 代码已落地：任务 #33 完成；裸 recall 显式 400、embedder down 显式 5xx，无 BM25 兜底、无静默降级） |
 
 ---
 
@@ -178,10 +178,10 @@
 - #38 把默认改 `nvidia`，无 ADR 记录，国内通常不可达 → 待裁决（见 D-033）
 
 ### 2026-08-05 — 语义召回两条已知局限（实测确认）
-- **局限 1｜裸 recall 掉 BM25 兜底返回空**：语义召回（bge-m3 余弦）**必须由显式 `filter.namespaces` 触发**；裸 `recall`（不带 namespaces）会掉进 FTS5 BM25 分支，对**无空格中文整句**匹配失败 → 返回空。即：想要语义命中必须先指定 namespace，否则退化为全文检索且中文整句几乎必空。
-- **局限 2｜返回的 `score` 恒 1.0，非余弦相似度**：`recall_blocks` 返回的 `score` 字段是**块存储相关性分**（命中即 1.0），**不是**向量余弦距离；前端/调用方不能用该 `score` 做相似度排序或阈值过滤，会全部相等。语义相关性需日后改为回传真实 cosine 值或 HNSW 距离。
-- **影响**：调用方若指望裸 recall 做中文语义搜索、或用 score 排序，都会踩坑。两条均已在 kb-runner A/B 实测中复现（4 条中文语义 query 显式带 namespace → top-1 全命中对应 BOSS；裸 recall → 空）。
-- **2026-08-05 裁定（D-2026-08-05-003，任务 #33 待落地）**：FTS5 BM25 兜底**删除**，recall 只留向量语义路径；落地后裸 recall（无 namespace）将改为**显式报错**而非静默空/落 BM25，embedder down → 明确错误。本条「局限 1」旧行为届时失效，以 D-2026-08-05-003 为准。
+- ~~**局限 1｜裸 recall 掉 BM25 兜底返回空**~~ → **已解决（2026-08-05 #33 落地）**：原裸 recall 掉进 FTS5 BM25 分支对中文整句返回空；现裸 recall（无 namespace）显式报错 400，不再静默落 BM25。语义命中仍需显式 `filter.namespaces`（作用域必填）。
+- **局限 2｜返回的 `score` 恒 1.0，非余弦相似度**：`recall_blocks` 返回的 `score` 字段是**块存储相关性分**（命中即 1.0），**不是**向量余弦距离；前端/调用方不能用该 `score` 做相似度排序或阈值过滤，会全部相等。语义相关性需日后改为回传真实 cosine 值或 HNSW 距离（本轮不动）。
+- **影响**：调用方若指望裸 recall 做中文语义搜索、或用 score 排序，都会踩坑。局限 1 已随 #33 落地解决；局限 2 仍在（4 条中文语义 query 显式带 namespace → top-1 全命中对应 BOSS，已在临时实例 8998 用真实 bge-m3 端到端复现）。
+- **2026-08-05 裁定（D-2026-08-05-003，任务 #33 已落地）**：FTS5 BM25 兜底**已删除**，recall 只留向量语义路径；裸 recall（无 namespace）已改为**显式报错 400**（不再静默空/落 BM25），embedder down → 明确 5xx。局限 1 旧行为已失效，以 D-2026-08-05-003 为准。
 
 ---
 

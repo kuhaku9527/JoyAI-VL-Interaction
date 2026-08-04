@@ -1,12 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 """SqliteBackend (spec §D-5) + [Local Wiki] vector recall (ADR-0012).
 
-Recall routing:
-- If the request filters on namespaces that have a USearch sidecar index AND
-  the embedder is available → vector KNN path (semantic recall for wiki
-  corpora).
-- Otherwise → legacy FTS5 BM25 path (chat memory, and fail-open fallback when
-  the embedding API is down).
+Recall routing (vector semantic path only; FTS5 BM25 fallback removed per
+D-2026-08-05-003):
+
+- Vector KNN over per-namespace USearch sidecars (bge-m3 semantic recall).
+- ``filter.namespaces`` is a REQUIRED scope. A bare recall (no namespaces)
+  raises ``ValueError`` (mapped to HTTP 400) instead of silently returning
+  empty or falling back to BM25.
+- When the embedder is unavailable, recall raises ``EmbedderError``
+  (mapped to HTTP 503) instead of silently degrading.
+- ``query == "__warmup__"`` is a pure-SQL "most recent blocks" path that needs
+  no embedder (preserved from the old FTS5 branch).
 """
 
 from __future__ import annotations
@@ -85,24 +90,6 @@ CREATE TABLE IF NOT EXISTS memory_blocks (
 );
 CREATE INDEX IF NOT EXISTS memory_blocks_session_idx ON memory_blocks(session_id);
 CREATE INDEX IF NOT EXISTS memory_blocks_created_idx ON memory_blocks(created_at);
-CREATE VIRTUAL TABLE IF NOT EXISTS memory_blocks_fts USING fts5(
-    content, block_id UNINDEXED, session_id UNINDEXED,
-    content='memory_blocks', tokenize='porter unicode61'
-);
-CREATE TRIGGER IF NOT EXISTS memory_blocks_ai AFTER INSERT ON memory_blocks BEGIN
-    INSERT INTO memory_blocks_fts(rowid, content, block_id, session_id)
-    VALUES (new.rowid, new.content, new.block_id, new.session_id);
-END;
-CREATE TRIGGER IF NOT EXISTS memory_blocks_ad AFTER DELETE ON memory_blocks BEGIN
-    INSERT INTO memory_blocks_fts(memory_blocks_fts, rowid, content, block_id, session_id)
-    VALUES('delete', old.rowid, old.content, old.block_id, old.session_id);
-END;
-CREATE TRIGGER IF NOT EXISTS memory_blocks_au AFTER UPDATE ON memory_blocks BEGIN
-    INSERT INTO memory_blocks_fts(memory_blocks_fts, rowid, content, block_id, session_id)
-    VALUES('delete', old.rowid, old.content, old.block_id, old.session_id);
-    INSERT INTO memory_blocks_fts(rowid, content, block_id, session_id)
-    VALUES (new.rowid, new.content, new.block_id, new.session_id);
-END;
 """
 
 # Columns added after v0.1; applied idempotently for existing databases.
@@ -311,7 +298,7 @@ class SqliteBackend:
         flt: RecallFilter | None,
         min_similarity: float = 0.25,
     ) -> list[MemoryBlock]:
-        """Recall the top-k blocks for ``query`` (vector path, else FTS5)."""
+        """Recall the top-k blocks for ``query`` (vector semantic path only)."""
         try:
             async with self._lock:
                 return await asyncio.to_thread(
@@ -354,14 +341,20 @@ class SqliteBackend:
         flt: RecallFilter | None,
         min_similarity: float,
     ) -> list[MemoryBlock]:
+        # Warmup is a pure-SQL "most recent blocks" path; no embedder needed.
+        if query == "__warmup__":
+            return self._recall_recent(top_k, min_score, flt)
+        # Vector semantic path only. filter.namespaces is a REQUIRED scope: a
+        # bare recall (no namespaces) must error, never silently empty.
         namespaces = self._expand_namespaces(flt.namespaces) if flt and flt.namespaces else None
-        # Vector path: semantic recall over namespaced wiki corpora.
-        if namespaces and self._embedder is not None and self._embedder.available():
-            try:
-                return self._recall_vector(query, namespaces, top_k, min_score, min_similarity)
-            except EmbedderError as exc:
-                _LOGGER.warning("vector recall unavailable (%s); falling back to FTS5", exc)
-        return self._recall_fts(query, top_k, min_score, flt, namespaces)
+        if not namespaces:
+            raise ValueError(
+                "recall requires filter.namespaces "
+                "(vector semantic path only; BM25 fallback removed)"
+            )
+        if self._embedder is None or not self._embedder.available():
+            raise EmbedderError("embedder unavailable; vector recall cannot run")
+        return self._recall_vector(query, namespaces, top_k, min_score, min_similarity, flt)
 
     def _recall_vector(
         self,
@@ -370,7 +363,15 @@ class SqliteBackend:
         top_k: int,
         min_score: float,
         min_similarity: float,
+        flt: RecallFilter | None = None,
     ) -> list[MemoryBlock]:
+        """Vector KNN recall over ``namespaces`` (bge-m3 cosine).
+
+        Blocks must satisfy ``min_similarity`` (cosine) and ``min_score``
+        (stored), then the ``session_ids`` / ``created_after`` post-filters are
+        applied (previously only on the removed FTS5 path) before truncating
+        to ``top_k``, avoiding a capability regression.
+        """
         if self._embedder is None:
             raise EmbedderError("embedder not configured")
         qvec = self._embedder.embed_query(query)
@@ -395,6 +396,8 @@ class SqliteBackend:
         )
         blocks = [self._row_to_block(r) for r in cur.fetchall()]
         blocks.sort(key=lambda b: sim_by_rowid.get(self._rowid_of(b.block_id), 0.0), reverse=True)
+        # Apply session_ids / created_after post-filters before truncating.
+        blocks = self._apply_post_filters(blocks, flt, min_score)
         return blocks[:top_k]
 
     def _rowid_of(self, block_id: str) -> int:
@@ -403,68 +406,51 @@ class SqliteBackend:
         row = cur.fetchone()
         return int(row["rowid"]) if row else -1
 
-    def _recall_fts(
-        self,
-        query: str,
-        top_k: int,
-        min_score: float,
-        flt: RecallFilter | None,
-        expanded_namespaces: list[str] | None = None,
+    def _recall_recent(
+        self, top_k: int, min_score: float, flt: RecallFilter | None
     ) -> list[MemoryBlock]:
+        """Pure-SQL "most recent blocks" path for ``query == "__warmup__"``.
+
+        No embedder required. Fetches the most recent rows then applies the
+        same ``score`` / ``session_ids`` / ``created_after`` post-filters used
+        by the vector path, preserving the warmup contract after the FTS5
+        branch was removed.
+        """
         limit = max(int(top_k), 1)
-        session_ids: list[str] | None = flt.session_ids if flt else None
-        created_after = flt.created_after if flt else None
-        namespaces: list[str] | None = (
-            expanded_namespaces
-            if expanded_namespaces is not None
-            else (flt.namespaces if flt else None)
-        )
-
-        def _apply_post_filters(rows):
-            out = []
-            for r in rows:
-                if r["score"] < min_score:
-                    continue
-                if session_ids is not None and r["session_id"] not in session_ids:
-                    continue
-                if namespaces is not None and r["namespace"] not in namespaces:
-                    continue
-                if (
-                    created_after is not None
-                    and datetime.fromisoformat(r["created_at"]) < created_after
-                ):
-                    continue
-                out.append(r)
-                if len(out) >= limit:
-                    break
-            return out
-
-        if query == "__warmup__":
-            cur = self._conn.cursor()
-            cur.execute(
-                "SELECT * FROM memory_blocks ORDER BY created_at DESC LIMIT ?", (limit * 4,)
-            )
-            rows = cur.fetchall()
-            return [self._row_to_block(r) for r in _apply_post_filters(rows)]
-
-        # FTS5 BM25 sort (bm25() returns lower = better; negate to make higher = better).
         cur = self._conn.cursor()
-        # Wrap each token with a double-quote to escape FTS5 reserved chars in case
-        # the query contains punctuation, then OR-join.
-        tokens = [tok.strip() for tok in query.split() if tok.strip()]
-        if not tokens:
-            return []
-        fts_expr = " OR ".join(f'"{tok.replace(chr(34), "")}"' for tok in tokens)
         cur.execute(
-            "SELECT m.*, bm25(memory_blocks_fts) AS rank "
-            "FROM memory_blocks_fts f "
-            "JOIN memory_blocks m ON m.rowid = f.rowid "
-            "WHERE memory_blocks_fts MATCH ? "
-            "ORDER BY rank LIMIT ?",
-            (fts_expr, max(int(limit * 1.5), limit)),
+            "SELECT * FROM memory_blocks ORDER BY created_at DESC LIMIT ?", (limit * 4,)
         )
-        rows = cur.fetchall()
-        return [self._row_to_block(r) for r in _apply_post_filters(rows)]
+        blocks = [self._row_to_block(r) for r in cur.fetchall()]
+        return self._apply_post_filters(blocks, flt, min_score)[:limit]
+
+    def _apply_post_filters(
+        self,
+        blocks: list[MemoryBlock],
+        flt: RecallFilter | None,
+        min_score: float,
+    ) -> list[MemoryBlock]:
+        """Filter ``blocks`` by ``score`` / ``session_ids`` / ``created_after``.
+
+        ``min_score`` is applied here too so callers that do not pre-filter it
+        in SQL (e.g. ``_recall_recent``) stay consistent with the vector path.
+        """
+        if flt is None:
+            return blocks
+        out: list[MemoryBlock] = []
+        for b in blocks:
+            if b.score < min_score:
+                continue
+            if flt.session_ids is not None and b.session_id not in flt.session_ids:
+                continue
+            if (
+                flt.created_after is not None
+                and b.created_at is not None
+                and b.created_at < flt.created_after
+            ):
+                continue
+            out.append(b)
+        return out
 
     @staticmethod
     def _row_to_block(row) -> MemoryBlock:

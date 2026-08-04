@@ -95,7 +95,7 @@
 | **来源** | #38（2026-07-27，golden recall eval 合入）+ `datasets/` |
 | **校验** | `ls datasets/` |
 | **预期** | 含评测 corpus 文件 |
-| **Drift** | 离线 fts5 全过 ≠ 真机 vector recall 全过（硅基 API 受账户余额阻塞） |
+| **Drift** | ~~离线 fts5 全过 ≠ 真机 vector recall 全过~~ → **已失效**：fts5 模式随 D-2026-08-05-003 删除，recall 只留向量路径，不再有 fts5/vector 双后端可比；真机 parity 改用 `--mode vector`（BgeM3Embedder provider 可控）复测。原阻塞（硅基欠费）不再影响本地 local 评测。 |
 | **Owner** | 后端 |
 | **锁定** | 🔓（待硅基充值后真机 parity） |
 

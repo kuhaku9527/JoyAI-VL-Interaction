@@ -4,25 +4,24 @@
 Offline-first: it builds the corpus in-process (no running server, no external
 API) by importing :mod:`memory_store.wiki_service` and :mod:`memory_store.backends`.
 Two modes:
-  * ``fts5``   (default) — embedder is ``None`` so recall falls back to the
-    FTS5 BM25 path. Fully offline; needs neither the siliconflow key nor the
-    local bge-m3 weights.
+  * ``local``  (default) — uses the local bge-m3 embedder for both ingest and
+    recall (fully offline; no siliconflow key). Needs the local weights at
+    ``EMBEDDING_LOCAL_MODEL`` (set by run-windows.ps1). If unavailable, the
+    script prints a hint and exits non-zero.
   * ``vector`` — uses the siliconflow embedding API for both ingest and recall.
     Requires ``SILICONFLOW_API_KEY`` (set in env). If the key is missing or the
-    call fails, the script prints a hint to top up siliconflow or fetch the
-    local weights, and exits non-zero.
+    call fails, the script prints a hint and exits non-zero.
+
+Note: the old ``fts5`` mode relied on the removed FTS5 BM25 fallback
+(D-2026-08-05-003); recall is now vector-only.
 
 Hit rule (per ADR-0012 B9): a golden query is a *hit* when any of the top-``k``
 blocks' ``content`` contains (case-insensitively) any of its ``expects``
 keywords. ``recall@5`` = hits / total.
 
 Usage:
-    python tools/eval_golden_recall.py --mode fts5
+    python tools/eval_golden_recall.py --mode local
     python tools/eval_golden_recall.py --mode vector
-
-Achieved recall@5 (offline fts5, sample_wiki/elden-ring): 24/24 = 1.000
-(measured 2026-07-24). Re-run with ``--mode fts5`` to reproduce; the vector
-mode requires the siliconflow key and is not exercised here by default.
 """
 
 from __future__ import annotations
@@ -103,11 +102,19 @@ def print_report(hits: int, total: int, details: list[tuple[dict, bool, int]]) -
     return recall
 
 
-async def run_fts5(wiki_dir: Path, golden: list[dict], db_path: Path, vec_dir: Path) -> float:
-    """Ingest with no embedder so recall uses the FTS5 BM25 fallback path."""
-    backend = SqliteBackend(str(db_path), vec_dir=str(vec_dir), embedder=None)
+async def run_local(wiki_dir: Path, golden: list[dict], db_path: Path, vec_dir: Path) -> float:
+    """Ingest + recall with the local bge-m3 embedder (fully offline)."""
+    embedder = BgeM3Embedder(provider="local")
+    if not embedder.available():
+        print(
+            "local mode requires the local bge-m3 weights at EMBEDDING_LOCAL_MODEL. "
+            "Set EMBEDDING_LOCAL_MODEL to the model dir (e.g. D:/AI/models/bge-m3), "
+            "or run run-windows.ps1 which sets it."
+        )
+        return -1.0
+    backend = SqliteBackend(str(db_path), vec_dir=str(vec_dir), embedder=embedder)
     try:
-        sync_wiki_dir(backend, None, _NAMESPACE, str(wiki_dir), drop_first=True)
+        sync_wiki_dir(backend, embedder, _NAMESPACE, str(wiki_dir), drop_first=True)
         hits, total, details = await run_recall(backend, golden, _TOP_K)
         return print_report(hits, total, details)
     finally:
@@ -137,9 +144,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate B9 golden recall@5.")
     parser.add_argument(
         "--mode",
-        choices=["fts5", "vector"],
-        default="fts5",
-        help="recall mode (default: fts5, fully offline)",
+        choices=["local", "vector"],
+        default="local",
+        help="recall mode (default: local, fully offline bge-m3)",
     )
     parser.add_argument("--golden", default=str(_DEFAULT_GOLDEN), help="golden recall set JSON")
     parser.add_argument("--wiki-dir", default=str(_DEFAULT_WIKI), help="wiki/<game> directory")
@@ -168,8 +175,8 @@ async def main() -> int:
     global _TOP_K
     _TOP_K = args.top_k
 
-    if args.mode == "fts5":
-        recall = await run_fts5(wiki_dir, golden, db_path, vec_dir)
+    if args.mode == "local":
+        recall = await run_local(wiki_dir, golden, db_path, vec_dir)
     else:
         recall = await run_vector(wiki_dir, golden, db_path, vec_dir)
 

@@ -47,6 +47,9 @@ class FailingEmbedder(FakeEmbedder):
     def embed_texts(self, texts, *, is_query: bool = False):
         raise EmbedderError("API down (simulated)")
 
+    def embed_query(self, text: str) -> np.ndarray:
+        raise EmbedderError("API down (simulated)")
+
 
 def _write_wiki(dir_path, pages: dict[str, str]) -> None:
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -127,25 +130,25 @@ def test_drop_namespace_wipes_rows_and_index(backend, tmp_path):
     assert backend.namespace_stats() == []
 
 
-def test_recall_fails_open_to_fts_when_embedder_down(backend, tmp_path):
+def test_recall_embedder_unavailable_raises(backend, tmp_path):
     wiki = tmp_path / "wiki" / "game-d"
     _write_wiki(wiki, {"a.md": "# A\n\n独特的攻略关键词 xyzzy 出现在这里。\n"})
     sync_wiki_dir(backend, backend.embedder, "wiki:game-d", str(wiki))
 
-    # Embedder dies → recall must fall back to FTS5 BM25 instead of raising.
+    # Embedder dies → recall must raise (no BM25 fallback), per
+    # D-2026-08-05-003. The explicit error is what callers map to HTTP 503.
     backend._embedder = FailingEmbedder()
     import asyncio
 
-    blocks = asyncio.run(
-        backend.recall(
-            "xyzzy",
-            top_k=5,
-            min_score=0.0,
-            flt=RecallFilter(namespaces=["wiki:game-d"]),
+    with pytest.raises(EmbedderError):
+        asyncio.run(
+            backend.recall(
+                "xyzzy",
+                top_k=5,
+                min_score=0.0,
+                flt=RecallFilter(namespaces=["wiki:game-d"]),
+            )
         )
-    )
-    assert blocks, "fail-open FTS path should still return the block"
-    assert "xyzzy" in blocks[0].content
 
 
 def test_chat_memory_unaffected_by_wiki_namespace(backend):

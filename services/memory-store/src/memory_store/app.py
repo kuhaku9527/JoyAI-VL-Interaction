@@ -18,7 +18,7 @@ from .backends import get_backend
 from .backends.sqlite_backend import SqliteBackend
 from .client_factory import proxy_url_for
 from .config import NetworkConfig, ProviderNetConfig, get_network_config, update_network_config
-from .embedder import BgeM3Embedder
+from .embedder import BgeM3Embedder, EmbedderError
 from .models import (
     DropNamespaceResponse,
     NetworkSettingsRequest,
@@ -203,6 +203,14 @@ async def recall_blocks(req: RecallRequest) -> RecallResponse:
             )
         else:
             blocks = await backend.recall(req.query, req.top_k, req.min_score, req.filter)
+    except ValueError as exc:
+        # Bare recall (no filter.namespaces): explicit client error, never a
+        # silent empty result (D-2026-08-05-003 removed the BM25 fallback).
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except EmbedderError as exc:
+        # Embedder unavailable: vector recall cannot run; surface 503, no
+        # silent degrade.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except NotImplementedError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
     emit_event(

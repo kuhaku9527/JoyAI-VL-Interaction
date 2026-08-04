@@ -44,7 +44,12 @@ class PushResponse(BaseModel):
 
 
 class RecallFilter(BaseModel):
-    """Namespace / session / time filters for recall."""
+    """Namespace / session / time filters for recall.
+
+    ``namespaces`` is a REQUIRED scope for the vector semantic recall path:
+    a recall without it is rejected (HTTP 400), not silently emptied or
+    fallen back to BM25 (D-2026-08-05-003).
+    """
 
     session_ids: list[str] | None = None
     created_after: datetime | None = None
@@ -58,8 +63,8 @@ class RecallRequest(BaseModel):
     top_k: int = 8
     min_score: float = 0.3
     filter: RecallFilter | None = None
-    # Vector path only: cosine-similarity threshold (0..1). Ignored on the
-    # FTS5 fallback path.
+    # Vector path only: cosine-similarity threshold (0..1). Recall requires
+    # filter.namespaces; a request without it is rejected (no BM25 fallback).
     min_similarity: float = 0.25
 
 
