@@ -25,6 +25,7 @@ import io
 import json
 import logging
 import math
+import os
 import re
 import time
 
@@ -57,6 +58,7 @@ class VLMService:
         self.prompt = prompt
         self.max_tokens = max_tokens
         self.session_id = session_id
+        self.jpeg_quality = int(os.getenv("JOYAI_JPEG_QUALITY", "92"))
         self.client = AsyncOpenAI(base_url=api_base, api_key=api_key)
         self.current_response = "Initializing..."
         self.is_processing = False
@@ -150,7 +152,7 @@ class VLMService:
             # Convert PIL Image to base64
             jpeg_start = time.perf_counter()
             img_byte_arr = io.BytesIO()
-            image.save(img_byte_arr, format="JPEG")
+            image.save(img_byte_arr, format="JPEG", quality=self.jpeg_quality)
             img_byte_arr = img_byte_arr.getvalue()
             jpeg_end = time.perf_counter()
 
@@ -455,7 +457,7 @@ class VLMService:
                 }
 
                 img_byte_arr = io.BytesIO()
-                image.save(img_byte_arr, format="JPEG")
+                image.save(img_byte_arr, format="JPEG", quality=self.jpeg_quality)
                 img_bytes = img_byte_arr.getvalue()
                 img_base64 = base64.b64encode(img_bytes).decode("utf-8")
                 image_url = f"data:image/jpeg;base64,{img_base64}"
