@@ -15,6 +15,8 @@ from prompt_constants import DEFAULT_SAVE_ROOT
 
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
+_DEFAULT_JPEG_QUALITY = int(os.getenv("JOYAI_JPEG_QUALITY", "92"))
+
 
 def sanitize_output_name(name: str, max_len: int = 120) -> str:
     """Sanitize a name into a safe, filesystem-compatible output string."""
@@ -131,7 +133,7 @@ def _resize_image_if_needed(image: Image.Image, max_pixels: int) -> Image.Image 
     return image.resize(new_size, Image.LANCZOS)
 
 
-def _image_to_data_url(image: Image.Image, mime_type: str) -> str:
+def _image_to_data_url(image: Image.Image, mime_type: str, quality: int | None = None) -> str:
     buffer = io.BytesIO()
     if mime_type == "image/png":
         image.save(buffer, format="PNG")
@@ -141,7 +143,7 @@ def _image_to_data_url(image: Image.Image, mime_type: str) -> str:
         mime_type = "image/jpeg"
         if image.mode not in ("RGB", "L"):
             image = image.convert("RGB")
-        image.save(buffer, format="JPEG")
+        image.save(buffer, format="JPEG", quality=quality if quality is not None else _DEFAULT_JPEG_QUALITY)
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
 
