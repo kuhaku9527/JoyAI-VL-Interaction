@@ -133,7 +133,7 @@ def _make_adapter(scripted: list[str]) -> tuple[Any, _StubAsyncOpenAI]:
     # Disable memory-store client so warmup is a no-op.
     from memory_store_client import MemoryStoreClient
 
-    adapter.memory_store = MemoryStoreClient(enabled=False)
+    adapter.memory_store = MemoryStoreClient(base_url="http://127.0.0.1:8997", enabled=False)
 
     stub = _StubAsyncOpenAI(scripted=scripted)
     adapter.main_client = stub  # type: ignore[assignment]

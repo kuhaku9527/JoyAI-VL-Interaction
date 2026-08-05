@@ -70,7 +70,7 @@ def _build_webinfer_app():
     adapter._character_prompt_mtime = 0.0
     adapter._system_prompt_cache = {}
     adapter._invalidate_system_prompt_cache = lambda: None
-    adapter.memory_store = MemoryStoreClient(enabled=False)
+    adapter.memory_store = MemoryStoreClient(base_url="http://127.0.0.1:8997", enabled=False)
 
     @dataclass
     class _StubUsage:

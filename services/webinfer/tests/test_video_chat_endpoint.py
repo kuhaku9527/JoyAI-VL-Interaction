@@ -124,7 +124,7 @@ def _make_adapter(scripted: list[str]):
     adapter._system_prompt_cache = {}
     adapter._invalidate_system_prompt_cache = lambda: None
     # Disable memory-store client so warmup is a no-op.
-    adapter.memory_store = MemoryStoreClient(enabled=False)
+    adapter.memory_store = MemoryStoreClient(base_url="http://127.0.0.1:8997", enabled=False)
 
     stub = _StubAsyncOpenAI(scripted=scripted)
     adapter.main_client = stub  # type: ignore[assignment]

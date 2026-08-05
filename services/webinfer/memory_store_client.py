@@ -1,9 +1,11 @@
 """memory-store v0.2 client.
 
-Thin async wrapper over the memory-store JSON API (port 8996 by default).
-All operations are fail-soft: if the upstream is unreachable, calls return
-empty results and log a single warning; the live adapter never raises to
-its caller.
+Thin async wrapper over the memory-store JSON API. Construction is
+fail-closed: ``__init__`` raises if neither an explicit ``base_url`` nor the
+``MEMORY_STORE_URL`` env var is supplied, instead of silently defaulting to
+the legacy empty-shell port 8996. Once constructed, the request methods stay
+fail-soft: if the upstream is unreachable they return empty results and log a
+warning rather than raising to the caller.
 
 Protocol targets lock at the v0.1 skeleton spec — see
 ``doc/specs/memory-store-skeleton-spec.md`` D-3 (data model) and D-2
@@ -79,6 +81,11 @@ except ImportError:
 
 LOGGER = logging.getLogger("streaming_infer_adapter.memory_client")
 
+# Legacy empty-shell port. Retained only as a defensive last-resort fallback:
+# the fail-closed guard in ``__init__`` raises before this is reached for any
+# realistic caller (base_url is a truthy URL or None, and None-without-env
+# already raised), so this third operand is effectively unreachable in normal
+# operation. It still guards the degenerate empty-string ``base_url`` case.
 DEFAULT_BASE_URL = "http://127.0.0.1:8996"
 DEFAULT_TIMEOUT_S = 5.0
 
@@ -125,9 +132,19 @@ class MemoryStoreClient:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         enabled: bool = True,
     ) -> None:
-        self.base_url = (base_url or os.environ.get("MEMORY_STORE_URL") or DEFAULT_BASE_URL).rstrip(
-            "/"
-        )
+        # Fail-closed: refuse to silently fall back to the legacy empty-shell
+        # port 8996. If neither an explicit ``base_url`` nor the
+        # ``MEMORY_STORE_URL`` environment variable is supplied, raise instead
+        # of defaulting to a dead endpoint — a historical incident had wiki
+        # recall silently failing against the empty-shell port.
+        env_url = os.environ.get("MEMORY_STORE_URL")
+        if base_url is None and not env_url:
+            raise ValueError(
+                "MEMORY_STORE_URL is not set; refusing to fall back to legacy "
+                "empty-shell port 8996. Set MEMORY_STORE_URL to the real "
+                "memory-store backend, e.g. http://127.0.0.1:8997"
+            )
+        self.base_url = (base_url or env_url or DEFAULT_BASE_URL).rstrip("/")
         self.timeout_s = float(timeout_s)
         self.enabled = bool(enabled)
         # We avoid eagerly opening the client so a misconfigured URL does not
