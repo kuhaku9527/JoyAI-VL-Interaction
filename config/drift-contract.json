@@ -22,6 +22,7 @@
         "services/memory-store/src/memory_store/app.py"
       ],
       "pattern": "8997",
+      "not_pattern": "8996",
       "severity": "block"
     },
     {
@@ -34,6 +35,7 @@
         "services/webui/src/joy_interaction_webui/server.py"
       ],
       "pattern": "8997",
+      "not_pattern": "8996",
       "severity": "warn"
     },
     {

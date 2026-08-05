@@ -235,17 +235,6 @@ class InferLoopMixin:
         client = client or self.main_client
         model_name = model_name or self.config.main_model
 
-        # Slice 2: warm up memory blocks (fire-and-forget, fail-soft) so the
-        # system prompt picks up recent persisted knowledge.
-        if self.memory_store is not None and getattr(self.memory_store, "is_enabled", False):
-            try:
-                blocks = await self.memory_store.warmup(state.session_id)
-                if blocks:
-                    state._memory_block_cache = list(blocks)
-                    state._memory_warmed.set()
-            except Exception:
-                LOGGER.debug("memory-store warmup failed for %s", state.session_id)
-
         # PR #42 follow-up: _memory_recall must fire on the production text path
         # so the [Local Wiki] section actually lands in the prompt. Fail-open.
         pre_messages = list(payload.get("messages") or [])
@@ -555,6 +544,18 @@ class InferLoopMixin:
         interaction_mode: str = "live",
     ) -> None:
         """Assemble the model input and run the main-model call (incl. forced-silence branch)."""
+        # F-3 P1b: fire Local-Wiki recall on the multimodal path too, so the
+        # [Local Wiki] section is mode-consistent (text path already does this).
+        last_user_text = ""
+        for m in reversed(messages):
+            if m.get("role") == "user" and isinstance(m.get("content"), str):
+                last_user_text = m["content"]
+                break
+        if last_user_text:
+            try:
+                await self._memory_recall(state, last_user_text)
+            except Exception as exc:
+                LOGGER.warning("memory_recall failed for %s: %s", state.session_id, exc)
         turn_input_record = {
             "source_message": messages[-1] if messages else None,
             "vllm_message": ctx.user_message,
@@ -603,30 +604,6 @@ class InferLoopMixin:
             http_messages = self._build_main_http_messages(
                 api_messages, session_state=state, include_decision_tokens=include_decision_tokens
             )
-            # DEBUG v0.2: print first message roles + system content length
-            try:
-                roles = [m.get("role") for m in http_messages]
-                sys_lens = [
-                    len(m.get("content") or "") for m in http_messages if m.get("role") == "system"
-                ]
-                LOGGER.info(
-                    "DEBUG v0.2 http_messages roles=%s sys_content_lengths=%s",
-                    roles,
-                    sys_lens,
-                )
-                if state._memory_block_cache:
-                    LOGGER.info(
-                        "DEBUG v0.2 cache blocks=%d first_id=%s",
-                        len(state._memory_block_cache),
-                        state._memory_block_cache[0].get("block_id"),
-                    )
-                else:
-                    LOGGER.info(
-                        "DEBUG v0.2 cache empty (warmed=%s)",
-                        state._memory_warmed.is_set(),
-                    )
-            except Exception as e:
-                LOGGER.warning("DEBUG v0.2 failed: %s", e)
             turn_model_input_record = build_model_input_record(
                 chunk_index=state.chunk_index,
                 messages=http_messages,

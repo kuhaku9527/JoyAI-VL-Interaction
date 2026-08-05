@@ -166,6 +166,11 @@ class SessionMixin:
             task = getattr(state, "_memory_warmup_task", None)
             if task is not None and not task.done():
                 task.cancel()
+            tasks = getattr(state, "_memory_wiki_tasks", None)
+            if tasks:
+                for t in list(tasks):
+                    if not t.done():
+                        t.cancel()
         # Best-effort close of the memory-store httpx pool.
         try:
             await self.memory_store.aclose()
