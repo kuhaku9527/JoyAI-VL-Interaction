@@ -2,6 +2,8 @@
 
 > 面向开源贡献者的精简架构说明。完整决策记录见 [`doc/adr/`](doc/adr/)，运行指引见 [`README.zh-CN.md`](README.zh-CN.md)。
 
+> ⚠️ **维护纪律（防偏移）**：本文件是 **指针式镜像**，不是细节源。唯一事实源（SSOT）为 `决策/`（L1–L4 决策）、`doc/specs/`（需求/设计意图）、`doc/adr/`（架构决策记录）。**发生以下「大更新」并落地后，必须从 SSOT 同步更新本文件**：① 端口变更；② 服务拆分或新增；③ 召回等行为语义变更；④ 新子系统；⑤ 新增 ADR。更新时只改端口号、指针与一句话结论，**不要在此搬运具体字段选型或业务细节**（那会污染上下文且必漂移）；深层细节一律用链接指向 SSOT。
+
 ## 1. 它是什么
 
 JoyAI-VL-Interaction 是一个 **8B 规模、Apache 2.0 全开源**的实时视觉-语言交互系统。核心模型 **JoyAI-VL-8B** 每秒自主决策「说话 / 沉默 / 委派」（`silence` / `response` / `delegate`），外围由可插拔服务组成，覆盖实时看护提醒、游戏实时解说、菜谱步骤引导、直播弹幕评论四类场景。
@@ -28,7 +30,7 @@ flowchart TB
     subgraph 基础能力层
         B1[VLM 推理底座 · llama-server 7060 GGUF IQ4_NL]
         B2[本地语音识别 · sherpa-onnx KWS/ASR]
-        B3[记忆管理 · memory-store 8996 sqlite]
+        B3[记忆管理 · memory-store 8997 sqlite]
         B4[角色与提示注入 · bt-7274]
         B5[进程编排与自愈 · PowerShell]
         B6[云端语音增强 · MiniMax API 可选]
@@ -63,7 +65,7 @@ flowchart TB
 | **8985** | voice_clone API | 声音克隆注册 | MiniMax Rapid Clone 同步路径（ADR0001） |
 | **8991** | 本地 TTS 模型 | TTS adapter 上游 | 本地推理进程（CozyVoice 等） |
 | **8992** | TTS adapter | 语音合成流式（ws） | 本地 CozyVoice / MiniMax fallback |
-| **8996** | memory-store | 记忆管理 | sqlite FTS5 骨架 v0.1（ADR0005） |
+| **8997** | memory-store | 记忆管理 | sqlite + 向量语义召回（USearch/bge-m3，BM25 兜底已移除，D-2026-08-05-003）；**内嵌 Local Wiki 知识库模块（同进程同端口，非独立服务）**；8996 为遗留默认空壳端口 |
 | 8079 | Hermes shim | 委派适配 | `/v1/solve` 协议转换 |
 | 8642 | Hermes gateway | 委派网关 | 严格隔离智能委派 |
 
@@ -91,7 +93,7 @@ flowchart TB
 | M6 | 对话可观测面板 LLM 回复 | — | 状态发布订阅（ADR0003 可见性） |
 | M7 | VLM 推理 llama-server | 7060 | 多模态推理 |
 | M8 | 本地语音识别 sherpa-onnx | 进程内 | KWS/ASR |
-| M9 | 记忆管理 memory-store | 8996 | push/pull（v0.1 仅 sqlite） |
+| M9 | 记忆管理 memory-store（含 Local Wiki） | 8997 | push/pull + 知识库召回（sqlite + 向量语义召回） |
 | M10 | 角色与提示注入 bt-7274 | — | prompt 配置 |
 | M11 | 进程编排与自愈 | — | health check / 自动重启 |
 | M12 | 云端语音增强 MiniMax API（外部） | — | 可选 TTS/克隆/ASR |
@@ -110,7 +112,7 @@ flowchart TB
 | 编排 | PowerShell（start/stop-joyai.ps1） | Windows 单机一键启停 + 依赖顺序校验（ADR0004） |
 | 运行时 | Python 3.12 | WebUI/webinfer 已基于 3.12，统一避免双运行时 |
 
-## 7. 已冻结架构决策（ADR0001~0007）
+## 7. 已冻结架构决策（ADR0001~0008, 0011~0014；0009/0010 跳过）
 
 详细记录见 [`doc/adr/`](doc/adr/)：
 
@@ -124,6 +126,10 @@ flowchart TB
 | 0006 | LLM 网关单入口（webinfer 8070） |
 | 0007 | 拆分 live_adapter.py 巨文件 |
 | 0008 | P0 适配器正确性修复（多服务端口 / 协议对齐） |
+| 0011 | 分阶段 Lint 门禁（baseline + burn-down） |
+| 0012 | bge-m3 全本地化部署（独立本地嵌入服务，云端降为可选 fail-over） |
+| 0013 | webinfer↔memory-store 客户端韧性策略（v0.3） |
+| 0014 | 日志事件 schema（JSONL 每服务文件） |
 
 > 这些决策是架构基线，下游设计不推翻。
 
@@ -147,7 +153,7 @@ flowchart TB
 
 ## 10. 安全姿态（本地形态）
 
-- **暴露面收敛**：默认 deny inbound（Windows Defender 防火墙）；仅 `8099`(localhost) / `8070`(localhost·内网) 入站放行；内部端口（7060/8985/8991/8992/8079/8642/8996）仅绑 `127.0.0.1`，公网入口 **N/A**。
+- **暴露面收敛**：默认 deny inbound（Windows Defender 防火墙）；仅 `8099`(localhost) / `8070`(localhost·内网) 入站放行；内部端口（7060/8985/8991/8992/8079/8642/8997）仅绑 `127.0.0.1`，公网入口 **N/A**。（8996 为遗留废弃空壳端口）
 - **密钥托管**：MiniMax Key 经隔离 `.env`（gitignored）/ 隔离密钥目录（NTFS ACL）托管，不硬编码、不落日志明文；Vault 留完整版。
 - **数据驻留**：核心 VL 推理 100% 本地；仅 ASR/TTS/克隆音频经 MiniMax 上云，需数据出境合规确认。
 - **隐私保护**：屏幕捕获强制仅窗口 + 无音频；摄像头/麦克风采集经用户显式授权。
@@ -177,8 +183,9 @@ flowchart TB
 ## 13. 文档索引
 
 - [`README.zh-CN.md`](README.zh-CN.md) — 项目介绍与快速开始
-- [`doc/adr/`](doc/adr/) — 8 份架构决策记录（ADR0001~0008）
+- [`doc/adr/`](doc/adr/) — 12 份架构决策记录（ADR0001~0008, 0011~0014；0009/0010 跳过）
 - [`doc/local/architecture-current.md`](doc/local/architecture-current.md) — 已冻结架构基线（D4）
+- [`doc/subsystems/memory-architecture.md`](doc/subsystems/memory-architecture.md) — 记忆架构（含 Local Wiki 融合、召回链路细节）
 - `start-joyai.ps1` / `stop-joyai.ps1` — 启动与停止编排
 
 > 本文档由 9 份生成式架构交付稿（高层/系统/部署/安全/UserStory 等）提炼精简而成，保留端口、SPOF、模块边界、关键决策与成本等实质内容，去除企业级流程仪式。
