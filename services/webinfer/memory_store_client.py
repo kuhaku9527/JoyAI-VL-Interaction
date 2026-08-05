@@ -81,12 +81,13 @@ except ImportError:
 
 LOGGER = logging.getLogger("streaming_infer_adapter.memory_client")
 
-# Legacy empty-shell port. Retained only as a defensive last-resort fallback:
+# Real backend port 8997. Retained only as a defensive last-resort fallback:
 # the fail-closed guard in ``__init__`` raises before this is reached for any
 # realistic caller (base_url is a truthy URL or None, and None-without-env
 # already raised), so this third operand is effectively unreachable in normal
-# operation. It still guards the degenerate empty-string ``base_url`` case.
-DEFAULT_BASE_URL = "http://127.0.0.1:8996"
+# operation. It still guards the degenerate empty-string ``base_url`` case,
+# pointing it at the live backend instead of the deprecated empty-shell 8996.
+DEFAULT_BASE_URL = "http://127.0.0.1:8997"
 DEFAULT_TIMEOUT_S = 5.0
 
 

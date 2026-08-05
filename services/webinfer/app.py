@@ -349,7 +349,7 @@ def parse_args() -> AdapterConfig:
     )
     parser.add_argument(
         "--memory-store-url",
-        default=os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8996"),
+        default=os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8997"),
         help="memory-store JSON API base URL (env MEMORY_STORE_URL).",
     )
     parser.add_argument(
