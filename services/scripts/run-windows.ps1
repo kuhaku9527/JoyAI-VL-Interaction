@@ -111,7 +111,7 @@ $P = @{
     VoiceClone  = if ($env:VOICE_CLONE_PORT)      { [int]$env:VOICE_CLONE_PORT }      else { 8985 }
     AsrModel    = if ($env:ASR_MODEL_PORT)        { [int]$env:ASR_MODEL_PORT }        else { 8993 }
     AsrAdapter  = if ($env:ASR_ADAPTER_PORT)      { [int]$env:ASR_ADAPTER_PORT }      else { 8994 }
-    MemoryStore = if ($env:MEMORY_PORT) { [int]$env:MEMORY_PORT } else { 8996 }
+    MemoryStore = if ($env:MEMORY_PORT) { [int]$env:MEMORY_PORT } else { 8997 }
 }
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -488,8 +488,9 @@ function Start-Webinfer {
         # v0.3 (2026-07-29): webinfer live adapter connects to the REAL memory-store
         # backend via memory_store_client.py (reads MEMORY_STORE_URL, NOT JOYAI_ prefix).
         # Fallback is HARDCODED 8997 (the bge-m3 backend) — NOT $P.MemoryStore, because
-        # $P.MemoryStore defaults to 8996 (the empty shell) when MEMORY_PORT is unset,
-        # which would re-introduce the silent wiki-recall failure on the default path.
+        # $P.MemoryStore now ALSO defaults to 8997 (same 2026-08-05 fix as the Start-Webui
+        # fallback). webinfer keeps the literal 8997 as defense-in-depth so a future regression
+        # in the launch default cannot silently break wiki recall.
         # Env ($MEMORY_STORE_URL) wins if set; else always 8997. Mirrors Start-Webui's
         # JOYAI_MEMORY_STORE_URL injection at :552 (same "always 8997" intent).
         "MEMORY_STORE_URL" = if ($env:MEMORY_STORE_URL) { $env:MEMORY_STORE_URL } else { "http://127.0.0.1:8997" }
@@ -545,10 +546,10 @@ function Start-Webui {
         "WEBUI_API_BASE" = "http://127.0.0.1:$($P.Webinfer)/v1"
         # v0.3 (2026-07-29): webui gateway must proxy /v1/{providers/health,settings/network,
         # namespaces,external/sync,external/ingest-text} to the REAL memory-store backend
-        # (D-L4-001 port rule). server.py:958 reads JOYAI_MEMORY_STORE_URL and defaults to
-        # 8996 (the empty shell) when unset, which is the DRIFT-3 root cause. Injecting it
-        # here from run-windows.env (MEMORY_PORT/URL) makes the gateway always talk to
-        # 8997 — env wins over the in-code default.
+        # (D-L4-001 port rule). server.py (~line 1004) reads JOYAI_MEMORY_STORE_URL and defaults
+        # to 8997. The launch fallback below used to resolve $P.MemoryStore (=8996 empty shell),
+        # the DRIFT-3 root cause; as of 2026-08-05 $P.MemoryStore now defaults to 8997, so the
+        # fallback resolves to the real backend. Env (JOYAI_MEMORY_STORE_URL) still wins if set.
         "JOYAI_MEMORY_STORE_URL" = if ($env:JOYAI_MEMORY_STORE_URL) { $env:JOYAI_MEMORY_STORE_URL } else { "http://127.0.0.1:$($P.MemoryStore)" }
     }
     return (Start-Background "webui" $VenvPy $args `
@@ -631,7 +632,7 @@ Write-Host "================================================================" -F
 $plan = Plan-For $Mode
 # memory-store is part of the default plan as of v0.3 (2026-07-29).
 # Per DRIFT-2/3 closure: scripts must default to ON so the webui gateway does not
-# point at the empty :8996 shell. Operators can opt out by setting
+# point at the historical empty :8996 shell (launch default is now :8997). Operators can opt out by setting
 # ``JOYAI_ENABLE_MEMORY_STORE=0`` before invoking run-windows.ps1.
 if ($env:JOYAI_ENABLE_MEMORY_STORE -ne "0") {
     $plan["memory-store"] = $true
