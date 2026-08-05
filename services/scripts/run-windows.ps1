@@ -451,6 +451,8 @@ function Start-BackgroundAgent {
         "HERMES_API_URL"             = "http://127.0.0.1:$($P.Hermes)/v1"
         "CODEX_API_MAX_SUBAGENTS"    = if ($env:CODEX_API_MAX_SUBAGENTS) { $env:CODEX_API_MAX_SUBAGENTS } else { "6" }
         "BACKGROUND_AGENT_API_URL"   = "http://127.0.0.1:$($P.BgAgent)"
+        # hermes wiki-recall shim now points at the real memory-store backend (8997) on the default launch path instead of the deprecated empty-shell 8996
+        "MEMORY_STORE_URL"          = if ($env:MEMORY_STORE_URL) { $env:MEMORY_STORE_URL } else { "http://127.0.0.1:8997" }
     }
     if ($env:HERMES_API_KEY) { $envs["HERMES_API_KEY"] = $env:HERMES_API_KEY; $envs["API_SERVER_KEY"] = $env:HERMES_API_KEY }
     return (Start-Background "background-agent" $VenvPy $args `

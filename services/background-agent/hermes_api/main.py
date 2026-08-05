@@ -48,7 +48,7 @@ HERMES_GATEWAY_URL = f"http://{HERMES_GATEWAY_HOST}:{HERMES_GATEWAY_PORT}"
 
 # memory-store (Local Wiki source). Recall-only; any failure is non-blocking so
 # the hermes gateway simply falls back to live web search.
-MEMORY_STORE_URL = os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8996").rstrip("/")
+MEMORY_STORE_URL = os.environ.get("MEMORY_STORE_URL", "http://127.0.0.1:8997").rstrip("/")
 # [Local Wiki] recall scope (ADR-0012): only blocks under these namespaces are
 # injected — conversation memory (per-session) never leaks into wiki recall.
 # Comma-separated, e.g. "wiki:elden-ring" or "wiki:*" for all wiki corpora.

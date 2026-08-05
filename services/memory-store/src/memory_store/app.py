@@ -395,7 +395,7 @@ def main() -> int:
     import uvicorn
 
     host = os.getenv("MEMORY_HOST", "127.0.0.1")
-    port = int(os.getenv("MEMORY_PORT", "8996"))
+    port = int(os.getenv("MEMORY_PORT", "8997"))
     reload = os.getenv("MEMORY_RELOAD", "false").lower() in {"1", "true", "yes"}
     # Pre-bind so we can detect conflicts before uvicorn's sys.exit() hides the cause.
     import socket as _socket

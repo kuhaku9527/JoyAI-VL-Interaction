@@ -179,7 +179,7 @@ class AdapterConfig:
     system_prompt: str = DEFAULT_SYSTEM_PROMPT_EN
     character_prompts_enabled: bool = True
     character_prompt_paths: tuple[str, ...] = ()
-    memory_store_url: str = "http://127.0.0.1:8996"
+    memory_store_url: str = "http://127.0.0.1:8997"
     memory_store_enabled: bool = True
 
 
