@@ -1,5 +1,7 @@
 # memory-store v0.1
 
+> 测试 local wiki 召回的钉死封闭回路见 [tools/README.md](tools/README.md)。
+
 JoyAI 持久化记忆骨架（spec §`doc/specs/memory-store-skeleton-spec.md`）。当前 v0.1
 **只**实现：
 
