@@ -36,6 +36,7 @@ import hashlib
 import logging
 import os
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -47,6 +48,7 @@ _NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
 _NVIDIA_MODEL = "baai/bge-m3"
 _NVIDIA_KEY_ENV = "NVIDIA_API_KEY"
 _EMBED_DIM = 1024
+_MODEL_WARNED = False
 
 
 class EmbedderError(RuntimeError):
@@ -129,12 +131,41 @@ class BgeM3Embedder:
         return _EMBED_DIM
 
     def available(self) -> bool:
-        """Whether the recall (API) path is configured. Local mode counts too."""
+        """Whether the embedder is *configured* (provider selected, API key set).
+
+        For the ``local`` provider this is always true once selected — it does
+        NOT guarantee the weights are on disk. Use :meth:`model_present` (local)
+        or :meth:`health` for real loadability before trusting recall.
+        """
         if self.provider == "none":
             return False
         if self.provider == "local":
             return True
         return bool(self.api_key)
+
+    def model_present(self) -> bool:
+        """Whether the local bge-m3 weights are actually on disk.
+
+        Only meaningful for the ``local`` provider (API providers validate
+        through ``available``/``health``). Surfaced by ``/health`` so a missing
+        or again-drifted ``EMBEDDING_LOCAL_MODEL`` shows up as
+        ``model_present: false`` instead of a silent false-green (FA-4
+        recurrence guard).
+        """
+        global _MODEL_WARNED
+        if self.provider != "local":
+            return True
+        p = Path(self.model).expanduser()
+        present = (p.is_file() and p.stat().st_size > 0) or (
+            p.is_dir() and next(p.iterdir(), None) is not None
+        )
+        if not present and not _MODEL_WARNED:
+            _LOGGER.warning(
+                "local embedder model not found at %s; embedding will fail (FA-4 guard)",
+                p,
+            )
+            _MODEL_WARNED = True
+        return present
 
     def embed_query(self, text: str) -> np.ndarray:
         """Embed a single query string (online recall path)."""

@@ -100,6 +100,7 @@ app.state.backend = (
 app.state.embedder = (
     app.state.backend.embedder if isinstance(app.state.backend, SqliteBackend) else None
 )
+app.state.last_wiki_sync = None  # last SyncResponse dict, surfaced by /health + /v1/providers/health
 logger.info("memory-store v%s loaded backend=%s", __version__, app.state.backend.name())
 emit_event(
     "memory-store",
@@ -148,11 +149,16 @@ async def health() -> dict:
             content={"ok": False, "backend": backend.name(), "error": str(exc)},
         )
     embedder = getattr(app.state, "embedder", None)
-    h["embedding"] = (
-        {"configured": embedder.available(), "provider": embedder.provider}
-        if embedder is not None
-        else {"configured": False}
-    )
+    if embedder is not None:
+        emb = {"configured": embedder.available(), "provider": embedder.provider}
+        if embedder.provider == "local":
+            emb["model_present"] = (
+                embedder.model_present() if hasattr(embedder, "model_present") else None
+            )
+        h["embedding"] = emb
+    else:
+        h["embedding"] = {"configured": False}
+    h["wiki_sync"] = getattr(app.state, "last_wiki_sync", None)
     return h
 
 
@@ -234,13 +240,18 @@ async def external_sync(req: SyncRequest) -> SyncResponse:
     if not req.namespace:
         raise HTTPException(status_code=422, detail="namespace required")
     try:
-        return sync_wiki_dir(
+        result = sync_wiki_dir(
             backend,
             getattr(app.state, "embedder", None),
             namespace=req.namespace,
             dir_path=req.dir,
             drop_first=req.drop_first,
         )
+        app.state.last_wiki_sync = {
+            **result.model_dump(),
+            "synced_at": datetime.now(timezone.utc).isoformat(),
+        }
+        return result
     except Exception as exc:
         logger.exception("sync failed for namespace %s", req.namespace)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -350,9 +361,14 @@ async def providers_health() -> dict:
     out: dict = {}
     out["memory_store"] = await _ping_memory_store(backend)
     embedder = getattr(app.state, "embedder", None)
-    out["embedding"] = (
-        embedder.health() if embedder is not None else {"ok": False, "error": "no embedder"}
-    )
+    if embedder is not None:
+        emb_health = embedder.health()
+        if embedder.provider == "local" and hasattr(embedder, "model_present"):
+            emb_health["model_present"] = embedder.model_present()
+        out["embedding"] = emb_health
+    else:
+        out["embedding"] = {"ok": False, "error": "no embedder"}
+    out["wiki_sync"] = getattr(app.state, "last_wiki_sync", None)
     for name in ("main_llm", "summarizer", "tts"):
         out[name] = await _ping_external(name)
     return out
