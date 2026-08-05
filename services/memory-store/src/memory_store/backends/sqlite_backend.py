@@ -371,6 +371,13 @@ class SqliteBackend:
         (stored), then the ``session_ids`` / ``created_after`` post-filters are
         applied (previously only on the removed FTS5 path) before truncating
         to ``top_k``, avoiding a capability regression.
+
+        The returned ``MemoryBlock.score`` carries the **true cosine similarity**
+        from USearch/HNSW (遗留#1: it used to be the constant stored
+        ``DEFAULT 1.0``, hiding real retrieval quality). The stored
+        ``score`` column is still used for the ``min_score`` gate;
+        only the field on the *returned* blocks is overwritten with the
+        similarity.
         """
         if self._embedder is None:
             raise EmbedderError("embedder not configured")
@@ -395,9 +402,25 @@ class SqliteBackend:
             (*rowids, *namespaces, min_score),
         )
         blocks = [self._row_to_block(r) for r in cur.fetchall()]
-        blocks.sort(key=lambda b: sim_by_rowid.get(self._rowid_of(b.block_id), 0.0), reverse=True)
+        # Tag each block with its true cosine similarity from USearch/HNSW
+        # before ranking and post-filtering. The stored ``score`` column
+        # (DEFAULT 1.0) is preserved so ``_apply_post_filters`` keeps using it
+        # for the ``min_score`` gate; only the field on the *returned* blocks
+        # is later overwritten with the similarity (遗留#1).
+        sim_by_block: dict[str, float] = {}
+        for b in blocks:
+            rowid = self._rowid_of(b.block_id)
+            sim_by_block[b.block_id] = sim_by_rowid.get(rowid, 0.0)
+        blocks.sort(key=lambda b: sim_by_block.get(b.block_id, 0.0), reverse=True)
         # Apply session_ids / created_after post-filters before truncating.
         blocks = self._apply_post_filters(blocks, flt, min_score)
+        # 遗留#1: surface the real cosine similarity instead of the constant
+        # stored 1.0. ``VectorIndexStore.search`` already converts the HNSW
+        # cosine *distance* to similarity (``1 - distance``), so values are in
+        # [-1, 1] (bge-m3 vectors are L2-normalized, making this effectively the
+        # dot product; semantically similar text scores well above 0.3).
+        for b in blocks:
+            b.score = sim_by_block.get(b.block_id, 0.0)
         return blocks[:top_k]
 
     def _rowid_of(self, block_id: str) -> int:

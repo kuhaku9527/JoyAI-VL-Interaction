@@ -227,6 +227,7 @@ class SessionState:
     # by ``PromptAssemblyMixin._build_memory_prompt`` so the model sees
     # looked-up reference material in a separate [Local Wiki] section.
     _memory_wiki_cache: list = field(default_factory=list)
+    _memory_wiki_error: bool = field(default=False)  # True when last wiki recall errored (fail-open)
     _memory_warmed: asyncio.Event = field(default_factory=asyncio.Event)
     _memory_pushed: bool = False
     _memory_warmup_task: asyncio.Task | None = field(default=None, repr=False)

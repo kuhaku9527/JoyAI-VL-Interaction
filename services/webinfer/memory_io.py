@@ -296,15 +296,28 @@ class MemoryIOMixin:
                 min_score=settings["min_score"],
                 namespaces=settings["namespaces"],
             )
-        except Exception as exc:  # fail-open: any error logs a warning, never raises
+        except Exception as exc:  # fail-open: never raise, but report loudly (约法三章)
             emit_event(
                 "webinfer",
                 "wiki_recall_fail",
                 level="warn",
                 session_id=state.session_id,
-                extra={"error_type": type(exc).__name__},
+                extra={
+                    "error": True,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "query": question,
+                },
             )
-            LOGGER.warning("local-wiki recall failed: %s", exc)
+            LOGGER.warning(
+                "local-wiki recall failed: type=%s msg=%s query=%r",
+                type(exc).__name__,
+                exc,
+                question,
+            )
+            # Marker so the caller can distinguish "no hit" from "errored"
+            # (fail-open: the chat path still gets [] and carries on).
+            state._memory_wiki_error = True
             return []
         emit_event(
             "webinfer",
@@ -313,6 +326,9 @@ class MemoryIOMixin:
             session_id=state.session_id,
             extra={"blocks": len(blocks)},
         )
+        # Latest recall succeeded (or legitimately returned empty) — clear the
+        # error marker so the caller's distinction stays accurate.
+        state._memory_wiki_error = False
         # The wiki recall goes through the namespace filter at the backend
         # level — see ``MemoryStoreClient.recall``'s ``session_id`` arg and
         # ``/v1/blocks/recall``'s ``filter.namespaces`` field. When the
