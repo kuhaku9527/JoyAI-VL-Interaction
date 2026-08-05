@@ -300,13 +300,12 @@ class MemoryIOMixin:
             emit_event(
                 "webinfer",
                 "wiki_recall_fail",
-                level="warn",
+                level="error",
                 session_id=state.session_id,
                 extra={
-                    "error": True,
                     "error_type": type(exc).__name__,
                     "error_message": str(exc),
-                    "query": question,
+                    "query_chars": len(question or ""),
                 },
             )
             LOGGER.warning(
