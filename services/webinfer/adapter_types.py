@@ -231,3 +231,4 @@ class SessionState:
     _memory_warmed: asyncio.Event = field(default_factory=asyncio.Event)
     _memory_pushed: bool = False
     _memory_warmup_task: asyncio.Task | None = field(default=None, repr=False)
+    _memory_wiki_tasks: set = field(default_factory=set, repr=False)  # live Local-Wiki recall tasks; referenced so GC can't reap mid-flight (F-3 P0)

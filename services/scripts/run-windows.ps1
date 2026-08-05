@@ -246,7 +246,7 @@ function Emit-Event {
         $date = $now.ToString("yyyy-MM-dd")
         $file = Join-Path $eventsDir ("{0}-{1}.jsonl" -f $Service, $date)
         Add-Content -Path $file -Value ($obj | ConvertTo-Json -Compress -Depth 4) -Encoding utf8
-    } catch { }
+    } catch { Write-Warning "Emit-Event failed: $_" }
 }
 
 function Wait-Http {
