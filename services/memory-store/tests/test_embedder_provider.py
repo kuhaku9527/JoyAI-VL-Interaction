@@ -153,6 +153,14 @@ def test_local_available_always_true(monkeypatch):
         assert BgeM3Embedder().available() is True
 
 
+def test_local_model_present_checks_path(monkeypatch, tmp_path):
+    monkeypatch.setenv("EMBEDDING_LOCAL_MODEL", str(tmp_path))
+    assert BgeM3Embedder(provider="local").model_present() is True
+    monkeypatch.setenv("EMBEDDING_LOCAL_MODEL", str(tmp_path / "nope"))
+    assert BgeM3Embedder(provider="local").model_present() is False
+    assert BgeM3Embedder(provider="siliconflow", api_key="k").model_present() is True
+
+
 # -- request payload (input_type discriminator) -----------------------------
 
 

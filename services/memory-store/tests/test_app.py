@@ -40,6 +40,19 @@ async def test_health_endpoint(client):
     assert body["backend"] == "sqlite"
 
 
+async def test_health_reports_embedding_model_present_and_wiki_sync(client):
+    async with client as c:
+        r = await c.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert "wiki_sync" in body
+    assert body["wiki_sync"] is None
+    emb = body["embedding"]
+    assert emb["provider"] == "local"
+    assert "model_present" in emb
+    assert isinstance(emb["model_present"], bool)
+
+
 async def test_backends_endpoint_lists_active(client):
     async with client as c:
         r = await c.get("/v1/backends")

@@ -87,7 +87,7 @@ async def test_providers_health_structure(client, tmp_path):
         r = await c.get("/v1/providers/health")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body.keys()) == {"memory_store", "embedding", "main_llm", "summarizer", "tts"}
+    assert set(body.keys()) == {"memory_store", "embedding", "main_llm", "summarizer", "tts", "wiki_sync"}
     # Local backend is probed and reports latency.
     assert body["memory_store"]["ok"] is True
     assert isinstance(body["memory_store"]["latency_ms"], int)
@@ -115,7 +115,7 @@ async def test_put_network_settings_then_health_routes_proxy(proxy_client, tmp_p
     assert r.status_code == 200, r.text
     body = r.json()
     # Returned body is a re-tested health snapshot with the same structure.
-    assert set(body.keys()) == {"memory_store", "embedding", "main_llm", "summarizer", "tts"}
+    assert set(body.keys()) == {"memory_store", "embedding", "main_llm", "summarizer", "tts", "wiki_sync"}
     assert body["memory_store"]["ok"] is True
 
     # The live health path resolved main_llm's proxy via the client factory.
