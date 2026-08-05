@@ -305,3 +305,21 @@ async def test_circuit_breaker_cooldown_expires(monkeypatch):
         assert c._circuit_open() is True, "probe failure should re-open"
     finally:
         monkeypatch.setattr(msc.time, "monotonic", real_mono)
+
+
+def test_constructor_raises_without_url_or_env(monkeypatch):
+    """Fail-closed: no explicit base_url AND no MEMORY_STORE_URL -> ValueError.
+
+    This is the historical-incident guard — without an explicit URL or the env
+    var we must refuse to silently default to the dead empty-shell port 8996.
+    """
+    monkeypatch.delenv("MEMORY_STORE_URL", raising=False)
+    with pytest.raises(ValueError, match="MEMORY_STORE_URL"):
+        MemoryStoreClient()
+
+
+def test_constructor_uses_env_url(monkeypatch):
+    """MEMORY_STORE_URL is used as the base URL when no explicit one is given."""
+    monkeypatch.setenv("MEMORY_STORE_URL", "http://127.0.0.1:8997")
+    client = MemoryStoreClient()
+    assert client.base_url == "http://127.0.0.1:8997"

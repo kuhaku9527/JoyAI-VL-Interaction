@@ -485,6 +485,14 @@ function Start-Webinfer {
         "ADAPTER_PORT" = "$($P.Webinfer)"
         "MAIN_API_BASE" = "http://127.0.0.1:$($P.Main)/v1"
         "SUMMARIZER_API_BASE" = "http://127.0.0.1:$($P.Main)/v1"
+        # v0.3 (2026-07-29): webinfer live adapter connects to the REAL memory-store
+        # backend via memory_store_client.py (reads MEMORY_STORE_URL, NOT JOYAI_ prefix).
+        # Fallback is HARDCODED 8997 (the bge-m3 backend) — NOT $P.MemoryStore, because
+        # $P.MemoryStore defaults to 8996 (the empty shell) when MEMORY_PORT is unset,
+        # which would re-introduce the silent wiki-recall failure on the default path.
+        # Env ($MEMORY_STORE_URL) wins if set; else always 8997. Mirrors Start-Webui's
+        # JOYAI_MEMORY_STORE_URL injection at :552 (same "always 8997" intent).
+        "MEMORY_STORE_URL" = if ($env:MEMORY_STORE_URL) { $env:MEMORY_STORE_URL } else { "http://127.0.0.1:8997" }
     }
     if ($env:CHARACTER_PROMPT_PATH) { $envs["CHARACTER_PROMPT_PATH"] = $env:CHARACTER_PROMPT_PATH }
     if ($env:LOG_LEVEL) { $envs["LOG_LEVEL"] = $env:LOG_LEVEL }
