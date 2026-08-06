@@ -30,7 +30,7 @@
 # 完整启动（默认 = main + voice-clone + webinfer + webui + memory-store）
 powershell -ExecutionPolicy Bypass -File D:\AI\workspace\JoyAI-VL-Interaction-main\start-joyai.ps1
 
-# 最小启动（main + webinfer + webui；不含 voice/memory-store）
+# 最小启动（main + webinfer + webui + memory-store；不含 voice-clone）
 powershell -ExecutionPolicy Bypass -File D:\AI\workspace\JoyAI-VL-Interaction-main\start-joyai.ps1 -Mode minimal
 
 # 单服务重启（不影响其他）
