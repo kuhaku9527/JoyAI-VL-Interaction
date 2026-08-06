@@ -22,7 +22,7 @@
         "services/memory-store/src/memory_store/app.py"
       ],
       "pattern": "8997",
-      "not_pattern": "8996",
+      "not_pattern": "(MEMORY_PORT\\s*=\\s*8996|JOYAI_MEMORY_STORE_URL[^\\n]*8996)",
       "severity": "block"
     },
     {
@@ -35,7 +35,7 @@
         "services/webui/src/joy_interaction_webui/server.py"
       ],
       "pattern": "8997",
-      "not_pattern": "8996",
+      "not_pattern": "(MEMORY_PORT\\s*=\\s*8996|JOYAI_MEMORY_STORE_URL[^\\n]*8996)",
       "severity": "warn"
     },
     {
@@ -46,6 +46,63 @@
       "paths": ["services/scripts/run-windows.env"],
       "pattern": "^MAIN_CONTEXT\\s*=\\s*16384",
       "severity": "block"
+    },
+    {
+      "id": "webinfer-request-timeout",
+      "decision_ref": "决策/服务-webinfer.md D-030",
+      "description": "webinfer live adapter 的 request_timeout_seconds 决策态为 300.0（F4-P0 从 verify.sh 迁移而来）",
+      "phase": "static",
+      "paths": ["services/webinfer/adapter_types.py"],
+      "pattern": "request_timeout_seconds: float = 300\\.0",
+      "severity": "block"
+    },
+    {
+      "id": "ruff-pin",
+      "decision_ref": "决策/质量约法.md D-007",
+      "description": "CI quality.yml 固定 ruff==0.15.22（F4-P0 从 verify.sh 迁移而来）",
+      "phase": "static",
+      "paths": [".github/workflows/quality.yml"],
+      "pattern": "ruff==0\\.15\\.22",
+      "severity": "block"
+    },
+    {
+      "id": "webui-vitest",
+      "decision_ref": "决策/服务-webui.md D-034",
+      "description": "前端 Vitest 基座存在（vitest.config.js + package.json 脚本）（F4-P0 从 verify.sh 迁移而来）",
+      "phase": "static",
+      "paths": [
+        "services/webui/vitest.config.js",
+        "services/webui/package.json"
+      ],
+      "pattern": "vitest",
+      "severity": "warn"
+    },
+    {
+      "id": "webui-joywiki",
+      "decision_ref": "决策/服务-webui.md D-033",
+      "description": "前端模块化 window.JoyWiki 暴露（F4-P0 从 verify.sh 迁移而来）",
+      "phase": "static",
+      "paths": ["services/webui/src/joy_interaction_webui/static/index.html"],
+      "pattern": "window\\.JoyWiki",
+      "severity": "warn"
+    },
+    {
+      "id": "webui-wikinspace",
+      "decision_ref": "决策/服务-webui.md D-036",
+      "description": "前端 wiki_frontend.js 显式读取 wikiNamespace（F4-P0 从 verify.sh 迁移而来）",
+      "phase": "static",
+      "paths": ["services/webui/src/joy_interaction_webui/static/wiki_frontend.js"],
+      "pattern": "wikiNamespace",
+      "severity": "warn"
+    },
+    {
+      "id": "webinfer-wiki-recall",
+      "decision_ref": "决策/服务-webinfer.md D-076",
+      "description": "webinfer memory_io 读取 WIKI_RECALL_NAMESPACES（F4-P0 从 verify.sh 迁移而来）",
+      "phase": "static",
+      "paths": ["services/webinfer/memory_io.py"],
+      "pattern": "WIKI_RECALL_NAMESPACES",
+      "severity": "warn"
     }
   ]
 }

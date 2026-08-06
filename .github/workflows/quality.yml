@@ -95,14 +95,31 @@ jobs:
         working-directory: services/webui
         run: ruff format --check .
 
+  # ---------------------------------------------------------------------------
+  # drift-gate (F4-P0 / ADR-0017): 配置/代码级静态契约守卫（fail-closed）。
+  # 刻意「不 needs」任何其它 job（含 ruff），保持独立运行——
+  # 避免因上游红而被 skipped（已知 runner 配额耗尽会全 FAILURE 的陷阱，
+  # 见 ADR-0016 / 决策历史）。drift_gate.py 是单一真值（契约驱动、机器可读）；
+  # runtime 阶段（vlm-n_ctx）依赖运行态，留给下方的 drift-gate-runtime job。
+  # 引用文件缺失（如 .gitignore 忽略的 run-windows.env）按 fail-open 处理，CI 保持绿。
+  # ---------------------------------------------------------------------------
   drift-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run decision-contract checks (static subset, fail-closed)
-        # D-019 v2 轻量门禁：仅跑静态 grep 子集（不需起服务），
-        # 任一 [FAIL] 即非零退出、阻断合并；运行时/端口检查 fail-open（需起服务，本地跑）。
-        run: bash scripts/verify.sh --ci
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run drift-gate static contract checks (fail-closed)
+        # F4-P0: 改用 scripts/drift_gate.py 作为单一真值（替代旧的 verify.sh --ci
+        # grep 子集）。仅跑 static 阶段（查配置/代码常量，无需起服务），任一
+        # block 级检查不符即非零退出、阻断合并。
+        run: python scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed
+      - name: Drift-gate smoke test (regression guard for P0-1 UnboundLocalError)
+        # 唯一能防 drift_gate.py 非 --json` 路径崩溃（P0-1 修复的 UnboundLocalError）
+        # 回归的自动化。smoke test 对缺失文件/env 均 fail-open，可在 CI 跑。
+        run: python scripts/drift_gate_smoke_test.py
 
   # ---------------------------------------------------------------------------
   # drift-gate-runtime (Drift Gate v2.1 阶段A)：起 webui(:8099)+memory-store(:8997)

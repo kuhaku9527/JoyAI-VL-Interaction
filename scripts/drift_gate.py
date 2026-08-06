@@ -87,6 +87,18 @@ def run_check_files(check: dict, repo_root: Path) -> str:
     return "\n".join(chunks)
 
 
+def _is_all_missing(output: str) -> bool:
+    """True if the merged file content is entirely ``<missing:...>`` placeholders.
+
+    Mirrors verify.sh's [DOWN] (fail-open) behaviour for absent files so the
+    gate stays green in CI where gitignored files (e.g. run-windows.env) are
+    not checked out. A check that points only at absent files is treated as
+    passed (non-blocking); the guard still fires wherever the file exists.
+    """
+    stripped = re.sub(r"<missing:[^>]*>", "", output)
+    return stripped.strip() == ""
+
+
 def evaluate(check: dict, output: str, mode: str) -> tuple[bool, str]:
     """比对输出与期望正则，返回 (passed, detail)。"""
     cid = check.get("id", "?")
@@ -94,6 +106,11 @@ def evaluate(check: dict, output: str, mode: str) -> tuple[bool, str]:
     desc = check.get("description", "")
     pattern = check.get("pattern", "")
     not_pattern = check.get("not_pattern")
+
+    # Fail-open when every referenced file is absent (CI / clean checkout):
+    # don't red-fail a gate on a file that legitimately isn't checked out.
+    if _is_all_missing(output):
+        return True, f"[SKIP] {cid} 引用文件均缺失，fail-open（不阻断）: {ref}"
 
     _flags = re.MULTILINE
     matched = bool(re.search(pattern, output, _flags)) if pattern else False
@@ -239,10 +256,14 @@ def main() -> int:
         if args.report:
             Path(args.report).write_text(out + "\n", encoding="utf-8")
     else:
-        text = format_text(report)
-        print(text)
+        # P0-1: bind `out` (not a separate `text`) so the history write at
+        # L263 can reuse it. Previously the non-`--json` branch bound `text`
+        # while L263 referenced `out`, raising UnboundLocalError on any
+        # invocation without --json AND without --no-history.
+        out = format_text(report)
+        print(out)
         if args.report:
-            Path(args.report).write_text(text + "\n", encoding="utf-8")
+            Path(args.report).write_text(out + "\n", encoding="utf-8")
 
     if args.mode == "closed" and report["any_block_fail"]:
         return 1
