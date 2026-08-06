@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import functools
 import io
 import logging
 import os
@@ -79,7 +80,17 @@ def _file_to_data_url(path: str, max_pixels: int = 0) -> str:
     return _file_to_data_url_cached(path, max_pixels)
 
 
+@functools.lru_cache(maxsize=64)
 def _file_to_data_url_cached(path: str, max_pixels: int = 0) -> str:
+    """Cache the base64 data-URL encoding of a local image path.
+
+    Keyed by ``(path, max_pixels)`` and evicted by LRU past ``maxsize``
+    entries, replacing the previous blanket ``cache_clear()`` that wiped the
+    whole process-level cache on every chunk flush.  Callers that overwrite
+    an image at the same path at runtime must not rely on automatic
+    invalidation; this trades that for avoiding repeated disk reads plus
+    base64 re-encoding.
+    """
     ext = Path(path).suffix.lower()
     mime_type = {
         ".jpg": "image/jpeg",

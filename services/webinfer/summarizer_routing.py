@@ -16,7 +16,6 @@ from typing import Any
 
 from adapter_types import SessionState
 from aiohttp import web
-from io_utils import _file_to_data_url_cached
 from request_parsing import _read_json
 from response_format import _openai_error_response
 from time_ranges import _compute_chunk_frame_range, _get_response_frame_indices
@@ -64,8 +63,6 @@ class SummarizerRoutingMixin:
         current_chunk = state.current_chunk
         if current_chunk["frame_count"] <= 0:
             return
-
-        _file_to_data_url_cached.cache_clear()
 
         if self.summarizer is not None and use_async_summary:
             await self._commit_required_async_summaries(

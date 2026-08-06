@@ -7,6 +7,7 @@ assembly, and generation-kwargs helpers previously on ``StreamingInferAdapter``.
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Any
 
@@ -31,21 +32,47 @@ from time_ranges import _format_batch_time_marker
 LOGGER = logging.getLogger("streaming_infer_adapter")
 
 
+@functools.lru_cache(maxsize=32)
+def _cached_load_character_profiles(
+    enabled: bool, paths_key: tuple[str, ...], mtime: float
+) -> list[str]:
+    """Return character-prompt bodies cached by config and latest file mtime.
+
+    ``enabled`` short-circuits to an empty list when character injection is
+    off; ``paths_key`` is the resolved prompt-path tuple; ``mtime`` is the
+    latest modification time across those files.  An on-disk edit rotates the
+    mtime, transparently invalidating the entry without an explicit reload.
+    """
+    if not enabled or not paths_key:
+        return []
+    return load_character_prompts(list(paths_key))
+
+
 class PromptAssemblyMixin:
     """Role-prompt assembly and main message construction."""
 
     # ---- character-prompt cache ---------------------------------------
     def _load_character_profiles(self) -> list[str]:
-        """Read character files from disk using the configured paths.
+        """Return cached character-prompt bodies for the active config.
 
-        Returns an empty list when character injection is disabled or
-        no files are found.  Errors are logged but non-fatal so a
-        missing prompts/ folder does not break the adapter.
+        Character prompts are static configuration, so the decoded bodies
+        are cached process-wide (keyed by the enabled flag, the resolved
+        prompt paths, and the latest file mtime) to avoid re-reading disk on
+        every prompt assembly.  On-disk edits rotate the mtime key and
+        invalidate the cache transparently; ``reload_character_prompts`` also
+        force-clears it via ``_invalidate_system_prompt_cache``.
+
+        Returns an empty list when character injection is disabled.  A read
+        failure is logged and surfaced as an empty list so a missing
+        ``prompts/`` folder does not break the adapter.
         """
         if not self.config.character_prompts_enabled:
             return []
+        mtime = self._refresh_character_prompt_mtime()
         try:
-            return load_character_prompts(self.config.character_prompt_paths)
+            return _cached_load_character_profiles(
+                True, tuple(self.config.character_prompt_paths), mtime
+            )
         except Exception as exc:
             LOGGER.warning("failed to load character prompts: %s", exc)
             return []
@@ -92,6 +119,7 @@ class PromptAssemblyMixin:
         """Drop the cached system prompt and rescan file mtimes."""
         self._system_prompt_cache = {}
         self._character_prompt_mtime = self._refresh_character_prompt_mtime()
+        _cached_load_character_profiles.cache_clear()
 
     def reload_character_prompts(self) -> list[str]:
         """Force a re-read of character files and clear the cache.
