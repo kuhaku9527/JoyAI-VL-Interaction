@@ -14,7 +14,7 @@
 
 ## 决策（Decision）
 
-1. 采用 **pipecat-ai/smart-turn-v3.2 ONNX**（CPU，~50MB），在 endpoint detection 之后、LLM 之前加语义判断。
+1. 采用 **pipecat-ai/smart-turn-v3 的 `smart-turn-v3.2-cpu.onnx`（CPU int8，~8.6MB）**，在 endpoint detection 之后、LLM 之前加语义判断。
 2. **同进程 ONNX 推理**，不引入新服务进程。
 3. **接入点 = 编排器结束判定**（`jarvis_mode.py` 的 ASR endpoint → 调 LLM 分支，原 `feed_audio`/L989 附近），**不是** `asr.py:feed_chunk` 末尾——`DIALOG_ACTIVE` 状态机在编排器而不在 ASR 层（spec 草案的落点有误，验证后修正）。
 4. **不替换** EXIT_WORDS（管「明确结束」）与声学 endpoint（管「声学停顿」）；Smart Turn 只补「说完了没」的语义层。
@@ -27,7 +27,7 @@
 ## 后果（Consequences）
 
 - ✅ 补语义 end-of-turn，改善「嗯……那个」「行谢谢」误判。
-- ➖ 需从 HuggingFace 拉取 `smart-turn-v3.2-cpu.onnx`（~50MB）到 `D:/AI/models/smart-turn/`（或 `SMART_TURN_MODEL_PATH` / `JOYAI_MODELS_ROOT`）。
+- ➖ 已从 HuggingFace 拉取 `smart-turn-v3.2-cpu.onnx`（~8.6MB int8，`pipecat-ai/smart-turn-v3`）到 `D:/AI/models/smart-turn/`（或 `SMART_TURN_MODEL_PATH` / `JOYAI_MODELS_ROOT`）。
 - ➖ 精确输入张量契约须对照拉取的模型卡核验；golden 测试（trailing_thought / explicit_end / normal_sentence）无模型时自动 skip（同 memory-store bge-m3 本地权重惯例）。
 - ➖ 开启 `SMART_TURN_ENABLED` 后须 e2e 标定阈值（默认 `probability >= 0.5`）与 barge-in 体验。
 - 🔒 不接管打断（barge-in 仍由 ASR partial 触发，~200–400ms），Smart Turn 只判「说完没」。

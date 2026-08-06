@@ -429,8 +429,9 @@ class JarvisStateMachine:
         self._smart_turn_enabled = (
             os.environ.get("SMART_TURN_ENABLED", "").lower() in ("1", "true", "yes")
         )
-        # Rolling recent-audio buffer (~3s @ 16kHz mono int16) for Smart Turn
-        # context. Capped to avoid unbounded growth.
+        # Rolling recent-audio buffer (~8s @ 16kHz mono int16) for Smart Turn
+        # context, matching the model's 8s window. Capped to avoid unbounded
+        # growth.
         self._recent_audio = bytearray()
 
         # v3.24 conversation history for LLM context.
@@ -560,8 +561,8 @@ class JarvisStateMachine:
         await self._audio_queue.put(pcm)
         # Keep a rolling recent-audio window for Smart Turn context.
         self._recent_audio += pcm
-        if len(self._recent_audio) > 96000:  # ~3s @ 16kHz mono int16
-            del self._recent_audio[: len(self._recent_audio) - 96000]
+        if len(self._recent_audio) > 256000:  # ~8s @ 16kHz mono int16 (model window)
+            del self._recent_audio[: len(self._recent_audio) - 256000]
 
     # ------------------------------------------------------------------
     # State machine runner

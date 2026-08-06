@@ -312,12 +312,13 @@ if ($SkipTorch) {
 }
 
 # ---------------------------------------------------------------------------
-# 11) Editable installs of the 5 services
+# 11) Editable installs of the services (memory-store included: run-windows.ps1
+#     launches it via $VenvPy, so it must be installed here too)
 # ---------------------------------------------------------------------------
 if ($SkipEditable) {
     Write-Info "Skipping editable installs (-SkipEditable)."
 } else {
-    $servicePackages = @("webinfer", "webui", "background-agent", "voice-clone", "asr", "tts")
+    $servicePackages = @("webinfer", "webui", "background-agent", "voice-clone", "asr", "tts", "memory-store")
     foreach ($pkg in $servicePackages) {
         $pkgDir = Join-Path $ServicesDir $pkg
         if (-not (Test-Path $pkgDir)) {
