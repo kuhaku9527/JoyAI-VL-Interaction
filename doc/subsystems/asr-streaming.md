@@ -25,10 +25,10 @@ webui WebRTC
      ▼
 jarvis_mode.py (状态机)
      │
-     ├── [KWS_LISTENING] → services/asr/jarvis_kws.py (sherpa-onnx KWS)
+     ├── [KWS_LISTENING] → services/asr/jarvis/kws.py (sherpa-onnx KWS)
      │                          模型: bt-zai-ma/ (encoder.onnx 56MB + decoder/joiner, CPU 0.1%)
      │
-     └── [DIALOG_ACTIVE] → services/asr/jarvis_asr.py (sherpa-onnx 流式)
+     └── [DIALOG_ACTIVE] → services/asr/jarvis/asr.py (sherpa-onnx 流式)
                               模型: streaming-paraformer-bilingual-zh-en int8 (100MB, CPU)
                               流式首字 200-400ms
                               + EXIT_WORDS 后处理
@@ -99,7 +99,7 @@ D:\AI\models\sherpa-onnx\models\kws\bt-zai-ma\
 ### 2.4 KWS 服务代码
 
 ```python
-# services/asr/jarvis_kws.py
+# services/asr/jarvis/kws.py
 """sherpa-onnx KWS 封装：监听唤醒词 bt（自训 v4）。"""
 from __future__ import annotations
 
@@ -175,7 +175,7 @@ Invoke-WebRequest -Uri $modelUrl -OutFile "$env:TEMP\paraformer.tar.bz2"
 ### 3.3 流式 ASR 服务代码
 
 ```python
-# services/asr/jarvis_asr.py
+# services/asr/jarvis/asr.py
 """sherpa-onnx 流式 ASR 封装：流式首字 200-400ms。"""
 from __future__ import annotations
 
@@ -199,7 +199,7 @@ class JarvisASR:
         if not self.model_dir.exists():
             raise FileNotFoundError(f"ASR 模型目录不存在: {model_dir}")
         
-        self.recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
+        self.recognizer = sherpa_onnx.OnlineRecognizer.from_paraformer(
             tokens=str(self.model_dir / "tokens.txt"),
             encoder=str(self.model_dir / "encoder.int8.onnx"),
             decoder=str(self.model_dir / "decoder.int8.onnx"),
@@ -210,6 +210,8 @@ class JarvisASR:
             decoding_method="greedy_search",
             enable_endpoint_detection=True,
             rule1_min_trailing_silence=2.0,  # 重要！避免短词被截断
+            rule2_min_trailing_silence=0.8,
+            rule3_min_utterance_length=8.0,
         )
         self.stream = None
         self.last_text = ""
@@ -267,7 +269,7 @@ EXIT_WORDS 检测在 **webui 端 jarvis_mode.py**（不是 ASR 服务层）：
 
 ```python
 # 服务 webui/src/joy_interaction_webui/jarvis_mode.py
-EXIT_WORDS = {"行", "明白", "了解", "ok", "好的"}
+EXIT_WORDS = {"行", "明白", "了解", "ok", "好的", "知道了", "谢谢", "感谢"}
 
 # 匹配逻辑（小写兼容）
 text_lower = text.lower().strip()
@@ -275,7 +277,7 @@ if any(w.lower() in text_lower for w in EXIT_WORDS):
     await trigger_exit()
 ```
 
-**为什么 5 个词**：明确、互不冲突、与"肯定结束"语义对应。
+**为什么 8 个词**：明确、互不冲突、与"肯定结束"语义对应。
 **为什么不用 KWS 检测 EXIT_WORDS**：
 - 0 额外模型（省 1-3MB）
 - 0 额外延迟（流式 ASR partial 出来时立即匹配）
@@ -310,8 +312,8 @@ async def _silence_watchdog(self):
 **现有 `asr_adapter.py` 不动**——它仍然支持 whisper.cpp 离线 multipart（向后兼容）。
 
 **新增**：
-- `services/asr/jarvis_kws.py`（KWS 引擎）
-- `services/asr/jarvis_asr.py`（流式 ASR 引擎）
+- `services/asr/jarvis/kws.py`（KWS 引擎）
+- `services/asr/jarvis/asr.py`（流式 ASR 引擎）
 - `services/webui/.../jarvis_mode.py`（状态机）
 
 **接入点**：webui 端 WebRTC 音频回调（替换原 `asr_adapter` 路径）
