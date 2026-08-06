@@ -1,0 +1,151 @@
+# GitHub 操作钉死手册（Runbook）
+
+> **目的**：本项目在 GitHub / git 上踩过的所有坑，集中钉死成一份可检索参考。任何对话端（本端或其他端）要做 GitHub/git 操作前，**先读这份，不要重新踩坑、不要重新推导**。
+> **维护纪律**：本文件是「GitHub/git 操作知识」的 SSOT。新增坑须附 **实证日期 + 根因 + 正确动作**；删旧换代时同步删旧。它与 `决策/`（架构/L1–L4 决策）互补但不重叠——决策讲"为什么这样设计"，本文件讲"怎么安全操作 git/GitHub"。
+> **关联**：`docs/local-wiki-methodology.md`（测试资产钉死）、`决策/`（单源真值）、`~/.workbuddy/MEMORY.md`（操作硬约束指针）。
+
+---
+
+## 0. 总纲领（三句话）
+
+1. **先验证再动手**：任何 git 操作前先 `git status --short` 探工作树；遇异常先确认文件是否真丢（`HEAD`/`origin` 是否还在），再决定动作。
+2. **VPN 是前提**：GitHub 网络走用户 VPN 直连；VPN 断开立即停手并提醒用户，自己不要改代理。
+3. **破坏性操作你（用户）来，或先给精确清单拍板**：`rm -rf` / `git reset --hard` / `git branch -D` / `git clean -fd` 等，agent 不擅自动。
+
+---
+
+## 1. 访问与网络（VPN / gh-proxy / 沙箱）
+
+- ✅ 走用户 **VPN 直连 github.com**；沙箱内任何网络命令（含 `git push`/`gh`）须 `dangerouslyDisableSandbox:true`。
+- ❌ **禁用 gh-proxy**：代理会顶掉 VPN，导致推送失败 / 错连。曾误记"有 gh-proxy `insteadOf` 规则"——核查 `.gitconfig` **无此规则**，旧 token-URL 绕路已作废。
+- ⚠️ **VPN 断开 = 立即暂停并提醒用户**；不得自改 `.gitconfig` 代理 / `insteadOf`，不得重启 gh-proxy。
+- 实证：2026-08-02 立；误记纠正 2026-08-02。
+
+---
+
+## 2. PAT / Token 权限
+
+- 沙箱 `gh` token **缺 `workflow` scope** → 改 `.github/workflows/*` 会失败。
+- 修法：用 **MCP `github-pat` 通道** 推 workflow 文件：`mcp-streamable-http-client/.../mcp_client.py --server github-pat --tool push_files`（Contents API 建 commit）。见 `2026-08-01.md §15`。
+- fine-grained PAT 缺其它 scope 也会静默失败 → 报错先看 scope，不是重试推送。
+- 实证：2026-08-01 / 2026-08-02。
+
+---
+
+## 3. 行尾 CRLF 陷阱
+
+- 症状：push 的 `*.sh` / `.yml` / Makefile / markdown 代码块在 GitHub runner（Linux）解析 `\r` 报错，CI 红。
+- 根因：Windows 写盘默认 CRLF。
+- ✅ 仓库 main 已含 `.gitattributes`（`* text=auto eol=lf` + 二进制豁免，PR #70 / 2026-08-02 合入）→ 检出强制 LF。但**已提交 blob 不回溯重归一化**（全仓 `--renormalize` 是独立大任务）。
+- ✅ 本地编辑仍须自觉转 LF：Python 写文件用 `open(p,'wb').write(s.encode())` 或 `newline=''`；自检含 CRLF：`python -c "..."` 数 `b'\r\n'`。
+- ❌ 不要依赖"提交后自动归一化"——旧 blob 仍是 CRLF。
+- 实证：2026-08-02 立。
+
+---
+
+## 4. git 沙箱陷阱（文件静默丢失）
+
+- `git stash` 会**丢 ref**（stash 静默丢引用）。
+- `git checkout` / `merge` 会**静默丢文件**（曾出现 34 个文件 ` D`，gh 警告 "uncommitted changes"）——实际文件都在 HEAD 历史中、非有意改动。
+- ✅ 还原：`git checkout HEAD -- <dir>`（**不** `reset --hard`）。
+- ✅ **文件缺失先验证**：`git cat-file -e HEAD:<path>` / `git ls-files <path>` 确认是否真丢；多数只是 checkout/reset 静默丢，历史无损。
+- 实证：2026-08-06 §4（`docs/startup-minimal-doc-fix` 合入时 34 文件误删，`checkout HEAD` 还原，无数据损失）。
+
+---
+
+## 5. worktree 陷阱
+
+- 路径坑：`git worktree add` 用 **Windows 绝对路径 `D:/AI/...`**（勿 `/d/AI/...`，会畸形成 `D:/d/...`）。
+- ref 不持久：Bash 沙箱跨调用 ref 可能不持久，但 loose object 留 `.git/objects`。
+- 本地 ref 丢 → push 报 **refspec 不符** → 改推 `<sha>:refs/heads/<branch>`。
+- 注册跨会话静默丢失：`git worktree list` 不列，但工作目录 + 指针仍在 → `git -C` 报 not a git repo。
+  - 恢复：备份改动（二进制写回 LF）→ `rm -rf` 孤儿 → `git worktree prune` → `git worktree add <同路径> <branch>` → 拷回 → **精确 `git add` 具体文件**（禁 `git add -A`）。
+- 本地验证：缺 node_modules 时从 main 软链跑 npm test/eslint，**提交前 `rm -f` 软链**。
+- 实证：2026-08-01（路径坑 / 软链）、2026-08-03（注册丢失）。
+
+---
+
+## 6. 仓库被 agent 弄坏（read-tree --empty 清空 index）
+
+- 症状：agent 跑 `git reset` / `read-tree --empty` → `.git/HEAD` 指坏分支 + index 空（`git ls-files`=0），整棵工作树被当未跟踪。
+- ⚠️ **盲目 `git clean -fd` 会删光整棵树**——数据丢失级。
+- ✅ 修复（不动未跟踪，先重建 tracked）：
+  ```bash
+  git symbolic-ref HEAD refs/heads/main
+  git update-ref refs/heads/main origin/main
+  git read-tree origin/main
+  git checkout-index -f -a        # 重建 index + 工作树对齐 origin/main
+  git clean -fd                   # 此时只删真正未跟踪残留
+  ```
+- 实证：2026-08-03 立。
+
+---
+
+## 7. CI 全红 ≠ 你的代码有 bug
+
+- 症状：门禁全 FAILURE 且 **steps:[]**（无步骤执行）。
+- 根因：**runner 配额耗尽**，不是代码 defect。
+- ✅ 合并路径：reviewer PASS + `gh pr merge --squash --admin --delete-branch` 绕过（PR #53/#54 先例）。
+- 实证：2026-08-01 立。
+
+---
+
+## 8. PR 合并 / 绕过
+
+- 正常：`gh pr merge --squash`（需 reviewer 通过）。
+- CI 假红时：`gh pr merge --squash --admin --delete-branch`（`--admin` 绕过门禁）。
+- 改 `.github/workflows/*` 须 `workflow` scope（见 §2）。
+- 实证：PR #53 / #54 / #78 / #87 / #88。
+
+---
+
+## 9. verify-branch-merged 假阳性（三点 diff）
+
+- 症状：用 `git diff A...B`（三点）判断"分支已合"会**假阳性**，导致开冗余 PR（5+ 个）。
+- ✅ 改用两点 diff / `git merge-base` / `gh pr view` 确认真实未合状态。
+- 实证：videcoding 反向研究报告候选 A（`verify-branch-merged` skill）。
+
+---
+
+## 10. push 失败两种常见病
+
+- **force-push 卡死**：不要反复 force-push；先确认远程状态再决定。
+- **`pull_request` 事件不触发 CI**：workflow `on:` 触发条件配置问题，不是代码问题；检查事件配置。
+- 实证：07-20 ~ 07-23 一波 PR #10–#23 翻车循环（force-push 卡死 / CI 事件不触发 / gh-proxy 绕路 / fine-grained PAT 缺 scope）。
+
+---
+
+## 11. 缓存变量作用域铁律
+
+- `npm_config_cache` / `HF_HOME` / `PIP_CACHE_DIR` / `PLAYWRIGHT_BROWSERS_PATH` / `UV_CACHE_DIR` / `ELECTRON_CACHE` 等**只能会话 / 进程级临时设**。
+- ❌ 严禁写用户级持久 env（HKCU:\Environment / `setx`）——会跨工作区污染（hermes 事故）。
+- HERMES_HOME 等由 `start-hermes-gateway.ps1` 钉死，JoyAI 端绝不碰。
+- 实证：2026-08-02 立。
+
+---
+
+## 12. 工作区隔离（防多端互相踩）
+
+- 单 canonical main worktree；并行开发用独立 worktree，改码只在本 worktree。
+- ❌ 禁止本地 main 堆叠未推提交（新任务先 `worktree add` 或独立分支）。
+- ⚠️ 子代理共享主工作树陷阱：Agent 子代理收尾若跑 `git reset --hard` / `git checkout -- .` / `git checkout -b`，会冲掉主理人**未提交**的本地编辑。
+  - 防御：**未提交改动先 commit+push，或改用独立 worktree 隔离**，勿依赖共享树保留未提交编辑。
+- 实证：2026-08-03（前端 agent 收尾重置冲掉 `决策/服务-webui.md` 的 D-2026-08-03-004 编辑，commit 落空后重做）。
+
+---
+
+## 13. 速查表
+
+| 要做 X | 先查 |
+|---|---|
+| push / 开 PR | VPN 开？`git status` 干净？refspec 对？ |
+| 改 `.github/workflows/*` | `workflow` scope 够不够 / 否则走 MCP `github-pat` |
+| push `.sh` / `.yml` / Makefile | 转 LF 了吗（`.gitattributes` 会归一化新 blob） |
+| 工作树异常（` D` / 全未跟踪） | `git ls-files` / `git cat-file -e HEAD:<path>` 确认真丢没 |
+| 想 `git clean -fd` | index 空吗？空 = 先按 §6 重建 tracked，否则删光树 |
+| 合并时 CI 全红 steps:[] | = runner 配额耗尽，reviewer 过则 `--admin` 绕过 |
+| 开新 PR 前 | 真没合？两点 diff 确认，别信三点 diff |
+
+---
+
+> 本手册随新坑持续追加。任何端发现新 GitHub/git 坑，回填此处并标注实证日期，避免下一端重蹈。
