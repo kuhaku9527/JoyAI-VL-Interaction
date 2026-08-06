@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# verify.sh — 运行态 /health 探针 + 可选静态契约委托
+# verify.sh — 运行态探针（/health 探活 + 废弃端口反向断言 + VLM n_ctx 运行态）
 # ---------------------------------------------------------------------------
-# F4-P0 / ADR-0017 之后：配置/代码级静态断言已迁移到 config/drift-contract.json，
+# F4-P0 之后：配置/代码级静态断言已迁移到 config/drift-contract.json，
 # 由 scripts/drift_gate.py 统一执行（CI drift-gate job 直接跑 drift_gate.py）。
+# 静态校验的「单一真值源」就是 drift_gate.py —— 不要再经 verify.sh 委托，
+# 否则会出现「CI 直跑 drift_gate.py」与「verify.sh --ci 委托」双分叉。
+#
 # 本脚本只负责「运行态探活」——这是契约 grep 无法替代的部分：
 #   - 各服务 /health 端口探针（check_port）
 #   - 废弃端口反向断言（check_port_absent，DRIFT-2 拦截点）
 #   - VLM n_ctx 运行态（D-022，读 llama-main.log）
-# 静态决策契约校验可通过 `--ci` 显式委托 drift_gate.py 跑一次（单一真值）。
+# 需要静态校验请直接调用：python scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed
 #
 # 用法:
-#   bash scripts/verify.sh            # 仅运行态探针
+#   bash scripts/verify.sh            # 运行态探针
 #   bash scripts/verify.sh --quiet    # 仅列出非 PASS 项
-#   bash scripts/verify.sh --ci       # 运行态探针 + 委托 drift_gate.py 跑静态子集
 #
 # 注意: 端口校验依赖服务当前是否在运行；DOWN 表示该服务此刻未起，
 #       属环境状态而非代码漂移，会标 [DOWN] 不计入 fail。
@@ -24,17 +26,13 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # --- 参数 ---------------------------------------------------------------
-# `--ci` 原意是“静态子集、不起服务”，但自 F4-P0 起静态断言已不在本脚本内
-# （迁移到 drift_gate.py）。故 `--ci` 不再是无操作 no-op：它显式委托
-# drift_gate.py 跑静态子集（见文末“静态决策契约校验”段）。运行态探针始终
-# 运行——探针无法被契约替代。
+# 仅 --quiet。静态校验不再经本脚本委托（单一真值源 = drift_gate.py，见文首）。
+# 运行态探针始终运行——探针无法被契约替代。
 QUIET=0
-CI_STATIC=0
 case "${1:-}" in
   --quiet) QUIET=1 ;;
-  --ci)    CI_STATIC=1 ;;
   "")      ;;
-  *) echo "usage: verify.sh [--quiet|--ci]" >&2; exit 2 ;;
+  *) echo "usage: verify.sh [--quiet]" >&2; exit 2 ;;
 esac
 
 pass=0; fail=0; drift=0; down=0
@@ -96,7 +94,7 @@ check_port_absent() {  # $1=标签 $2=端口  —— 反向断言：废弃端口
 # F4-P0: 原 grep_file 静态断言（D-030/008/031/015/034/007/033/036/076）已
 # 迁移到 config/drift-contract.json，由 scripts/drift_gate.py 统一执行。
 # verify.sh 现只负责运行态探活（下方 check_port / check_port_absent / D-022）。
-# 需要静态子集时请用 `bash scripts/verify.sh --ci`（委托 drift_gate.py）。
+# 需要静态子集请直接跑 `python scripts/drift_gate.py`（单一真值源）。
 
 echo "==================================================================="
 echo " 决策书校验  $(date '+%Y-%m-%d %H:%M')"
@@ -130,32 +128,12 @@ else
   echo "[DOWN]  D-022 无 llama-main.log (VLM 未运行)"; down=$((down+1))
 fi
 
-# ---- 静态决策契约校验（已迁移到 drift_gate.py）--------------------------
-# F4-P0: 以下 D-XXX 静态断言已迁移到 config/drift-contract.json，由
+# ---- 静态决策契约校验（不在本脚本内）------------------------------------
+# F4-P0: D-XXX 静态断言已迁移到 config/drift-contract.json，由
 # scripts/drift_gate.py 统一执行（CI drift-gate job 直接跑 drift_gate.py）。
-# 需要本地一次性看到静态结果，用 `bash scripts/verify.sh --ci`。
-
-# ---- 静态决策契约委托（仅 --ci）-----------------------------------------
-# 把静态子集委托给 drift_gate.py（配置/代码级断言的单一真值），便于本地
-# 一次性看到“运行态探针 + 静态契约”全貌。运行态探针（上方）才是 verify.sh
-# 的责任，静态结果不阻断 verify.sh 自身退出码。
-if [ "$CI_STATIC" -eq 1 ]; then
-  if command -v python3 >/dev/null 2>&1; then
-    PY=python3
-  elif command -v python >/dev/null 2>&1; then
-    PY=python
-  else
-    PY=""
-  fi
-  if [ -n "$PY" ] && [ -f config/drift-contract.json ]; then
-    echo "==================================================================="
-    echo " 静态决策契约校验 (drift_gate.py --phase static --mode closed)"
-    echo "==================================================================="
-    "$PY" scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed || true
-  else
-    echo "[WARN] 未找到 python 或 config/drift-contract.json，跳过静态委托"
-  fi
-fi
+# 本地看静态结果请直接：
+#   python scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed
+# （verify.sh 只负责上方运行态探针，静态结果不再经本脚本委托，避免双分叉。）
 
 echo "==================================================================="
 echo " 汇总: PASS=$pass  FAIL=$fail  DRIFT=$drift  DOWN=$down"

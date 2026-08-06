@@ -35,15 +35,32 @@
   mode=open    -> 永远 0（仅打印告警）
   mode=closed  -> 任一 severity=block 的检查不符则 1，否则 0
   契约缺失/JSON 解析失败 -> 2（meta-error，区别于业务漂移）
+  runtime 阶段 probe 刷新失败 -> 3（RUNTIME-PROBE-ERROR，见 F4-P1a 顺序保护）
 """
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger("drift_gate")
+
+
+# --- F4-P1a: runtime 顺序保护（gate 严格晚于 probe） -----------------------
+# runtime 阶段依赖 VLM runtime props 快照文件。若该文件缺失/过期，gate 会在
+# 跑 runtime 检查 *之前* 自动调 vlm_runtime_probe.py 刷新，避免"gate 早于 probe
+# 跑 → 缺 props → 误判 SKIP/closed" 的顺序 bug。仅在 runtime 阶段触发，
+# static 阶段保持纯读文件 + re.search，不调 probe、不被破坏。
+VLM_PROPS_REL = "logs/vlm-runtime-props.json"
+VLM_PROPS_STALE_SECONDS = 300.0
+VLM_PROBE_REL = "scripts/vlm_runtime_probe.py"
+VLM_PROBE_BASE_URL = "http://127.0.0.1:7060"
+VLM_PROBE_WAIT_SECONDS = 5
 
 
 def load_contract(path: str) -> dict:
@@ -160,12 +177,97 @@ def evaluate(check: dict, output: str, mode: str) -> tuple[bool, str]:
     )
 
 
+class RuntimeProbeError(RuntimeError):
+    """runtime 阶段无法取得 VLM props 真值：probe 刷新失败。
+
+    gate 假设 probe 已先于自己跑过（顺序保护）。若必须刷新却刷新失败，
+    这是显式错误，绝不静默 fallback 成 SKIP —— 否则会放过真实漂移。
+    """
+
+
+def _props_referenced_by_runtime(checks: list[dict], phase: str) -> bool:
+    """True iff 任一会被执行的 runtime 检查引用 VLM props 文件。
+
+    *phase* 为 ``"runtime"`` 只看 runtime 检查；``"all"`` 看全部；``"static"``
+    永不命中（runtime 检查在 static 阶段被跳过）。用于决定是否需要在 runtime
+    阶段前触发 probe 刷新。
+    """
+    for c in checks:
+        if phase != "all" and c.get("phase", "static") != phase:
+            continue
+        if VLM_PROPS_REL in (c.get("paths") or []):
+            return True
+    return False
+
+
+def _refresh_vlm_props_if_needed(repo_root: Path) -> None:
+    """顺序保护：runtime 阶段前，确保 VLM props 快照新鲜。
+
+    逻辑：
+      - 文件存在且 mtime 距现在 < ``VLM_PROPS_STALE_SECONDS`` → 视为新鲜，跳过
+        （避免每次 gate 都打一次 llama /props）。
+      - 缺失或过期 → 用 ``sys.executable`` 调 ``scripts/vlm_runtime_probe.py``
+        生成/刷新（不硬编码 venv 路径）。
+      - probe 返回非 0 → **显式 raise**，绝不静默 fallback 成 SKIP。
+
+    纯 runtime 阶段的例外动作；static 阶段不调用本函数（见 ``run_all`` 守卫）。
+    """
+    props = repo_root / VLM_PROPS_REL
+    need_refresh = False
+    if not props.exists():
+        need_refresh = True
+        logger.info("VLM props 缺失 (%s) — 触发 probe 生成", props)
+    else:
+        age = (datetime.now() - datetime.fromtimestamp(props.stat().st_mtime)).total_seconds()
+        if age > VLM_PROPS_STALE_SECONDS:
+            need_refresh = True
+            logger.info("VLM props 过期 (age=%.0fs > %.0fs) — 触发 probe 刷新", age, VLM_PROPS_STALE_SECONDS)
+    if not need_refresh:
+        logger.info("VLM props 新鲜，跳过 probe：%s", props)
+        return
+
+    probe = repo_root / VLM_PROBE_REL
+    if not probe.exists():
+        raise RuntimeProbeError(
+            f"[RUNTIME-PROBE-MISSING] {probe} 不存在，无法为 runtime 检查刷新 {VLM_PROPS_REL}。"
+            f"请在 gate 之前先运行 vlm_runtime_probe.py，或直接提供该文件。"
+        )
+    logger.info("调用 %s 刷新 %s", probe.name, VLM_PROPS_REL)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(probe),
+            "--base-url", VLM_PROBE_BASE_URL,
+            "--out", str(props),
+            "--wait", str(VLM_PROBE_WAIT_SECONDS),
+        ],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if proc.returncode != 0:
+        probe_err = (proc.stdout or "") + (proc.stderr or "")
+        raise RuntimeProbeError(
+            f"[RUNTIME-PROBE-FAILED] probe 刷新 {VLM_PROPS_REL} 失败 (rc={proc.returncode})；"
+            f"runtime 检查不能 SKIP 兜底。请确认 llama 已在 {VLM_PROBE_BASE_URL} 启动。\n"
+            f"{probe_err.strip()[-800:]}"
+        )
+    logger.info("probe 刷新成功：%s", props)
+
+
 def run_all(contract: dict, phase: str, mode: str, repo_root: Path) -> dict:
     """跑所有适用 phase 的检查，返回结构化结果。"""
     checks = contract.get("checks", [])
     results: list[dict] = []
     any_block_fail = False
     ran = 0
+
+    # F4-P1a 顺序保护：runtime 阶段若引用了 VLM props，先确保快照新鲜（缺失/过期
+    # 则自动跑 probe）。static 阶段不经过此守卫，保持独立。probe 失败会显式 raise。
+    if (phase == "runtime" or phase == "all") and _props_referenced_by_runtime(checks, phase):
+        _refresh_vlm_props_if_needed(repo_root)
+
     for c in checks:
         cphase = c.get("phase", "static")
         if phase != "all" and cphase != phase:
@@ -251,8 +353,21 @@ def main() -> int:
 
     repo_root = Path(args.repo_root) if args.repo_root else Path(__file__).resolve().parent.parent
 
+    # F4-P1a: probe 刷新诊断需要可见。仅当尚无 handler 时配置一次（幂等）。
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+
     contract = load_contract(args.contract)
-    report = run_all(contract, args.phase, args.mode, repo_root)
+    try:
+        report = run_all(contract, args.phase, args.mode, repo_root)
+    except RuntimeProbeError as exc:
+        # 显式错误：runtime 真值拿不到，gate 不能假装通过。rc=3 区别于
+        # block-fail(1) 与 meta-error(2)。
+        print(f"[RUNTIME-PROBE-ERROR] {exc}", file=sys.stderr)
+        return 3
 
     if args.json:
         out = json.dumps(report, ensure_ascii=False, indent=2)

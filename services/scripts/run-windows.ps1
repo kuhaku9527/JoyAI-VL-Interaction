@@ -829,13 +829,19 @@ try {
     Write-Host ""
     Write-Host "================================================================" -ForegroundColor Green
     # Auto-refresh the VLM runtime probe so drift_gate runtime phase
-    # has a fresh file (not stale from the previous launch).
+    # has a fresh file (not stale from the previous launch). Reuse the same
+    # python resolver as the static pre-flight ($DriftGatePy: venv python ->
+    # system python -> python3); never hardcode a machine-specific venv path.
+    # If no python is resolvable, skip the probe (fail-open) and warn.
     $probeScript = Join-Path $RepoRoot "scripts\vlm_runtime_probe.py"
     $probeOut = Join-Path $RepoRoot "logs\vlm-runtime-props.json"
     if ($plan["llama-main"] -and (Test-Path $probeScript)) {
-        $py = "D:\AI\envs\joyai-main\python.exe"
-        Emit-Event launcher probe_refresh -Extra @{ base_url = ("http://127.0.0.1:" + $P.Main) }
-        & $py $probeScript --base-url ("http://127.0.0.1:" + $P.Main) --out $probeOut --wait 5 2>&1 | Out-Null
+        if (-not $DriftGatePy) {
+            Write-Warn "未找到可用 python，跳过 VLM runtime probe 刷新（drift-gate runtime 阶段将缺少最新 props）"
+        } else {
+            Emit-Event launcher probe_refresh -Extra @{ base_url = ("http://127.0.0.1:" + $P.Main) }
+            & $DriftGatePy $probeScript --base-url ("http://127.0.0.1:" + $P.Main) --out $probeOut --wait 5 2>&1 | Out-Null
+        }
     }
     Write-Host " All services ready. WebUI is running in the foreground." -ForegroundColor Green
     Write-Host " Open http://127.0.0.1:$($P.Webui)/  in your browser." -ForegroundColor Green

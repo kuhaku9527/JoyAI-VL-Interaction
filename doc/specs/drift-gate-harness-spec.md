@@ -50,13 +50,13 @@
 ## 4. 机制设计
 
 ### 4.1 契约文件（机器可读投影）
-`决策/` 是人类 SSOT；门禁需要机器可查，所以引入一份**薄契约** `drift-contract.json`（位于 `决策/` 或仓库根配置区，由审查组/后端在批准改动时同步维护）。它只枚举"运行不变量 + 校验命令 + 期望正则 + 严重度 + 阶段"，**不承载决策理由**（理由在 `决策/`）。
+`决策/` 是人类 SSOT；门禁需要机器可查，所以引入一份**薄契约** `drift-contract.json`（位于 `决策/` 或仓库根配置区，由审查组/后端在批准改动时同步维护）。它只枚举"运行不变量 + 待校验文件路径 + 期望正则 + 严重度 + 阶段"，**不承载决策理由**（理由在 `决策/`）。
 
 > 已知权衡：契约与 `决策/` 是"机器投影 vs 人类真值"双写。缓解法——二者由**同一次批准事件**更新（同一 PR），且门禁带一条 meta 自检：契约缺失/版本不符即告警。这避开了"memory 内联决策成巨型宪章"的坑（见经验集 L5）。
 
 ### 4.2 门禁执行器（纯读、零业务侵入）
 - 输入：契约路径、`--mode {open,closed}`、`--phase {static,runtime,all}`。
-- 对每条 check：执行其 `command`（如 grep 日志/配置、查端口监听、curl `/props`），用 `expected_regex` 比对输出。
+- 对每条 check：纯 Python 读 `paths` 列出的文件并 `re.search` 合并内容，用 `pattern`（+ 可选 `not_pattern`）比对；不 shell-out 调 grep（跨平台，见 §5 v2 schema）。
 - 阶段区分（解决"日志类检查需服务已起"的现实）：
   - `static`：查配置文件 / env 默认值 / 代码常量 → **可在 CI 合并前 + 启动前跑**。
   - `runtime`：查运行实例 `/props`、端口监听 → **在启动服务后跑（verify 步）**。
@@ -68,36 +68,46 @@
 
 ---
 
-## 5. 契约 schema（草案）
+## 5. 契约 schema（v2）
+
+> 2026-07 起契约已升级到 **v2**：执行器改为纯 Python（`scripts/drift_gate.py`），
+> 直接读 `paths` 列出的文件并 `re.search` 合并内容，**废弃旧的 `command` / `expected_regex` 字段**。
+> 本节与 `config/drift-contract.json`（当前 `version: 2`）及 `scripts/drift_gate.py` 保持一致。
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "source_of_truth": "决策/",
+  "schema_notes": "v2: pure-Python executor reads `paths` and re.search() the merged content. Drop legacy `command`/`expected_regex`; use `paths` + `pattern` (+ optional `not_pattern`).",
   "checks": [
     {
       "id": "vlm-n_ctx",
       "decision_ref": "决策/业务-上下文架构.md D-050 / drift-历史.md DRIFT-1",
-      "description": "VLM 运行时 n_ctx 必须等于 webinfer main_ctx_tokens=16384",
+      "description": "VLM 运行时 n_ctx 必须等于 16384（经 vlm_runtime_probe.py 写出的 logs/vlm-runtime-props.json 校验）",
       "phase": "runtime",
-      "command": "grep -n 'n_ctx_slot' logs/llama-main.log",
-      "expected_regex": "16384",
+      "paths": ["logs/vlm-runtime-props.json"],
+      "pattern": "\"n_ctx\":\\s*16384",
       "severity": "block"
     },
     {
       "id": "memory-store-port",
       "decision_ref": "决策/drift-历史.md DRIFT-2 / 服务-memory-store.md",
-      "description": "memory-store 默认端口须为 8997（非废弃 8996）",
+      "description": "memory-store 默认端口须为 8997（非废弃 8996）；env 与代码常量同时确认",
       "phase": "static",
-      "command": "grep -n 'MEMORY_PORT\\|8997\\|8996' run-windows.env memory-store/app.py",
-      "expected_regex": "8997(?!.*8996)",
+      "paths": [
+        "services/scripts/run-windows.env",
+        "services/memory-store/src/memory_store/app.py"
+      ],
+      "pattern": "8997",
+      "not_pattern": "(MEMORY_PORT\\s*=\\s*8996|JOYAI_MEMORY_STORE_URL[^\\n]*8996)",
       "severity": "block"
     }
   ]
 }
 ```
 
-> 注：上述值为**示例**，真实值由后端按 `决策/` 当前记录填契约；脚本本身不写死任何值。
+> 注：上述为**示例**，字段形状与真实契约一致（如 `vlm-n_ctx` / `memory-store-port`）；
+> 真实值由后端按 `决策/` 当前记录填契约；脚本本身不写死任何值。
 
 ---
 
