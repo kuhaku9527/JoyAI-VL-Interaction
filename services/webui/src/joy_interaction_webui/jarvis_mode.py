@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 
+from .smart_turn_adapter import SmartTurnAdapter
+
 logger = logging.getLogger("joyai.jarvis")
 
 
@@ -419,6 +421,18 @@ class JarvisStateMachine:
         self._confirm_task: asyncio.Task | None = None
         self._last_asr_match: str = ""
 
+        # Smart Turn (semantic end-of-turn) adapter. Fail-open: if the ONNX
+        # asset is absent it stays unavailable and the acoustic endpoint
+        # detection remains the source of truth. The gate is default-OFF;
+        # enable with SMART_TURN_ENABLED=1 AND a fetched model asset.
+        self._smart_turn = SmartTurnAdapter()
+        self._smart_turn_enabled = (
+            os.environ.get("SMART_TURN_ENABLED", "").lower() in ("1", "true", "yes")
+        )
+        # Rolling recent-audio buffer (~3s @ 16kHz mono int16) for Smart Turn
+        # context. Capped to avoid unbounded growth.
+        self._recent_audio = bytearray()
+
         # v3.24 conversation history for LLM context.
         # Bounded FIFO of (role, content) tuples; trimmed to max_turns.
         self._conv_history: deque[tuple[str, str]] = deque(maxlen=20)
@@ -509,12 +523,45 @@ class JarvisStateMachine:
     # Audio feed loop (caller-driven)
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Smart Turn (semantic end-of-turn) gate
+    # ------------------------------------------------------------------
+    def _smart_turn_allows_send(self, text: str) -> bool:
+        """Gate before sending a finalized utterance to the LLM.
+
+        Returns True (send) when:
+          * the gate is disabled (``SMART_TURN_ENABLED`` unset) — the default,
+          * the model asset is unavailable (fail-open), or
+          * the model judges this is a real end-of-turn.
+        Returns False (defer / keep DIALOG_ACTIVE) only when the gate is
+        ENABLED and the model judges the user has NOT finished (e.g. a
+        trailing "嗯……那个").
+
+        Fail-open + default-off guarantee ZERO behavior change unless the
+        operator explicitly enables Smart Turn AND provides the ONNX asset.
+        """
+        if not getattr(self, "_smart_turn_enabled", False):
+            return True
+        adapter = getattr(self, "_smart_turn", None)
+        if adapter is None or not adapter.available:
+            return True  # fail-open: defer to acoustic endpoint detection
+        audio = bytes(getattr(self, "_recent_audio", b""))
+        complete, _prob = adapter.is_end_of_turn(audio, text)
+        if not complete:
+            logger.debug("[smart-turn] deferring send (model: not end-of-turn)")
+            return False
+        return True
+
     async def feed_audio(self, pcm: bytes):
         """Main audio feed — drive the state machine from mic frames.
 
         Called from WebRTC audio callback (ideally every 100ms chunk).
         """
         await self._audio_queue.put(pcm)
+        # Keep a rolling recent-audio window for Smart Turn context.
+        self._recent_audio += pcm
+        if len(self._recent_audio) > 96000:  # ~3s @ 16kHz mono int16
+            del self._recent_audio[: len(self._recent_audio) - 96000]
 
     # ------------------------------------------------------------------
     # State machine runner
@@ -987,6 +1034,15 @@ class JarvisStateMachine:
                     utterance,
                 )
             else:
+                # Smart Turn semantic gate (fail-open + default-off). When it
+                # judges the user has NOT finished (e.g. trailing "嗯……那个"),
+                # defer: keep the partial, do NOT clear/reset/send/transition.
+                if not self._smart_turn_allows_send(utterance):
+                    logger.debug(
+                        "Smart Turn deferred send; keeping DIALOG_ACTIVE for: '%s'",
+                        utterance,
+                    )
+                    return
                 logger.info(
                     "ASR endpoint reached, sending to LLM: '%s'",
                     utterance,

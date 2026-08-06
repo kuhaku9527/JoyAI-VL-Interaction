@@ -5,6 +5,7 @@ from system_prompts import (
     _clip_wiki_blocks,
     compose_system_prompt,
     compose_system_prompt_with_memory,
+    compose_voice_prompt,
 )
 
 
@@ -120,3 +121,34 @@ def test_clip_wiki_carries_namespace_and_source_url():
     assert "ns=wiki:elden-ring" in out
     assert "src=https://example/Boss" in out
     assert "boss 攻略" in out
+
+
+def test_compose_voice_prompt_appends_tail_without_markdown_rule():
+    out = compose_voice_prompt("BASE", character_prompts=["P1"], language="en")
+    plain = compose_system_prompt_with_memory("BASE", character_prompts=["P1"], language="en")
+    # Reuses the same composition (negative constraint: no separate copy).
+    assert out.startswith(plain)
+    # Strongest-constraint tail is present and sits at the very end.
+    assert "[Voice Output Rules]" in out
+    assert "Do NOT use markdown" in out
+    assert "Do NOT use action cues like *(laughs)*" in out
+    assert out.rstrip().endswith("then call the tool.")
+
+
+def test_compose_voice_prompt_zh_tail():
+    out = compose_voice_prompt("BASE", language="zh-CN")
+    assert "[语音输出规则]" in out
+    assert "不要使用 markdown" in out
+    assert "先说出简短口语回复，再调用工具" in out  # noqa: RUF001 (intentional Chinese fullwidth comma)
+
+
+def test_compose_voice_prompt_with_tool_section_before_tail():
+    out = compose_voice_prompt("BASE", tool_section="TOOLS:\n- search", language="en")
+    assert "TOOLS:" in out
+    assert out.index("TOOLS:") < out.index("[Voice Output Rules]")
+
+
+def test_compose_voice_prompt_not_a_separate_copy():
+    plain = compose_system_prompt_with_memory("BASE", language="en")
+    out = compose_voice_prompt("BASE", language="en")
+    assert out.startswith(plain)

@@ -108,6 +108,19 @@ cd JoyAI-VL-Interaction
 ./services/scripts/run.sh minimal
 ```
 
+### 启动模式（Mode）
+
+`start-joyai.ps1` 提供四种预设，按场景选用（模式名以脚本 `ValidateSet` 为准）：
+
+| 模式 | 场景 | 启动命令 |
+| --- | --- | --- |
+| `default` | 全功能默认（WebUI + 记忆 + 后台 agent） | `./services/scripts/run.sh default` 或 `start-joyai.ps1 -Mode default` |
+| `minimal` | 仅核心推理，最小依赖，快速验证 | `./services/scripts/run.sh minimal` |
+| `voice` | 语音优先（Jarvis 模式：ASR + TTS + KWS） | `start-joyai.ps1 -Mode voice` |
+| `gaming` | 游戏交互（屏幕捕获 + VLM 实时判断） | `start-joyai.ps1 -Mode gaming` |
+
+> 模式列表须与 `start-joyai.ps1` 的 `[ValidateSet("default","minimal","voice","gaming")]` 严格一致；新增模式须同步此处。
+
 Then open `https://127.0.0.1:8099` in your browser.
 
 👉 For the full setup (ASR, TTS, background agent) and configuration details, see the [Getting Started Guide](doc/deprecated/getting_started.md).

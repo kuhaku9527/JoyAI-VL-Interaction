@@ -313,3 +313,57 @@ def compose_system_prompt_with_memory(
     if wiki_block:
         composed = composed.rstrip() + "\n" + wiki_block
     return composed
+
+
+_VOICE_TAIL_EN = """[Voice Output Rules]
+You are speaking aloud through text-to-speech. Follow strictly:
+- Usually reply in one short spoken sentence.
+- Do NOT use markdown, asterisks, bullets, or code blocks.
+- Do NOT use action cues like *(laughs)* or *(smiles)*.
+- Speak naturally; no emojis or extraneous punctuation.
+- If you must call a tool, say the short spoken reply FIRST, then call the tool."""
+
+
+_VOICE_TAIL_ZH = """[语音输出规则]
+你正在通过语音合成(TTS)大声说话。严格遵守：
+- 通常只用一句简短口语回答。
+- 不要使用 markdown、星号、列表或代码块。
+- 不要使用 (laughs)、(微笑) 这类动作描述。
+- 自然口语，不要表情符号。
+- 如需调用工具，先说出简短口语回复，再调用工具。"""
+
+
+def compose_voice_prompt(
+    session_prompt,
+    tool_section=None,
+    *,
+    character_prompts=None,
+    language="en",
+    memory_blocks=None,
+    wiki_blocks=None,
+):
+    """Voice-mode variant of :func:`compose_system_prompt_with_memory`.
+
+    Reuses the exact same base+character+memory+wiki composition (negative
+    constraint from spec A: NO separate full system-prompt copy for voice
+    mode — always reuse ``compose_system_prompt_with_memory``), then appends
+    the strongest-constraint voice tail LAST so TTS output is clean speech.
+    The tail sits after memory/wiki blocks to exploit LLM recency bias
+    (strongest constraint at the very end).
+
+    ``tool_section`` (optional) is appended before the tail when the model
+    has tools, so the "speak first, then call tool" rule has context.
+    """
+    composed = compose_system_prompt_with_memory(
+        session_prompt,
+        character_prompts=character_prompts,
+        language=language,
+        memory_blocks=memory_blocks,
+        wiki_blocks=wiki_blocks,
+    )
+    if tool_section:
+        composed = composed.rstrip() + "\n\n" + tool_section.rstrip() + "\n"
+    tail = _VOICE_TAIL_ZH if str(language or "").lower().startswith("zh") else _VOICE_TAIL_EN
+    composed = composed.rstrip() + "\n\n" + tail
+    return composed
+
