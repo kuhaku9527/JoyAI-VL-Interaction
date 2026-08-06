@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# verify.sh — 决策书(决策/) 自动校验器
+# verify.sh — 运行态 /health 探针 + 可选静态契约委托
 # ---------------------------------------------------------------------------
-# 把每条 D-XXX 的"校验"字段命令化，跑一遍即可知晓哪些决策被运行态漂移破坏。
-# 只读、不改任何文件。输出 [PASS]/[FAIL]/[DRIFT] 表格 + 汇总。
+# F4-P0 / ADR-0017 之后：配置/代码级静态断言已迁移到 config/drift-contract.json，
+# 由 scripts/drift_gate.py 统一执行（CI drift-gate job 直接跑 drift_gate.py）。
+# 本脚本只负责「运行态探活」——这是契约 grep 无法替代的部分：
+#   - 各服务 /health 端口探针（check_port）
+#   - 废弃端口反向断言（check_port_absent，DRIFT-2 拦截点）
+#   - VLM n_ctx 运行态（D-022，读 llama-main.log）
+# 静态决策契约校验可通过 `--ci` 显式委托 drift_gate.py 跑一次（单一真值）。
 #
 # 用法:
-#   bash scripts/verify.sh            # 全部校验
+#   bash scripts/verify.sh            # 仅运行态探针
 #   bash scripts/verify.sh --quiet    # 仅列出非 PASS 项
+#   bash scripts/verify.sh --ci       # 运行态探针 + 委托 drift_gate.py 跑静态子集
 #
 # 注意: 端口校验依赖服务当前是否在运行；DOWN 表示该服务此刻未起，
 #       属环境状态而非代码漂移，会标 [DOWN] 不计入 fail。
@@ -17,7 +23,20 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-QUIET="${1:-}"
+# --- 参数 ---------------------------------------------------------------
+# `--ci` 原意是“静态子集、不起服务”，但自 F4-P0 起静态断言已不在本脚本内
+# （迁移到 drift_gate.py）。故 `--ci` 不再是无操作 no-op：它显式委托
+# drift_gate.py 跑静态子集（见文末“静态决策契约校验”段）。运行态探针始终
+# 运行——探针无法被契约替代。
+QUIET=0
+CI_STATIC=0
+case "${1:-}" in
+  --quiet) QUIET=1 ;;
+  --ci)    CI_STATIC=1 ;;
+  "")      ;;
+  *) echo "usage: verify.sh [--quiet|--ci]" >&2; exit 2 ;;
+esac
+
 pass=0; fail=0; drift=0; down=0
 
 # ---- 端口健康检查 ----------------------------------------------------------
@@ -73,29 +92,11 @@ check_port_absent() {  # $1=标签 $2=端口  —— 反向断言：废弃端口
   fi
 }
 
-# ---- 文本断言 ---------------------------------------------------------------
-grep_file() {  # $1=标签 $2=文件 $3=pattern $4=期望命中(0/非0) $5=drift判定(y/n)
-  local label="$1" file="$2" pat="$3" expect="$4" isdrift="${5:-n}"
-  if [ ! -f "$file" ]; then
-    echo "[DOWN]  $label  (文件不存在: $file)"; down=$((down+1)); return 0
-  fi
-  local n
-  # 注：grep -c 在「无命中」时仍向 stdout 打印 "0" 且退出码为 1；若再 `|| echo 0`
-  # 会追加成 "0\n0"，导致下方 `[ "$n" -eq 0 ]` 报 "integer expected"。故只取 grep 自身
-  # 输出，缺失时再兜底为 "0"（不重复追加）。
-  n=$(grep -cE "$pat" "$file" 2>/dev/null)
-  n="${n:-0}"
-  if { [ "$expect" = "0" ] && [ "$n" -eq 0 ]; } || { [ "$expect" != "0" ] && [ "$n" -gt 0 ]; }; then
-    echo "[PASS]  $label  ($file 命中 $n)"; pass=$((pass+1)); return 0
-  else
-    if [ "$isdrift" = "y" ]; then
-      echo "[DRIFT] $label  ($file 期望命中=$expect 实际=$n)"; drift=$((drift+1))
-    else
-      echo "[FAIL]  $label  ($file 期望命中=$expect 实际=$n)"; fail=$((fail+1))
-    fi
-    return 1
-  fi
-}
+# ---- 文本断言（已迁移）---------------------------------------------------
+# F4-P0: 原 grep_file 静态断言（D-030/008/031/015/034/007/033/036/076）已
+# 迁移到 config/drift-contract.json，由 scripts/drift_gate.py 统一执行。
+# verify.sh 现只负责运行态探活（下方 check_port / check_port_absent / D-022）。
+# 需要静态子集时请用 `bash scripts/verify.sh --ci`（委托 drift_gate.py）。
 
 echo "==================================================================="
 echo " 决策书校验  $(date '+%Y-%m-%d %H:%M')"
@@ -129,35 +130,37 @@ else
   echo "[DOWN]  D-022 无 llama-main.log (VLM 未运行)"; down=$((down+1))
 fi
 
-# ---- D-030 webinfer timeout 300 -------------------------------------------
-grep_file "D-030 webinfer request_timeout=300" "services/webinfer/adapter_types.py" "request_timeout_seconds: float = 300.0" "1"
+# ---- 静态决策契约校验（已迁移到 drift_gate.py）--------------------------
+# F4-P0: 以下 D-XXX 静态断言已迁移到 config/drift-contract.json，由
+# scripts/drift_gate.py 统一执行（CI drift-gate job 直接跑 drift_gate.py）。
+# 需要本地一次性看到静态结果，用 `bash scripts/verify.sh --ci`。
 
-# ---- D-031/008 run-windows.env 无 8997 覆盖 (已知 drift) ------------------
-grep_file "D-008/031 run-windows.env 无 MEMORY_PORT(期望零命中=drift存在)" "services/scripts/run-windows.env" "MEMORY_PORT|JOYAI_MEMORY_STORE_URL" "0" "y"
-
-# ---- D-015 webui 网关默认 8996 (已知 drift) -------------------------------
-grep_file "D-015 server.py 默认 8996(期望命中=drift存在)" "services/webui/src/joy_interaction_webui/server.py" 'JOYAI_MEMORY_STORE_URL.*"http://127.0.0.1:8996"' "1" "y"
-
-# ---- D-034 前端 Vitest 基座 -----------------------------------------------
-grep_file "D-034 vitest 配置存在" "services/webui/vitest.config.js" "vitest/config" "1"
-grep_file "D-034 package.json vitest 脚本" "services/webui/package.json" '"vitest run"' "1"
-
-# ---- D-007 ruff 固定 0.15.22 ----------------------------------------------
-grep_file "D-007 quality.yml ruff==0.15.22" ".github/workflows/quality.yml" "ruff==0.15.22" "1"
-
-# ---- D-033 前端模块化 window.JoyXxx --------------------------------------
-grep_file "D-033 index.html window.JoyWiki" "services/webui/src/joy_interaction_webui/static/index.html" "window.JoyWiki" "1"
-
-# ---- D-036 前端 wikiNamespace 显式输入 ------------------------------------
-grep_file "D-036 wiki_frontend.js wikiNamespace" "services/webui/src/joy_interaction_webui/static/wiki_frontend.js" "wikiNamespace" "1"
-
-# ---- D-076 WIKI_RECALL env 读取 -------------------------------------------
-grep_file "D-076 memory_io WIKI_RECALL_NAMESPACES" "services/webinfer/memory_io.py" "WIKI_RECALL_NAMESPACES" "1"
+# ---- 静态决策契约委托（仅 --ci）-----------------------------------------
+# 把静态子集委托给 drift_gate.py（配置/代码级断言的单一真值），便于本地
+# 一次性看到“运行态探针 + 静态契约”全貌。运行态探针（上方）才是 verify.sh
+# 的责任，静态结果不阻断 verify.sh 自身退出码。
+if [ "$CI_STATIC" -eq 1 ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PY=python3
+  elif command -v python >/dev/null 2>&1; then
+    PY=python
+  else
+    PY=""
+  fi
+  if [ -n "$PY" ] && [ -f config/drift-contract.json ]; then
+    echo "==================================================================="
+    echo " 静态决策契约校验 (drift_gate.py --phase static --mode closed)"
+    echo "==================================================================="
+    "$PY" scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed || true
+  else
+    echo "[WARN] 未找到 python 或 config/drift-contract.json，跳过静态委托"
+  fi
+fi
 
 echo "==================================================================="
 echo " 汇总: PASS=$pass  FAIL=$fail  DRIFT=$drift  DOWN=$down"
 echo "==================================================================="
-if [ "$QUIET" = "--quiet" ]; then
+if [ "$QUIET" = "1" ]; then
   echo "(--quiet: 仅 FAIL/DRIFT 已上方列出)"
 fi
 # 退出码: 有 FAIL 才非 0（DRIFT/DOWN 不阻断，属已知/环境）

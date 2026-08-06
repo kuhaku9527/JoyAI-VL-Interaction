@@ -746,6 +746,40 @@ $consoleCancel = [System.ConsoleCancelEventHandler]{
 }
 [Console]::add_CancelKeyPress($consoleCancel)
 
+# ---------------------------------------------------------------------------
+# Drift-gate pre-flight (F4-P0): 配置/代码级静态守卫（fail-closed）
+# 必须在起服务前跑；rc≠0 立即中止启动，避免把配置/代码漂移带进运行态。
+# 仅 static 阶段（查配置/代码常量，无需运行实例）；runtime 阶段（vlm-n_ctx）
+# 依赖运行态，留给 CI drift-gate-runtime job。用与启动相同的 venv 解释器；
+# 若 venv 未就绪则回退系统 python（drift_gate.py 是纯标准库脚本，不依赖 venv）。
+# --no-history：pre-flight 不写历史日志（避免污染启动环境）。
+# ---------------------------------------------------------------------------
+$DriftGatePy = if (Test-Path $VenvPy) {
+    $VenvPy
+} elseif (Test-Command "python") {
+    "python"
+} elseif (Test-Command "python3") {
+    "python3"
+} else {
+    $null
+}
+$DriftContract = Join-Path $RepoRoot "config" "drift-contract.json"
+Write-Host ""
+Write-Sec "Drift-gate pre-flight (static / closed)"
+if (-not $DriftGatePy) {
+    Write-Warn "未找到可用 python，跳过 drift-gate pre-flight（门禁无法运行，fail-open）"
+} elseif (-not (Test-Path $DriftContract)) {
+    Write-Warn "drift-contract.json 缺失 ($DriftContract)，跳过 pre-flight（门禁无法运行，fail-open）"
+} else {
+    & $DriftGatePy (Join-Path $RepoRoot "scripts" "drift_gate.py") --contract $DriftContract --phase static --mode closed --no-history
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "drift-gate (static/closed) 检测到配置漂移，中止启动（rc=$LASTEXITCODE）"
+        Emit-Event launcher drift_gate_fail -Extra @{ rc = $LASTEXITCODE }
+        exit 1
+    }
+    Write-Ok "drift-gate pre-flight 通过（无配置漂移）"
+}
+
 try {
     Emit-Event launcher start -Extra @{ launch_time = $script:LaunchTime; mode = $script:LaunchMode }
     $ordered = @("llama-main", "llama-summary", "whisper", "voice-clone",

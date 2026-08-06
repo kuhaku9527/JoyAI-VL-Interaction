@@ -102,6 +102,27 @@ def main():
         print(f"[FAIL] unexpected rc={rc}  stderr={err}")
         failures += 1
 
+    # 3b. Non-`--json` path must NOT crash with UnboundLocalError (P0-1 fix).
+    #     Before the fix, the non-json branch bound `text` while L263
+    #     referenced `out`, so any invocation without --json AND without
+    #     --no-history raised UnboundLocalError -> non-zero early crash and a
+    #     traceback on stderr. We assert rc in {0,1} AND that no traceback /
+    #     UnboundLocalError leaked (this is the only automated guard against
+    #     the regression; CI runs this smoke test).
+    rc, out, err = run(
+        ["--contract", str(CONTRACT), "--phase", "static", "--mode", "closed"]
+    )
+    print(f"\n[non-json/no-crash] exit={rc}")
+    crashed = ("UnboundLocalError" in err) or ("Traceback" in err)
+    if rc not in (0, 1):
+        print(f"[FAIL] non-json path unexpected rc={rc}  stderr={err[:200]}")
+        failures += 1
+    elif crashed:
+        print(f"[FAIL] non-json path crashed (UnboundLocalError): {err[:200]}")
+        failures += 1
+    else:
+        print("[OK]   non-json path - no crash (rc in {0,1})")
+
     # 4. Meta-error: missing contract file -> exit 2.
     rc, out, err = run(["--contract", str(ROOT / "config" / "nonexistent.json"), "--phase", "static", "--mode", "open"])
     first = (out or err).splitlines()[0] if (out or err) else "<empty>"
