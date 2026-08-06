@@ -88,15 +88,19 @@ def run_check_files(check: dict, repo_root: Path) -> str:
 
 
 def _is_all_missing(output: str) -> bool:
-    """True if the merged file content is entirely ``<missing:...>`` placeholders.
+    """True iff *no* referenced file was actually read.
 
-    Mirrors verify.sh's [DOWN] (fail-open) behaviour for absent files so the
-    gate stays green in CI where gitignored files (e.g. run-windows.env) are
-    not checked out. A check that points only at absent files is treated as
-    passed (non-blocking); the guard still fires wherever the file exists.
+    ``run_check_files`` emits a ``--- <path> ---`` header for every file it
+    successfully read (even an empty one); only absent / unreadable paths
+    become ``<missing:...>`` / ``<read-error:...>`` placeholders. So "all
+    missing" is precisely "output carries no ``--- `` content header", which
+    is stricter than substring-stripping ``<missing:>`` (that could be fooled
+    by literal text inside a real file). Mirrors verify.sh's [DOWN]
+    (fail-open) behaviour so the gate stays green in CI where gitignored
+    files (e.g. run-windows.env) are not checked out; the guard still fires
+    wherever a referenced file exists.
     """
-    stripped = re.sub(r"<missing:[^>]*>", "", output)
-    return stripped.strip() == ""
+    return "--- " not in output
 
 
 def evaluate(check: dict, output: str, mode: str) -> tuple[bool, str]:

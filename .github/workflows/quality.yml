@@ -115,9 +115,9 @@ jobs:
         # F4-P0: 改用 scripts/drift_gate.py 作为单一真值（替代旧的 verify.sh --ci
         # grep 子集）。仅跑 static 阶段（查配置/代码常量，无需起服务），任一
         # block 级检查不符即非零退出、阻断合并。
-        run: python scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed
+        run: python scripts/drift_gate.py --contract config/drift-contract.json --phase static --mode closed --no-history
       - name: Drift-gate smoke test (regression guard for P0-1 UnboundLocalError)
-        # 唯一能防 drift_gate.py 非 --json` 路径崩溃（P0-1 修复的 UnboundLocalError）
+        # 唯一能防 drift_gate.py 非 --json 路径崩溃（P0-1 修复的 UnboundLocalError）
         # 回归的自动化。smoke test 对缺失文件/env 均 fail-open，可在 CI 跑。
         run: python scripts/drift_gate_smoke_test.py
 
