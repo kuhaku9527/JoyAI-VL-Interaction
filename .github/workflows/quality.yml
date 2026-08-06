@@ -130,7 +130,7 @@ jobs:
   # doc/specs/drift-gate-runtime-v2.1-spec.md。
   # 注意：本 job 刻意「不 needs drift-gate」，与静态门禁并行独立跑——
   # 避免因上游红而被 skipped（之前 needs 链导致 runtime 门禁从未在 CI 真跑过，
-  # 见 PR #53 run 30703927856）。两者正交：静态(--ci) vs 运行时(全量)。
+  # 见 PR #53 run 30703927856）。两者正交：静态(drift_gate.py) vs 运行时(全量)。
   drift-gate-runtime:
     runs-on: ubuntu-latest
     steps:
@@ -198,7 +198,7 @@ jobs:
           wait_for "http://127.0.0.1:8997/health" "memory-store" || exit 1
           wait_for "http://127.0.0.1:8099/health" "webui" || exit 1
 
-          # 全量校验（非 --ci）：webui/memory-store 端口检查 fail-closed；
+          # 全量校验：webui/memory-store 端口检查 fail-closed；
           # 其余服务未起 -> [DOWN] 不计 fail。任何 [FAIL] -> 非零退出 -> 阻断合并。
           bash scripts/verify.sh
           RC=$?
