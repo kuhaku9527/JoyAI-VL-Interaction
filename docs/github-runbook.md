@@ -88,6 +88,7 @@
 - CI 红 = **真实代码 defect**（lint / format / pytest / drift-gate 等门禁真失败），不是误报；必须**在本地复现并修复、跑绿本地门禁**后再推。
 - ❌ 禁止 `gh pr merge --squash --admin` 这类 `--admin` 绕过门禁的路径；门禁红着绝不合入。
 - ✅ 建议给 `main` 加 **branch protection**：required status checks 全绿才允许 merge，从机制上杜绝 `--admin` 绕过。
+- ⚠️ **lint 工具版本漂移**：本机 `ruff` 可能与 CI 钉的版本（如 0.6.9）不一致，本地全过 ≠ CI 过。PR 提交后**务必看 CI run 结果**；若因版本差异报错（如新规则触发），按 CI 实际版本修，别盲目信任本机 lint。实证：2026-08-07（本会话 #96 本机 ruff 0.15.22 vs CI 0.6.9 漂移，本地过但提示 CI 复跑）。
 - 实证：2026-08-01 旧记"配额耗尽"已纠正——公开仓库无配额风险，CI 红即真实失败。
 
 ---
@@ -137,7 +138,18 @@
 
 ---
 
-## 13. 速查表
+## 13. 合并 / 审查 PR 前先刷新本地 tracking 引用（避免"PR 污染"假象）
+
+- 症状：判断 PR 范围 / 是否"污染"时，看到分支相对 `origin/main` 多出一大串**早已合进 main 的历史提交**（如 40+ 提交、98 文件 diff），误以为 PR 混入了无关改动（如 webcam #77 等）。
+- 根因：**本地 `origin/main` 跟踪引用过期**（停在远古 SHA）。此时 `git log/fetch/diff origin/main..HEAD` 会把 main 上**已合的历史**全当成"分支独有"列出——与 §9 三点 diff 假阳性**不同源**（三点 diff 是 merge-base 把已合提交当 diff；本项是本地 tracking ref 过期，两点 diff 也会被它骗）。
+- ✅ 修法：**合 PR / 判断 PR 范围前，先 `git fetch origin` 刷新本地 tracking 引用**，再用两点 diff `origin/main..HEAD` 看真实增量（应只有本分支的 1~N 个提交）。
+- ✅ 确认真实远端 main：`git ls-remote origin main` 看 SHA；用 `git merge-base --is-ancestor <远端SHA> HEAD` 确认"分支纯超前"还是"存在分叉"。
+- ✅ `gh pr view <n>` / `gh pr diff` 始终以 GitHub 服务端真值为准，不被本地过期 ref 误导。
+- 实证：2026-08-07（本会话 #96 审查组初报"混入了 webcam #77 等 40+ 提交"，实为本地 `origin/main` 停在 `606f44c` 过期；`git fetch` 后两点 diff 仅 `ca75e39` 一个提交、2 文件 +97，PR 干净）。
+
+---
+
+## 14. 速查表
 
 | 要做 X | 先查 |
 |---|---|
@@ -148,6 +160,7 @@
 | 想 `git clean -fd` | index 空吗？空 = 先按 §6 重建 tracked，否则删光树 |
 | 合并时 CI 全红 | = 真实失败，必须本地复现修绿再合，禁止 `--admin` 绕过 |
 | 开新 PR 前 | 真没合？两点 diff 确认，别信三点 diff |
+| 合 PR / 看 PR 范围 | 先 `git fetch` 刷新 `origin/main`；本地 trackref 过期会假报"PR 污染"，两点 diff 看真实增量 |
 
 ---
 
