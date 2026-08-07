@@ -143,6 +143,8 @@ flowchart TB
 | VRAM 预算 | ≤ 11.5GB / 16GB | 预留 4.5GB 给游戏；超限告警降载 |
 | 可用性 | 进程自愈最佳努力 | 单用户本地，无对外 SLA、无多租户 |
 
+> **延迟瓶颈实测结论（issue #43，已 CLOSED）**：端到端延迟瓶颈在采集/编码链路（OBS/屏幕捕获 + `max_pixels` 偏小 + JPEG 有损），VLM 推理段稳态 <320ms（DRIFT-6 实测）非瓶颈；webui 已埋 `frame_seq` 测量环（PR #93）暴露采集/编码开销。指标边界与细节见 `决策/VLM架构与模型组成.md`「VLM 端到端延迟实测结论」。
+
 ## 9. 部署形态
 
 - **硬件**：Windows 11 + 单卡 NVIDIA RTX 5060 Ti 16GB；Python 3.12。
