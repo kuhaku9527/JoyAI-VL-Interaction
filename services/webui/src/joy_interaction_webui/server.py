@@ -180,7 +180,7 @@ def handle_background_handoff_for_interaction(session_id, payload):
 
 
 def get_session_callback(session_id):
-    def callback(text, metrics):
+    def callback(text, metrics, frame_seq=None):
         session = sessions.get(session_id)
         display_text = text
         if session and session.get("background_service"):
@@ -192,6 +192,8 @@ def get_session_callback(session_id):
         out = {"type": "vlm_response", "text": display_text, "metrics": metrics}
         if summarizer_timing:
             out["summarizer_timing"] = summarizer_timing
+        if frame_seq is not None:
+            out["frame_seq"] = frame_seq
         send_to_session(session_id, json.dumps(out, ensure_ascii=False))
 
     return callback
@@ -320,7 +322,9 @@ async def websocket_handler(request):
                                 t_processed = time.perf_counter()
                                 metrics = svc.get_metrics()
                                 if response:
-                                    get_session_callback(session_id)(response, metrics)
+                                    get_session_callback(session_id)(
+                                        response, metrics, data.get("frame_seq")
+                                    )
                                 logger.info(
                                     "latency[transport+infer-screen]: arrive->processed_ms=%.1f decode_ms=%.1f seq=%s",
                                     (t_processed - t_arrive) * 1000,

@@ -136,6 +136,19 @@
           // tSend = 传输 send done (send() returned).
           const tSend = performance.now();
 
+          // Latency loop closure (issue #43): record perf-clock send time keyed by
+          // frame_seq so the vlm_response handler can compute the send->render span.
+          // Cap the map size: unmatched frames (never answered by a vlm_response) would
+          // otherwise linger for the whole session. In-flight unmatched frames are
+          // typically <10; 256 gives ample headroom and only ever evicts the oldest
+          // (smallest frame_seq) entry, which cannot still be in flight at that point.
+          if (!window.__screenSentAt) window.__screenSentAt = {};
+          const sentKeys = Object.keys(window.__screenSentAt);
+          if (sentKeys.length > 256) {
+            delete window.__screenSentAt[Math.min(...sentKeys.map(Number))];
+          }
+          window.__screenSentAt[frameSeq] = tSend;
+
           // Build the latency sample and maintain a small in-memory ring buffer.
           const sample = {
             seq: frameSeq,
