@@ -5439,6 +5439,29 @@ limitations under the License.
                 // Update video overlay (always, visibility is controlled by CSS)
                 const displayText = getVlmDisplayText(data.text);
                 videoOverlay.textContent = displayText;
+
+                // Latency loop closure (issue #43): correlate the rendered vlm_response back
+                // to the screen frame that produced it via frame_seq. NOTE: sendToRenderMs
+                // spans the WHOLE tSend->render interval (upstream transport + backend VLM
+                // inference + downstream + render scheduling), NOT a pure render-only segment.
+                if (data.frame_seq != null && typeof window !== 'undefined' && window.__screenSentAt) {
+                  const sentAt = window.__screenSentAt[data.frame_seq];
+                  if (sentAt != null) {
+                    const sendToRenderMs = performance.now() - sentAt;
+                    if (!window.__screenRenderLatency) window.__screenRenderLatency = [];
+                    const sample = {
+                      seq: data.frame_seq,
+                      send_to_render_ms: Math.round(sendToRenderMs * 100) / 100,
+                      ts: Date.now(),
+                      text_len: (data.text || '').length,
+                    };
+                    window.__screenRenderLatency.push(sample);
+                    if (window.__screenRenderLatency.length > 120) window.__screenRenderLatency.shift();
+                    console.info('[latency][send→render]', sample);
+                    delete window.__screenSentAt[data.frame_seq];
+                  }
+                }
+
                 videoOverlay.classList.remove('show', 'top', 'bottom');
                 if (displayText && settings.overlayPosition !== 'none') {
                     videoOverlay.classList.add('show', settings.overlayPosition);
