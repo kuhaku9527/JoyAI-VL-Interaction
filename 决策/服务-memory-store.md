@@ -9,7 +9,7 @@
 ### D-2026-07-26-030 | memory-store 真实端口
 | 字段 | 内容 |
 |---|---|
-| **事实** | memory-store 实际跑在 **`127.0.0.1:8997`**（非 8996）；webui 必须经 `JOYAI_MEMORY_STORE_URL=http://127.0.0.1:8997` 启动。**⚠️ `run-windows.env` 并未覆盖 `MEMORY_PORT` / `JOYAI_MEMORY_STORE_URL`**（实测 grep 零命中），须每次手动设 env；这是已知漂移，待 #43 修脚本自动注入** |
+| **事实** | memory-store 实际跑在 **`127.0.0.1:8997`**（非 8996）；webui 必须经 `JOYAI_MEMORY_STORE_URL=http://127.0.0.1:8997` 启动。**⚠️ `run-windows.env` 并未覆盖 `MEMORY_PORT` / `JOYAI_MEMORY_STORE_URL`**（实测 grep 零命中）~~，须每次手动设 env；这是已知漂移，待 #43 修脚本自动注入~~ **该漂移已由 PR #83/#84（D-034 端口固定 8997）闭环：run-windows.env 现含 8997 覆盖，默认连真后端；归属非 #43（#43=视频采集端到端延迟调研）**。modified: 2026-08-07｜by AI｜approved: 用户** |
 | **来源** | 8997 确立为生产后端于 2026-07-26；`services/webui/.../server.py` 默认 8996；`run-windows.ps1:114` 默认 8996 |
 | **校验** | `curl -fsS http://127.0.0.1:8997/health -m 3` |
 | **预期** | 200 OK |

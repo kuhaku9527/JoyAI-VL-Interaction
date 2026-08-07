@@ -74,7 +74,7 @@
 
 ---
 
-## §4 当前已知 Drift（🔓，集中，待 #43 等修复）
+## §4 当前已知 Drift（🔓，集中；注意 #43 仅指视频采集端到端延迟调研，端口/env 类漂移各有独立归属 PR，非 #43）
 
 1. ~~VLM n_ctx 运行态回退 4096~~（**2026-07-29 已闭环** — `start-joyai.ps1 -Mode minimal` 后 `/props` 报 `n_ctx=16384`；详见 `drift-历史.md` DRIFT-1）。
 2. **memory-store 端口 8996 vs 8997**：`run-windows.env` 无 `MEMORY_PORT`/`JOYAI_MEMORY_STORE_URL` 覆盖行，当前 8997 靠手动 env。脚本默认拉 8996 空壳。
