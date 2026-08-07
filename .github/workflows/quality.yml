@@ -263,7 +263,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [memory-store, background-agent, webinfer]
+        service: [memory-store, background-agent, webinfer, webui]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -283,6 +283,12 @@ jobs:
             # memory-store declares usearch + numpy (ADR-0012 vector recall) in
             # its own pyproject; editable install pulls them in alongside pytest.
             pip install -e ".[dev]"
+          elif [ "${{ matrix.service }}" = "webui" ]; then
+            # webui's smart_turn_adapter imports onnxruntime/transformers/numpy;
+            # test_smart_turn.py self-injects src/ into sys.path, so we install
+            # only the inference + test deps (skip aiohttp/aiortc/opencv to keep
+            # CI fast — those aren't on the test's import chain).
+            pip install onnxruntime transformers numpy pytest pytest-asyncio
           else
             pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
           fi
