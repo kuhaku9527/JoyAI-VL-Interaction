@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from live_adapter import StreamingInferAdapter  # noqa: E402
+from live_adapter import StreamingInferAdapter
 
 
 class _CountingMemoryClient:

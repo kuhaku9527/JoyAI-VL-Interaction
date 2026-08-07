@@ -263,7 +263,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [memory-store, background-agent, webinfer]
+        service: [memory-store, background-agent, webinfer, webui]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -282,6 +282,16 @@ jobs:
           elif [ "${{ matrix.service }}" = "memory-store" ]; then
             # memory-store declares usearch + numpy (ADR-0012 vector recall) in
             # its own pyproject; editable install pulls them in alongside pytest.
+            pip install -e ".[dev]"
+          elif [ "${{ matrix.service }}" = "webui" ]; then
+            # webui's pyproject declares its runtime deps (aiohttp, aiohttp-cors,
+            # aiortc, opencv-python, numpy, Pillow, openai, httpx, av, psutil,
+            # onnxruntime, transformers) in [dependencies] and test deps
+            # (pytest, pytest-asyncio) in [dev]. server.py imports aiohttp +
+            # aiortc at module top-level and the existing tests also import
+            # Pillow/httpx, so a minimal install set fails at collection with
+            # ModuleNotFoundError. Install editable to pull in the full declared
+            # dependency graph in one shot — a minimal set is not sufficient.
             pip install -e ".[dev]"
           else
             pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio

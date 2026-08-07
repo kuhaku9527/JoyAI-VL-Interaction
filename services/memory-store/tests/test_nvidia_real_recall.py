@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001
 # SPDX-License-Identifier: Apache-2.0
 """Real-machine verification of NVIDIA NIM ``baai/bge-m3`` vector recall (ADR-0012).
 
