@@ -72,7 +72,10 @@ def test_placeholder_model_names_are_not_applied():
     # Placeholder model names (undefined/null/none) are excluded by the
     # validModels filter before any model is auto-applied — the old explicit
     # `if (isValidModelName(currentModel))` guard was removed during refactor.
-    assert "validModels = (data.models || []).filter(model => isValidModelName(model && model.id))" in html
+    assert (
+        "validModels = (data.models || []).filter(model => isValidModelName(model && model.id))"
+        in html
+    )
 
 
 def test_manual_prompt_edit_resets_asr_transcript_state():
@@ -265,7 +268,10 @@ def test_server_llm_message_accepts_image_b64():
 
     assert "image_b64 = data.get(" + chr(34) + "image_b64" + chr(34) + ")" in body
     # Smart Turn added interaction_mode to the _send_to_llm call.
-    assert 'sm._send_to_llm(text, stream_tts=False, image_b64=image_b64, interaction_mode="call")' in body
+    assert (
+        'sm._send_to_llm(text, stream_tts=False, image_b64=image_b64, interaction_mode="call")'
+        in body
+    )
     assert "3 * 1024 * 1024" in body
     assert chr(34) + "image_attached" + chr(34) + ": bool(image_b64)" in body
 
