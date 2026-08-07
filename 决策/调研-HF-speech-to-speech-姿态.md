@@ -28,6 +28,24 @@
 | VAD 本体(Silero) | **不做** | KWS + ASR endpoint detection + EXIT_WORDS 已覆盖「有/没人说话」（T-VAD-1）|
 | Smart Turn | **做** | 语义端点检测，~150 行 + ONNX，DIALOG_ACTIVE 内生效（T-VAD-2）|
 
+## G/H 不做依据（ADR 冲突钉死，防重议）
+
+把矩阵「协议层 / 流水线」两行的「不做」结论钉死为硬性约束——两项的拒绝理由不是「优先级低」，而是「与已 Accepted 的 ADR 直接冲突」，任何端点不得私自重开。
+
+### G. 协议层：不兼容 OpenAI Realtime（冲突 ADR0006）
+- HF 建议：把 webinfer 决策 token 折进 OpenAI Realtime GA 兼容协议作可选层（如接 GPT-4o-realtime 时在 `response.create` 伪装 `tool_choice`）。
+- 冲突点：ADR0006《LLM 网关单入口》核心=所有 LLM 调用走 webinfer :8070 自有协议、决策 token 解析在 webinfer 内完成；立 ADR 的根本理由正是「决策 token 是核心 IP，通用协议表达不了它」才保自有协议。折进 Realtime = 逆转 ADR0006。
+- 结论：**锁死不做**。G ≠ I（I=WebRTC 传输层，已做）；G 指应用层 Realtime 事件协议，与现有传输无关。
+- 重议条件：仅当用户显式要求「对外暴露 OpenAI Realtime 兼容」且接受决策 token 降级。
+
+### H. 流水线：不强改队列+线程（冲突 ADR0007）
+- HF 建议：把决策 token 主路径改造成带类型 Python Queue + 强类型状态载体（silence/response/delegate），走队列+线程事件驱动。
+- 冲突点：ADR0007《拆分 live_adapter.py》刚把 3531 行单体机械安全拆成 9 子模块+门面（外部契约不变，66 测试绿，里程碑 1 完成）；H 要重写 `live_adapter.py` 核心 = 冲掉 ADR0007 拆分成果、重开敏感区。现状 FastAPI 异步+进程编排够用。
+- 结论：**锁死不做**。除非用户显式要求「彻底事件驱动重构」并承担重开 live_adapter 的风险。
+- 注：HF 调研文档 §4.3 自身结论即「保持 FastAPI 异步+进程编排」。
+
+- modified: 2026-08-07｜by AI（审查组）｜approved: 用户
+
 ## 派生工单（采纳项的 spec-first 路由）
 - A voice prompt → `doc/specs/voice-prompt-template-spec.md`
 - B partial transcript → `doc/specs/live-transcript-ui-spec.md`
