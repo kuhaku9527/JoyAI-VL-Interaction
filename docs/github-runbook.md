@@ -81,21 +81,23 @@
 
 ---
 
-## 7. CI 全红 ≠ 你的代码有 bug
+## 7. CI 红了必须修到绿，禁止绕过
 
-- 症状：门禁全 FAILURE 且 **steps:[]**（无步骤执行）。
-- 根因：**runner 配额耗尽**，不是代码 defect。
-- ✅ 合并路径：reviewer PASS + `gh pr merge --squash --admin --delete-branch` 绕过（PR #53/#54 先例）。
-- 实证：2026-08-01 立。
+- 本项目仓库已 **开源 public**，使用 GitHub 免费 Linux runner，**不存在 runner 配额耗尽**问题；`steps:[]` 全 FAILURE 不是配额问题。
+- CI 红 = **真实代码 defect**（lint / format / pytest / drift-gate 等门禁真失败），不是误报；必须**在本地复现并修复、跑绿本地门禁**后再推。
+- ❌ 禁止 `gh pr merge --squash --admin` 这类 `--admin` 绕过门禁的路径；门禁红着绝不合入。
+- ✅ 建议给 `main` 加 **branch protection**：required status checks 全绿才允许 merge，从机制上杜绝 `--admin` 绕过。
+- 实证：2026-08-01 旧记"配额耗尽"已纠正——公开仓库无配额风险，CI 红即真实失败。
 
 ---
 
-## 8. PR 合并 / 绕过
+## 8. PR 合并
 
-- 正常：`gh pr merge --squash`（需 reviewer 通过）。
-- CI 假红时：`gh pr merge --squash --admin --delete-branch`（`--admin` 绕过门禁）。
+- 正常：`gh pr merge --squash`（需 reviewer 通过，且 **CI 门禁全绿**）。
+- CI 红了先**本地复现并修复**，跑绿本地门禁（`scripts/quality-check.sh`）再推；修到绿才合。
+- ❌ 绝不用 `gh pr merge --squash --admin` 这类 `--admin` 绕过门禁。
 - 改 `.github/workflows/*` 须 `workflow` scope（见 §2）。
-- 实证：PR #53 / #54 / #78 / #87 / #88。
+- 实证：PR #53 / #54 / #78 / #87 / #88（旧记"CI 假红可 --admin 绕过"已纠正）。
 
 ---
 
@@ -143,7 +145,7 @@
 | push `.sh` / `.yml` / Makefile | 转 LF 了吗（`.gitattributes` 会归一化新 blob） |
 | 工作树异常（` D` / 全未跟踪） | `git ls-files` / `git cat-file -e HEAD:<path>` 确认真丢没 |
 | 想 `git clean -fd` | index 空吗？空 = 先按 §6 重建 tracked，否则删光树 |
-| 合并时 CI 全红 steps:[] | = runner 配额耗尽，reviewer 过则 `--admin` 绕过 |
+| 合并时 CI 全红 | = 真实失败，必须本地复现修绿再合，禁止 `--admin` 绕过 |
 | 开新 PR 前 | 真没合？两点 diff 确认，别信三点 diff |
 
 ---

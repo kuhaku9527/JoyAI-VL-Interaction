@@ -406,7 +406,7 @@ def main():
                     "decision_ref": "smoke-test",
                     "description": name,
                     "phase": "static",
-                    "paths": ["services/scripts/run-windows.env"],
+                    "paths": ["config/drift-contract.json"],
                     "pattern": pattern,
                     "severity": "block",
                 }
@@ -429,7 +429,7 @@ def main():
         return 0
 
     try:
-        failures += launch_case("ok", r"^MAIN_CONTEXT\s*=\s*16384", 0)
+        failures += launch_case("ok", r"version", 0)
         failures += launch_case("bad", r"__NEVER_MATCHES_xyz__", 1)
     finally:
         _shutil.rmtree(tmp_launch, ignore_errors=True)
