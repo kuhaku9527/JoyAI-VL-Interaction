@@ -41,6 +41,7 @@ if not _access_logger.handlers:
         _access_logger.setLevel(logging.INFO)
     except OSError:
         pass  # access log is best-effort; do not break the webui if logs/ is unwritable
+import datetime  # noqa: E402
 import os  # noqa: E402
 import sys  # noqa: E402
 import time  # noqa: E402
@@ -1007,6 +1008,88 @@ async def _services_status_handler(request):
 # 8996 shell (e.g. a sandboxed dev box) only need to set the env explicitly.
 MEMORY_STORE_URL = os.environ.get("JOYAI_MEMORY_STORE_URL", "http://127.0.0.1:8997").rstrip("/")
 
+# Issue #43 (final piece): persist browser-reported screen-frame send→render
+# latency samples to a server-side JSONL ring file so the data survives a page
+# refresh / webui process restart. Previously the samples only lived in the
+# browser console + an in-memory ring (lost on refresh).
+SCREEN_LATENCY_LOG = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "..",
+    "..",
+    "..",
+    "logs",
+    "screen_latency.jsonl",
+)
+SCREEN_LATENCY_RING_CAP = 2000
+# Ensure the repo-root logs/ dir exists at startup. A genuinely unwritable
+# logs/ is a real deployment error (project standard: raise, do not silently
+# degrade), so this is intentionally run WITHOUT a try/except guard.
+os.makedirs(os.path.dirname(SCREEN_LATENCY_LOG), exist_ok=True)
+
+
+def _append_screen_latency(record: dict) -> None:
+    """Append one screen-latency sample as a JSON line and trim the ring.
+
+    Parameters
+    ----------
+    record: dict
+        Serializable sample (seq, send_to_render_ms, ts, text_len, received_at).
+
+    Notes
+    -----
+    When the file exceeds ``SCREEN_LATENCY_RING_CAP`` lines it is rewritten
+    keeping only the most recent entries. Volume is low and the webui runs
+    single-process, so this simple full-rewrite trim is acceptable.
+    """
+    os.makedirs(os.path.dirname(SCREEN_LATENCY_LOG), exist_ok=True)
+    with open(SCREEN_LATENCY_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    # lightweight trim (low volume; single-process aiohttp is fine)
+    try:
+        with open(SCREEN_LATENCY_LOG, encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) > SCREEN_LATENCY_RING_CAP:
+            with open(SCREEN_LATENCY_LOG, "w", encoding="utf-8") as f:
+                f.writelines(lines[-SCREEN_LATENCY_RING_CAP:])
+    except OSError as exc:
+        logger.error("[screen-latency] trim failed: %s", exc)
+
+
+async def _screen_latency_handler(request: web.Request) -> web.Response:
+    """Persist one browser screen-frame send→render latency sample.
+
+    Expects a JSON body with ``send_to_render_ms`` (number) and ``seq``
+    (required). On success a JSONL record is appended to ``SCREEN_LATENCY_LOG``
+    and ``204`` is returned. Malformed / invalid input returns ``4xx`` with a
+    warning log; a write failure returns ``500``.
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        logger.warning("[screen-latency] bad JSON body")
+        return web.json_response({"ok": False, "error": "bad_json"}, status=400)
+    s2r = payload.get("send_to_render_ms")
+    seq = payload.get("seq")
+    if not isinstance(s2r, (int, float)) or seq is None:
+        logger.warning("[screen-latency] missing/invalid fields seq=%r s2r=%r", seq, s2r)
+        return web.json_response({"ok": False, "error": "invalid_fields"}, status=400)
+    record = {
+        "seq": seq,
+        "send_to_render_ms": round(float(s2r), 2),
+        "ts": payload.get("ts"),
+        "text_len": payload.get("text_len"),
+        "received_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    try:
+        _append_screen_latency(record)
+    except OSError as exc:
+        logger.error("[screen-latency] append failed: %s", exc)
+        return web.json_response({"ok": False, "error": "write_failed"}, status=500)
+    logger.debug("[screen-latency] sample seq=%s s2r=%s", seq, record["send_to_render_ms"])
+    # RFC 7231: 204 MUST NOT include a message body, so return an empty response.
+    return web.Response(status=204)
+
 
 async def _proxy_to_memory_store(request: web.Request) -> web.Response:
     """Forward whitelisted [Local Wiki] /v1/* endpoints to memory-store.
@@ -1379,6 +1462,9 @@ def main():
     app.router.add_get("/api/tts/health", tts_health)
     app.router.add_post("/api/llm/message", llm_message)
     app.router.add_post("/api/tts/synthesize", _tts_synthesize_handler)
+    # Issue #43: persist browser screen-frame send→render latency samples
+    # (POSTed from the SPA) to the server-side JSONL ring file.
+    app.router.add_post("/api/screen-latency", _screen_latency_handler)
     app.router.add_post("/api/rtsp/start", _rtsp_start_stub)
     app.router.add_post("/api/rtsp/stop", _rtsp_stop_stub)
     app.router.add_get("/api/rtsp/status", _rtsp_status_stub)

@@ -5458,6 +5458,17 @@ limitations under the License.
                     window.__screenRenderLatency.push(sample);
                     if (window.__screenRenderLatency.length > 120) window.__screenRenderLatency.shift();
                     console.info('[latency][send→render]', sample);
+                    // 尽力持久化（#43 收口）：把样本上报到服务端。fire-and-forget，不阻塞渲染；keepalive 使其能跨页面卸载存活。
+                    try {
+                      fetch('/api/screen-latency', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(sample),
+                        keepalive: true,
+                      }).catch((err) => { console.warn('[latency] persist failed', err); });
+                    } catch (err) {
+                      console.warn('[latency] persist skipped', err);
+                    }
                     delete window.__screenSentAt[data.frame_seq];
                   }
                 }
