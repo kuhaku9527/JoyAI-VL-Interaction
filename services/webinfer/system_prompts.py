@@ -366,4 +366,3 @@ def compose_voice_prompt(
     tail = _VOICE_TAIL_ZH if str(language or "").lower().startswith("zh") else _VOICE_TAIL_EN
     composed = composed.rstrip() + "\n\n" + tail
     return composed
-
