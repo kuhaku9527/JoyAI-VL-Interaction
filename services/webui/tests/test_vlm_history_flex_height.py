@@ -21,24 +21,26 @@ from pathlib import Path
 WEBUI_ROOT = Path(__file__).resolve().parents[1]
 
 
-INDEX_HTML = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static" / "index.html"
+# The VLM Output Info panel styles live in the linked stylesheet, not inline in
+# index.html (CSS was extracted into styles.css; index.html only <link>s it).
+STYLES_CSS = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static" / "styles.css"
 
 
-def _extract_css_block(html: str, selector: str) -> str:
+def _extract_css_block(css: str, selector: str) -> str:
     """Return the body of the FIRST CSS rule matching ``selector``."""
     pattern = re.compile(
         rf"(?<![\w-]){re.escape(selector)}\s*\{{(?P<body>[^}}]*)\}}",
         re.S,
     )
-    match = pattern.search(html)
-    assert match, f"selector {selector!r} not found in index.html"
+    match = pattern.search(css)
+    assert match, f"selector {selector!r} not found in styles.css"
     return match.group("body")
 
 
 def test_vlm_history_base_rule_uses_flex_height():
     """The base .vlm-history rule must flex to fill its parent."""
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    body = _extract_css_block(html, ".vlm-history")
+    css = STYLES_CSS.read_text(encoding="utf-8")
+    body = _extract_css_block(css, ".vlm-history")
 
     # Must declare flex growth so it fills the .vlm-history-shell parent
     assert re.search(r"flex\s*:\s*1\s+1\s+auto", body), (
@@ -51,8 +53,8 @@ def test_vlm_history_base_rule_uses_flex_height():
 
 def test_vlm_history_base_rule_has_no_fixed_pixel_height():
     """Pixel-based height on the base rule traps the panel at 420px."""
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    body = _extract_css_block(html, ".vlm-history")
+    css = STYLES_CSS.read_text(encoding="utf-8")
+    body = _extract_css_block(css, ".vlm-history")
 
     # No fixed pixel height in the base rule. Small-screen media query may
     # still set clamp() values.
@@ -66,12 +68,12 @@ def test_vlm_history_base_rule_has_no_fixed_pixel_height():
 
 def test_vlm_output_card_remains_flex_column_with_min_height_zero():
     """Parent chain must allow the inner .vlm-history to actually fill."""
-    html = INDEX_HTML.read_text(encoding="utf-8")
-    card_body = _extract_css_block(html, "#vlmOutputCard")
+    css = STYLES_CSS.read_text(encoding="utf-8")
+    card_body = _extract_css_block(css, "#vlmOutputCard")
     assert "flex-direction: column" in card_body, "#vlmOutputCard must be a flex column"
     assert "min-height: 0" in card_body, "#vlmOutputCard must allow shrinking"
 
-    shell_body = _extract_css_block(html, ".vlm-history-shell")
+    shell_body = _extract_css_block(css, ".vlm-history-shell")
     assert "min-height: 0" in shell_body, ".vlm-history-shell must allow shrinking"
     assert re.search(r"flex\s*:\s*1", shell_body), (
         ".vlm-history-shell must grow inside the parent flex column"

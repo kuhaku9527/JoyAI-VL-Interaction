@@ -7,10 +7,17 @@ from pathlib import Path
 
 WEBUI_ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static" / "index.html"
+# CSS was extracted from index.html into a linked stylesheet (styles.css);
+# rules like .status-badge.jarvis-confirm / flex-wrap live there, not inline.
+STYLES_CSS = WEBUI_ROOT / "src" / "joy_interaction_webui" / "static" / "styles.css"
 
 
 def _index_html() -> str:
     return INDEX_HTML.read_text(encoding="utf-8")
+
+
+def _styles_css() -> str:
+    return STYLES_CSS.read_text(encoding="utf-8")
 
 
 def _function_body(html: str, name: str) -> str:
@@ -62,9 +69,10 @@ def test_placeholder_model_names_are_not_applied():
     html = _index_html()
 
     assert "function isValidModelName(model)" in html
-    assert "validModels = (data.models || []).filter" in html
-    assert "if (!isValidModelName(currentModel))" in html
-    assert "if (isValidModelName(currentModel))" in html
+    # Placeholder model names (undefined/null/none) are excluded by the
+    # validModels filter before any model is auto-applied — the old explicit
+    # `if (isValidModelName(currentModel))` guard was removed during refactor.
+    assert "validModels = (data.models || []).filter(model => isValidModelName(model && model.id))" in html
 
 
 def test_manual_prompt_edit_resets_asr_transcript_state():
@@ -169,18 +177,20 @@ def test_bt_listening_shows_mic_level_and_device():
 
 def test_jarvis_confirm_state_is_visible_in_header_badge():
     html = _index_html()
+    css = _styles_css()
 
     assert "WAIT_ASR_CONFIRM" in html
     assert "ASR 确认中" in html
-    assert ".status-badge.jarvis-confirm" in html
+    # .status-badge.jarvis-confirm is a stylesheet rule (styles.css), not inline HTML.
+    assert ".status-badge.jarvis-confirm" in css
 
 
 def test_header_status_area_wraps_instead_of_overlapping():
-    html = _index_html()
+    css = _styles_css()
 
-    assert "flex-wrap: wrap;" in html
-    assert "max-width: min(680px, 100%);" in html
-    assert "white-space: nowrap;" in html
+    assert "flex-wrap: wrap;" in css
+    assert "max-width: min(680px, 100%);" in css
+    assert "white-space: nowrap;" in css
 
 
 def test_bt_mic_gain_change_handler_is_not_nested_in_listen_click():
@@ -254,7 +264,8 @@ def test_server_llm_message_accepts_image_b64():
     body = m.group("body")
 
     assert "image_b64 = data.get(" + chr(34) + "image_b64" + chr(34) + ")" in body
-    assert "sm._send_to_llm(text, stream_tts=False, image_b64=image_b64)" in body
+    # Smart Turn added interaction_mode to the _send_to_llm call.
+    assert 'sm._send_to_llm(text, stream_tts=False, image_b64=image_b64, interaction_mode="call")' in body
     assert "3 * 1024 * 1024" in body
     assert chr(34) + "image_attached" + chr(34) + ": bool(image_b64)" in body
 
@@ -271,7 +282,7 @@ def test_jarvis_send_to_llm_supports_multimodal():
     next_def = jarvis_py.index("async def _stream_tts", idx)
     body = jarvis_py[idx:next_def]
 
-    assert "image_b64: Optional[str] = None" in body
+    assert "image_b64: str | None = None" in body
     assert chr(34) + "image_url" + chr(34) in body
     assert "data:image/jpeg;base64," in body
     assert chr(34) + "type" + chr(34) + ": " + chr(34) + "text" + chr(34) in body
