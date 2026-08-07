@@ -88,7 +88,7 @@
 - CI 红 = **真实代码 defect**（lint / format / pytest / drift-gate 等门禁真失败），不是误报；必须**在本地复现并修复、跑绿本地门禁**后再推。
 - ❌ 禁止 `gh pr merge --squash --admin` 这类 `--admin` 绕过门禁的路径；门禁红着绝不合入。
 - ✅ 建议给 `main` 加 **branch protection**：required status checks 全绿才允许 merge，从机制上杜绝 `--admin` 绕过。
-- ⚠️ **lint 工具版本漂移**：本机 `ruff` 可能与 CI 钉的版本（如 0.6.9）不一致，本地全过 ≠ CI 过。PR 提交后**务必看 CI run 结果**；若因版本差异报错（如新规则触发），按 CI 实际版本修，别盲目信任本机 lint。实证：2026-08-07（本会话 #96 本机 ruff 0.15.22 vs CI 0.6.9 漂移，本地过但提示 CI 复跑）。
+- ⚠️ **lint 工具版本对齐**：CI 用 `pip install ruff==0.15.22` 精确钉死（`.github/workflows/quality.yml:49`），本机也应保持 `ruff 0.15.22` 与其一致。若本地 ruff 版本 **高于** CI 钉的版本，新规则可能本地不报但 CI 报（本地过 ≠ CI 过）。PR 提交后**务必看 CI run 结果**，别盲目信任本机 lint。实证：2026-08-07（#96 收尾时曾误记"CI 钉 0.6.9"，实为 0.15.22，本机/CI 已一致——订正见此条）。
 - 实证：2026-08-01 旧记"配额耗尽"已纠正——公开仓库无配额风险，CI 红即真实失败。
 
 ---
