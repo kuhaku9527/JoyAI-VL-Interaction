@@ -176,7 +176,9 @@ def test_llm_message_schedules_async_llm_task():
         def _init_asr(self):
             pass
 
-        async def _send_to_llm(self, text, *, stream_tts=True, image_b64=None, interaction_mode="call"):
+        async def _send_to_llm(
+            self, text, *, stream_tts=True, image_b64=None, interaction_mode="call"
+        ):
             # v3.37: jarvis_mode._send_to_llm accepts image_b64 for the
             # multimodal paper-plane path; the Smart Turn feature added
             # `interaction_mode` (forwarded to webinfer, see server.llm_message).

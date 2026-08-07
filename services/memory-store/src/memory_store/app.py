@@ -100,7 +100,9 @@ app.state.backend = (
 app.state.embedder = (
     app.state.backend.embedder if isinstance(app.state.backend, SqliteBackend) else None
 )
-app.state.last_wiki_sync = None  # last SyncResponse dict, surfaced by /health + /v1/providers/health
+app.state.last_wiki_sync = (
+    None  # last SyncResponse dict, surfaced by /health + /v1/providers/health
+)
 logger.info("memory-store v%s loaded backend=%s", __version__, app.state.backend.name())
 emit_event(
     "memory-store",

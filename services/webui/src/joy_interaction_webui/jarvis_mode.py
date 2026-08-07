@@ -426,8 +426,10 @@ class JarvisStateMachine:
         # detection remains the source of truth. The gate is default-OFF;
         # enable with SMART_TURN_ENABLED=1 AND a fetched model asset.
         self._smart_turn = SmartTurnAdapter()
-        self._smart_turn_enabled = (
-            os.environ.get("SMART_TURN_ENABLED", "").lower() in ("1", "true", "yes")
+        self._smart_turn_enabled = os.environ.get("SMART_TURN_ENABLED", "").lower() in (
+            "1",
+            "true",
+            "yes",
         )
         # Rolling recent-audio buffer (~8s @ 16kHz mono int16) for Smart Turn
         # context, matching the model's 8s window. Capped to avoid unbounded

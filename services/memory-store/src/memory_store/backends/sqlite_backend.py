@@ -441,9 +441,7 @@ class SqliteBackend:
         """
         limit = max(int(top_k), 1)
         cur = self._conn.cursor()
-        cur.execute(
-            "SELECT * FROM memory_blocks ORDER BY created_at DESC LIMIT ?", (limit * 4,)
-        )
+        cur.execute("SELECT * FROM memory_blocks ORDER BY created_at DESC LIMIT ?", (limit * 4,))
         blocks = [self._row_to_block(r) for r in cur.fetchall()]
         return self._apply_post_filters(blocks, flt, min_score)[:limit]
 
