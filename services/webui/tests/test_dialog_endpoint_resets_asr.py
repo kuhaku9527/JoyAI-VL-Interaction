@@ -77,7 +77,9 @@ async def _make_sm(asr: _RecordingASR, llm_capture: list):
     sm._tts_done.set()
 
     # Stub _send_to_llm to capture text without making HTTP calls.
-    async def fake_send(text, *, stream_tts=True):
+    # Signature mirrors JarvisStateMachine._send_to_llm (jarvis_mode.py),
+    # which gained the `interaction_mode` kwarg in the Smart Turn feature.
+    async def fake_send(text, *, stream_tts=True, interaction_mode="jarvis"):
         llm_capture.append(("llm", text))
 
     sm._send_to_llm = fake_send
