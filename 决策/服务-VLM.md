@@ -78,9 +78,9 @@
 | **来源** | `services/scripts/run-windows.ps1` 全文（无 watchdog 逻辑；快照 2026-07-13 起即如此） |
 | **校验** | `grep -n "watchdog\|supervisor\|restart.*on.*fail" services/scripts/run-windows.ps1` |
 | **预期** | 0 命中 |
-| **Drift** | 🟥 2026-07-28 VLM 死后用户问"AI 也忘了"，根因无 watchdog（待 #43 加 supervisor） |
+| **Drift** | 🟥 2026-07-28 VLM 死后用户问"AI 也忘了"，根因无 watchdog。~~（待 #43 加 supervisor）~~ **watchdog/supervisor 为独立事项，非 #43（#43=视频采集延迟调研），待独立排期** |
 | **Owner** | 运维 |
-| **锁定** | 🔓（待加 watchdog） |
+| **锁定** | 🔓（待独立加 watchdog/supervisor，非 #43） |
 
 ---
 
@@ -137,6 +137,6 @@
 ## 待补充
 
 - D-XXX：VLM 启动参数（-ngl / -c / --mmproj 等）— 待 run-windows.ps1 后段确认
-- D-XXX：VLM 启动耗时（实测首字节延迟）
+- D-XXX：VLM 启动耗时（实测首字节延迟）——**区别于 #43/DRIFT-6 的稳态推理段 <320ms**，此处专指冷启动/首字节，勿混淆。modified: 2026-08-07｜by AI｜approved: 用户
 - D-XXX：VLM 多并发槽位（slots）
 - D-XXX：VLM 显存/NVML 监控命令
