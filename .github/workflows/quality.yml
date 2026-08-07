@@ -284,11 +284,15 @@ jobs:
             # its own pyproject; editable install pulls them in alongside pytest.
             pip install -e ".[dev]"
           elif [ "${{ matrix.service }}" = "webui" ]; then
-            # webui's smart_turn_adapter imports onnxruntime/transformers/numpy;
-            # test_smart_turn.py self-injects src/ into sys.path, so we install
-            # only the inference + test deps (skip aiohttp/aiortc/opencv to keep
-            # CI fast — those aren't on the test's import chain).
-            pip install onnxruntime transformers numpy pytest pytest-asyncio
+            # webui's pyproject declares its runtime deps (aiohttp, aiohttp-cors,
+            # aiortc, opencv-python, numpy, Pillow, openai, httpx, av, psutil,
+            # onnxruntime, transformers) in [dependencies] and test deps
+            # (pytest, pytest-asyncio) in [dev]. server.py imports aiohttp +
+            # aiortc at module top-level and the existing tests also import
+            # Pillow/httpx, so a minimal install set fails at collection with
+            # ModuleNotFoundError. Install editable to pull in the full declared
+            # dependency graph in one shot — a minimal set is not sufficient.
+            pip install -e ".[dev]"
           else
             pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
           fi
