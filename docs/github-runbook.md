@@ -51,6 +51,7 @@
 - ✅ 还原：`git checkout HEAD -- <dir>`（**不** `reset --hard`）。
 - ✅ **文件缺失先验证**：`git cat-file -e HEAD:<path>` / `git ls-files <path>` 确认是否真丢；多数只是 checkout/reset 静默丢，历史无损。
 - 实证：2026-08-06 §4（`docs/startup-minimal-doc-fix` 合入时 34 文件误删，`checkout HEAD` 还原，无数据损失）。
+- ⚠️ **`ff-only merge` / 普通 `checkout` 不会补回「磁盘缺失的跟踪文件」**：若工作树本身不完整（HEAD 里有、磁盘上无），`git merge --ff-only` 只动「差异路径」，不会重新检出这些未变路径 → `git status` 显示 0 改动，但文件实际缺。必须在 merge/pull 后 `git ls-files` 抽查关键目录，发现缺失用 `git checkout HEAD -- <dir>` 补回（**不** `reset --hard` / `clean -fd`）。实证：2026-08-08（本地 main ff 到 PR #120 后，`services/webui/tests/` 磁盘仅剩 3 个、缺 38 个，从 HEAD 还原，无丢失）。
 
 ---
 
