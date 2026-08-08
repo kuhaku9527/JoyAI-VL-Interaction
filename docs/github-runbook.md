@@ -52,6 +52,8 @@
 - ✅ **文件缺失先验证**：`git cat-file -e HEAD:<path>` / `git ls-files <path>` 确认是否真丢；多数只是 checkout/reset 静默丢，历史无损。
 - 实证：2026-08-06 §4（`docs/startup-minimal-doc-fix` 合入时 34 文件误删，`checkout HEAD` 还原，无数据损失）。
 - ⚠️ **`ff-only merge` / 普通 `checkout` 不会补回「磁盘缺失的跟踪文件」**：若工作树本身不完整（HEAD 里有、磁盘上无），`git merge --ff-only` 只动「差异路径」，不会重新检出这些未变路径 → `git status` 显示 0 改动，但文件实际缺。必须在 merge/pull 后 `git ls-files` 抽查关键目录，发现缺失用 `git checkout HEAD -- <dir>` 补回（**不** `reset --hard` / `clean -fd`）。实证：2026-08-08（本地 main ff 到 PR #120 后，`services/webui/tests/` 磁盘仅剩 3 个、缺 38 个，从 HEAD 还原，无丢失）。
+- ✅ **根治安法（2026-08-08 落地 `scripts/sync-main.sh`）**：任何 `gh pr merge` 之后、或开始新分支工作之前，**统一跑 `bash scripts/sync-main.sh`**——它一步完成 `git fetch` + `git merge --ff-only origin/main`（仅快进、不改写历史）+ 自动补回磁盘缺失的跟踪文件（`git ls-files -d` → `git checkout HEAD --`）。本仓库的删除永远是先提交再合入，**不存在「未提交的有意删除」**，故自动补回始终安全。从此不再需要手动 `checkout HEAD -- <dir>` 救火，也顺带消 §13 的 tracking 引用过期假象。
+- ✅ **本地 main 落后 origin/main 也会制造假 `D`**（§23 实证，2026-08-08）：`gh pr merge` 在远端合入后，若本地 main 未 `fetch`+快进、仍停在上一个旧 SHA，新 PR 加入的文件（如 `services/memory-store/tests/test_embedding_settings.py`）在本地 main 根本不存在 → `git checkout main` 后整目录显假 `D`。根因=本地分支落后，非工作树损坏。修法同样是先 `sync-main.sh` 把本地 main 带到 origin/main，文件即就位。
 
 ---
 
@@ -162,6 +164,7 @@
 | 合并时 CI 全红 | = 真实失败，必须本地复现修绿再合，禁止 `--admin` 绕过 |
 | 开新 PR 前 | 真没合？两点 diff 确认，别信三点 diff |
 | 合 PR / 看 PR 范围 | 先 `git fetch` 刷新 `origin/main`；本地 trackref 过期会假报"PR 污染"，两点 diff 看真实增量 |
+| `gh pr merge` 后 / 开新分支前 | 跑 `bash scripts/sync-main.sh`（fetch+快进+自动补回缺失跟踪文件），根治假 `D`，别再手动 `checkout HEAD --` |
 
 ---
 
