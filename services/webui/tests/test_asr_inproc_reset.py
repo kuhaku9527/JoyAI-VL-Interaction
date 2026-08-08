@@ -40,5 +40,5 @@ def test_connect_asr_inproc_resets_shared_engine(monkeypatch):
 def test_asr_url_defaults_to_inproc():
     from joy_interaction_webui import asr
 
-    assert asr.ASR_URL == ""
+    assert asr.get_asr_url() == ""
     assert asr.ASR_CONNECT_RETRIES == 0

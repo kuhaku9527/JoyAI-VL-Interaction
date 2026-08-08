@@ -174,10 +174,241 @@
         };
     }
 
+    // ---- Memory Store settings: embedding/provider portion of /v1/settings/network ----
+    // The 4-module LLM/Summary/TTS/ASR config lives in config_services.js (window.JoyConfig).
+    // The [Local Wiki] network *proxy* sub-object (proxy / providers.siliconflow) is edited by
+    // wiki_frontend.js. This cluster handles the *remaining* embedding/provider part of the same
+    // endpoint, which the proxy form does not surface.
+    //
+    // Why echo the full snapshot on save: the GET response is rendered dynamically and the proxy
+    // sub-object is intentionally NOT rendered here (it has its own editor). To avoid clobbering
+    // proxy when we PUT, we clone the last GET snapshot and overlay only the edited fields, then
+    // PUT the whole object. This is safe whether the backend merges slots or replaces the doc.
+    let _msSnapshot = null;
+
+    // Curated embedding/provider options for <select> fields whose key looks like a provider.
+    // The current value is always appended if it is not already in the list.
+    const MS_PROVIDER_OPTIONS = [
+        'openai', 'azure', 'local', 'huggingface', 'ollama',
+        'bedrock', 'siliconflow', 'vllm', 'dashscope', 'gemini'
+    ];
+
+    function _msSetError(msg) {
+        const el = document.getElementById('memoryStoreError');
+        const ok = document.getElementById('memoryStoreOk');
+        if (ok) ok.style.display = 'none';
+        if (!el) return;
+        el.textContent = msg || '';
+        el.style.display = msg ? 'block' : 'none';
+    }
+
+    function _msSetOk(msg) {
+        const el = document.getElementById('memoryStoreOk');
+        const err = document.getElementById('memoryStoreError');
+        if (err) err.style.display = 'none';
+        if (!el) return;
+        el.textContent = msg || '';
+        el.style.display = msg ? 'block' : 'none';
+    }
+
+    // Pick an input control from the field key + value. Heuristics keep the form
+    // useful without knowing the exact server schema up front.
+    function _msInputTypeForKey(key, value) {
+        const k = String(key).toLowerCase();
+        if (/(provider|model|engine|backend)/.test(k)) return 'select';
+        if (/(key|secret|token|password|passwd)/.test(k)) return 'password';
+        if (/(url|endpoint|base_url|baseurl|host|uri)/.test(k)) return 'url';
+        if (typeof value === 'boolean') return 'checkbox';
+        if (typeof value === 'number') return 'number';
+        return 'text';
+    }
+
+    // All DOM is built with createElement + textContent/value (never innerHTML with
+    // server data), so a hostile/malformed config value cannot inject markup.
+    function _msRenderField(container, fieldKey, value) {
+        const wrap = document.createElement('div');
+        wrap.className = 'form-group';
+
+        const label = document.createElement('label');
+        label.textContent = fieldKey;
+        wrap.appendChild(label);
+
+        const type = _msInputTypeForKey(fieldKey, value);
+        let input;
+        if (type === 'select') {
+            input = document.createElement('select');
+            input.className = 'settings-select';
+            const opts = MS_PROVIDER_OPTIONS.slice();
+            const cur = value == null ? '' : String(value);
+            if (cur && opts.indexOf(cur) === -1) opts.push(cur);
+            opts.forEach(function (o) {
+                const opt = document.createElement('option');
+                opt.value = o;
+                opt.textContent = o;
+                if (o === cur) opt.selected = true;
+                input.appendChild(opt);
+            });
+        } else if (type === 'checkbox') {
+            input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = !!value;
+        } else {
+            input = document.createElement('input');
+            input.type = (type === 'password' || type === 'url' || type === 'number') ? type : 'text';
+            input.value = (value == null ? '' : String(value));
+        }
+        input.setAttribute('data-field', fieldKey);
+        input.id = 'ms-' + fieldKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+        wrap.appendChild(input);
+        container.appendChild(wrap);
+    }
+
+    // Nested objects (e.g. providers.embedding) become a titled sub-group of fields.
+    function _msRenderGroup(container, groupKey, obj) {
+        const title = document.createElement('div');
+        title.className = 'service-row-header';
+        title.style.marginTop = '12px';
+        const span = document.createElement('span');
+        span.textContent = groupKey;
+        title.appendChild(span);
+        container.appendChild(title);
+
+        Object.keys(obj || {}).forEach(function (subKey) {
+            const fieldKey = groupKey + '.' + subKey;
+            const v = obj[subKey];
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+                _msRenderGroup(container, fieldKey, v);
+            } else {
+                _msRenderField(container, fieldKey, v);
+            }
+        });
+    }
+
+    function renderMemoryStoreForm(snapshot) {
+        const form = document.getElementById('memoryStoreForm');
+        if (!form) return;
+        form.innerHTML = ''; // clears only; we rebuild below with createElement + textContent
+        if (!snapshot || typeof snapshot !== 'object') return;
+        Object.keys(snapshot).forEach(function (topKey) {
+            if (topKey === 'proxy') return; // edited by the [Local Wiki] network proxy form
+            const v = snapshot[topKey];
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+                _msRenderGroup(form, topKey, v);
+            } else {
+                _msRenderField(form, topKey, v);
+            }
+        });
+        if (!form.children.length) {
+            const hint = document.createElement('div');
+            hint.className = 'input-hint';
+            hint.textContent = 'No editable Memory Store fields returned by the server.';
+            form.appendChild(hint);
+        }
+    }
+
+    // Write edited form values back onto `target`, rebuilding the nested structure
+    // implied by the dotted data-field keys.
+    function _msApplyEdits(target) {
+        const inputs = document.querySelectorAll('#memoryStoreForm [data-field]');
+        inputs.forEach(function (input) {
+            const fieldKey = input.getAttribute('data-field');
+            const parts = String(fieldKey).split('.');
+            let node = target;
+            for (let i = 0; i < parts.length - 1; i++) {
+                if (typeof node[parts[i]] !== 'object' || node[parts[i]] === null) node[parts[i]] = {};
+                node = node[parts[i]];
+            }
+            const last = parts[parts.length - 1];
+            if (input.type === 'checkbox') {
+                node[last] = input.checked;
+            } else if (input.type === 'number') {
+                const n = parseFloat(input.value);
+                node[last] = isNaN(n) ? input.value : n;
+            } else {
+                node[last] = input.value;
+            }
+        });
+        return target;
+    }
+
+    async function loadMemoryStoreSettings() {
+        _msSetError('');
+        _msSetOk('');
+        try {
+            const r = await fetch('/v1/settings/network');
+            if (!r.ok) {
+                let reason = 'HTTP ' + r.status;
+                try {
+                    const body = await r.json();
+                    reason = body.error || body.detail || reason;
+                } catch (_e) { /* keep status reason */ }
+                throw new Error(reason);
+            }
+            const snapshot = await r.json();
+            _msSnapshot = snapshot;
+            renderMemoryStoreForm(snapshot);
+        } catch (e) {
+            // Hard constraint: never swallow load failures — surface them in red.
+            _msSetError('Failed to load Memory Store settings: ' + (e && e.message ? e.message : e));
+            console.warn('[JoyWs] loadMemoryStoreSettings:', e);
+        }
+    }
+
+    async function saveMemoryStoreSettings() {
+        _msSetError('');
+        _msSetOk('');
+        // Start from the last GET snapshot so the proxy sub-object is preserved, then overlay edits.
+        const base = (_msSnapshot && typeof _msSnapshot === 'object')
+            ? JSON.parse(JSON.stringify(_msSnapshot))
+            : {};
+        _msApplyEdits(base);
+        try {
+            const r = await fetch('/v1/settings/network', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(base),
+            });
+            if (!r.ok) {
+                let reason = 'HTTP ' + r.status;
+                try {
+                    const body = await r.json();
+                    reason = body.error || body.detail || reason;
+                } catch (_e) { /* keep status reason */ }
+                throw new Error(reason);
+            }
+            // Re-sync the form with the saved snapshot, then show success.
+            await loadMemoryStoreSettings();
+            _msSetOk('Memory Store settings saved.');
+            // Refresh status lights: service config badges (/api/services/status)
+            // and provider health dots (/v1/providers/health).
+            try { if (window.JoyConfig && window.JoyConfig.probe) window.JoyConfig.probe(); } catch (_e) {}
+            try { if (window.JoyWiki && window.JoyWiki.loadHealth) window.JoyWiki.loadHealth(); } catch (_e) {}
+            // Hard constraint: a 2xx PUT is not "success" if the provider is unhealthy.
+            // Surface an ERR as a red error instead of pretending everything is fine.
+            try {
+                const hr = await fetch('/v1/providers/health');
+                if (hr.ok) {
+                    const hd = await hr.json();
+                    const ms = (hd && hd.memory_store) || {};
+                    if (ms.ok === false) {
+                        _msSetError('Saved, but the Memory Store provider reports an error: ' + (ms.reason || 'unknown'));
+                    }
+                }
+            } catch (_e) { /* health unreachable; loadHealth already painted the dots red */ }
+        } catch (e) {
+            // Hard constraint: a non-2xx response must show a red error, never pretend success.
+            _msSetError('Save failed: ' + (e && e.message ? e.message : e));
+            console.warn('[JoyWs] saveMemoryStoreSettings:', e);
+        }
+    }
+
     window.JoyWs = {
         register,
         cleanupServerSession,
         applyApiSettings,
-        connectWebSocket
+        connectWebSocket,
+        loadMemoryStoreSettings,
+        saveMemoryStoreSettings,
+        renderMemoryStoreForm
     };
 })();

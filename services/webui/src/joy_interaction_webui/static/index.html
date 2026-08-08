@@ -503,7 +503,24 @@ limitations under the License.
                         <div class="service-row-header"><i data-lucide="mic"></i><span>ASR</span><span class="service-badge" id="badge-asr">--</span></div>
                         <div class="form-group"><label data-i18n>API URL</label><input type="text" id="svc-asr-api-base" placeholder="http://127.0.0.1:8993/v1/transcribe"></div>
                         <div class="form-group"><label data-i18n>Model</label><input type="text" id="svc-asr-model" placeholder="ggml-large-v3-turbo"></div>
+                        <div class="form-group"><label data-i18n>API Key</label><input type="password" id="svc-asr-api-key" placeholder="optional" data-i18n-placeholder="optional"></div>
                     </div>
+
+                    <!-- Memory Store: embedding / vector provider config (hits /v1/settings/network).
+                         The [Local Wiki] network *proxy* sub-object is edited elsewhere (wiki_frontend.js);
+                         this sub-area surfaces the embedding/provider portion, rendered dynamically from the
+                         GET response by joy_ws.js (window.JoyWs.loadMemoryStoreSettings). -->
+                    <div class="memory-store-sub" id="memoryStoreSub">
+                        <div class="service-row-header" style="margin-top:14px;"><i data-lucide="database"></i><span data-i18n>Memory Store</span></div>
+                        <div class="input-hint" style="margin:6px 0 10px;">Embedding / vector provider settings. Saved to the memory-store network config.</div>
+                        <div id="memoryStoreForm"><!-- dynamically rendered by joy_ws.js --></div>
+                        <div id="memoryStoreError" role="alert" aria-live="assertive" style="display:none; color: var(--error-color, #e5484d); white-space: pre-wrap; margin-top: 8px; font-size: 13px;"></div>
+                        <div id="memoryStoreOk" role="status" aria-live="polite" style="display:none; color: var(--ok-color, #3fb950); margin-top: 8px; font-size: 13px;"></div>
+                        <div style="display: flex; gap: 8px; margin-top: 10px;">
+                            <button class="icon-btn" id="memoryStoreSaveBtn" type="button" aria-label="Save Memory Store settings"><i data-lucide="save"></i> Save Memory Store</button>
+                        </div>
+                    </div>
+
                     <div style="display: flex; gap: 8px; margin-top: 12px;">
                         <button class="icon-btn" id="svcSaveBtn" title="Save all service configs and probe" aria-label="Save all service configs and probe"><i data-lucide="save"></i> Save</button>
                         <button class="icon-btn" id="svcProbeBtn" title="Re-probe all services" aria-label="Re-probe all services"><i data-lucide="activity"></i> Probe</button>
@@ -1311,6 +1328,18 @@ limitations under the License.
             if (saveBtn) saveBtn.addEventListener("click", save);
             if (probeBtn) probeBtn.addEventListener("click", probe);
             load();
+        })();
+
+        // Memory Store sub-area (embedding/provider portion of /v1/settings/network).
+        // Load is triggered when the settings modal opens (see settingsBtn handler below);
+        // save is handled by joy_ws.js so the logic stays co-located with the WS/API cluster.
+        (function () {
+            const msSaveBtn = document.getElementById("memoryStoreSaveBtn");
+            if (msSaveBtn && window.JoyWs && window.JoyWs.saveMemoryStoreSettings) {
+                msSaveBtn.addEventListener("click", function () {
+                    window.JoyWs.saveMemoryStoreSettings();
+                });
+            }
         })();
 
         // Clear RTSP status message when user types
@@ -3651,6 +3680,11 @@ limitations under the License.
             if (window.JoyWiki) {
                 window.JoyWiki.loadHealth();
                 window.JoyWiki.loadNetwork();
+            }
+            // Pull the latest Memory Store (embedding/provider) settings when the
+            // modal opens so the form always reflects the server snapshot.
+            if (window.JoyWs && window.JoyWs.loadMemoryStoreSettings) {
+                window.JoyWs.loadMemoryStoreSettings();
             }
         });
 

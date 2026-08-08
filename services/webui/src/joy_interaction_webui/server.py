@@ -65,6 +65,7 @@ from aiohttp import web  # noqa: E402
 from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription  # noqa: E402
 from aiortc.contrib.media import MediaRelay  # noqa: E402
 
+from . import asr as asr_module  # noqa: E402
 from .asr import setup_asr_routes  # noqa: E402
 from .audio_processor import MicAudioTrack  # noqa: E402
 from .background_model import BackgroundModelService  # noqa: E402
@@ -834,9 +835,9 @@ async def on_startup(app):
 
     async def warm_browser_asr():
         try:
-            from .asr import ASR_URL, _get_inproc_asr
+            from .asr import _get_inproc_asr
 
-            if ASR_URL:
+            if asr_module.get_asr_url():
                 return
             await asyncio.to_thread(_get_inproc_asr)
             logger.info("Browser ASR in-process fallback warmed")
@@ -882,6 +883,20 @@ _services_config: dict = {
         "model": "D:/AI/models/sherpa-onnx/models/asr/streaming-paraformer-bilingual-zh-en",
         "api_key": "",
     },
+}
+
+# Feed the live service config to the ASR module so it can hot-reload the
+# external ASR url/api_key without a process restart (see asr.connect_asr).
+asr_module.set_asr_config_source(_services_config)
+
+# Last asr subset we propagated, used to detect real changes and avoid
+# needless reconnect logging on every PUT. Seeded from the current asr slot
+# so the first _propagate_services_to_runtime() call does not false-trigger
+# invalidate_asr_client() / reconnect logging.
+_last_asr_propagated: dict = {
+    "api_base": _services_config.get("asr", {}).get("api_base", ""),
+    "api_key": _services_config.get("asr", {}).get("api_key", ""),
+    "model": _services_config.get("asr", {}).get("model", ""),
 }
 
 
@@ -933,6 +948,47 @@ def _probe_asr(asr_cfg):
     return {"ok": False, "reason": "no api_base or model"}
 
 
+def _log_config_change(slot, changed_fields, redacted_values):
+    """Append one config_change event to logs/config-change.jsonl.
+
+    Follows the project JSONL convention (D-2026-08-01-060/061): ``ts`` is UTC
+    ISO-8601, ``event`` is kebab-case, and api_key is NEVER written in plaintext
+    (only ``***set***`` / ``***cleared***`` or a short redacted form).
+
+    Parameters
+    ----------
+    slot: str
+        Service slot that changed (llm / summary / tts / asr).
+    changed_fields: list[str]
+        Names of the fields that actually changed.
+    redacted_values: dict
+        Field -> redacted representation. Non-secret fields (api_base, model)
+        may carry their plaintext; api_key must be redacted.
+    """
+    try:
+        log_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "..",
+            "..",
+            "..",
+            "logs",
+        )
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "config-change.jsonl")
+        record = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "event": "config_change",
+            "module": slot,
+            "changed": list(changed_fields),
+            "values": dict(redacted_values),
+        }
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.warning("failed to append config-change log: %s", exc)
+
+
 async def _services_config_handler(request):
     if request.method == "GET":
         return web.json_response(dict(_services_config))
@@ -946,9 +1002,18 @@ async def _services_config_handler(request):
             if not isinstance(incoming, dict):
                 continue
             cur = _services_config.setdefault(slot, {})
+            changed_fields = []
+            redacted = {}
             for key in ("api_base", "model", "api_key"):
-                if key in incoming:
+                if key in incoming and incoming[key] != cur.get(key):
                     cur[key] = incoming[key]
+                    changed_fields.append(key)
+                    if key == "api_key":
+                        redacted["api_key"] = "***set***" if incoming[key] else "***cleared***"
+                    else:
+                        redacted[key] = incoming[key]
+            if changed_fields:
+                _log_config_change(slot, changed_fields, redacted)
         _propagate_services_to_runtime()
         return web.json_response(dict(_services_config))
     return web.json_response({"error": "method not allowed"}, status=405)
@@ -1229,12 +1294,14 @@ async def _ingest_text_handler(request: web.Request) -> web.Response:
 
 def _propagate_services_to_runtime():
     """Push the saved llm/summary config into live service instances.
+
     - LLM: update every session VLMService (api_base + model + api_key).
     - Summary: webinfer owns the summarizer; webui cannot reach into it.
       We log the change so the operator can restart webinfer if needed.
     - TTS / ASR: read on demand by JarvisConfig.from_env(); changes take
       effect for the NEXT session that calls from_env().
     """
+    global _last_asr_propagated
     try:
         llm_cfg = _services_config.get("llm", {})
         api_base = llm_cfg.get("api_base")
@@ -1257,10 +1324,34 @@ def _propagate_services_to_runtime():
             "api_base", ""
         ) or os.environ.get("JARVIS_TTS_API_URL", "http://127.0.0.1:8985/v1/synthesize")
         asr_cfg = _services_config.get("asr", {})
+        # Mirror the model into the env for legacy callers. The authoritative
+        # source is asr_cfg["model"] (slot["model"] in asr._asr_cfg()); the
+        # ASR_MODEL_DIR env var is only a fallback used when the slot is empty.
         if asr_cfg.get("model"):
             os.environ["ASR_MODEL_DIR"] = asr_cfg["model"]
     except Exception as exc:
         logger.warning("propagate tts/asr config: %s", exc)
+    # ASR: connect_asr reads the live config on every new browser session, so
+    # hot-reload needs no persistent client. We only bump the invalidation epoch
+    # when the asr slot actually changed, to avoid needless reconnect logging.
+    # No silent local fallback: an invalid url/key still raises on connect.
+    try:
+        asr_cfg = _services_config.get("asr", {}) or {}
+        asr_subset = {
+            "api_base": asr_cfg.get("api_base", ""),
+            "api_key": asr_cfg.get("api_key", ""),
+            "model": asr_cfg.get("model", ""),
+        }
+        if asr_subset != _last_asr_propagated:
+            _last_asr_propagated = dict(asr_subset)
+            asr_module.invalidate_asr_client()
+            logger.info(
+                "ASR config propagated (url set=%s, key set=%s); next ASR session reconnects",
+                bool(asr_subset["api_base"]),
+                bool(asr_subset["api_key"]),
+            )
+    except Exception as exc:
+        logger.warning("propagate asr config: %s", exc)
     summary_cfg = _services_config.get("summary", {})
     if summary_cfg.get("api_base") or summary_cfg.get("model") or summary_cfg.get("api_key"):
         # Fire-and-forget; the PUT /api/services/config caller does not

@@ -29,6 +29,7 @@
         cfg.tts.api_base = (urlEl('tts', 'api-base') || {}).value || '';
         cfg.asr.api_base = (urlEl('asr', 'api-base') || {}).value || '';
         cfg.asr.model = (urlEl('asr', 'model') || {}).value || '';
+        cfg.asr.api_key = (urlEl('asr', 'api-key') || {}).value || '';
         return cfg;
     }
 
@@ -42,6 +43,7 @@
         setVal('svc-tts-api-base', cfg.tts && cfg.tts.api_base);
         setVal('svc-asr-api-base', cfg.asr && cfg.asr.api_base);
         setVal('svc-asr-model', cfg.asr && cfg.asr.model);
+        setVal('svc-asr-api-key', cfg.asr && cfg.asr.api_key);
     }
 
     async function load() {

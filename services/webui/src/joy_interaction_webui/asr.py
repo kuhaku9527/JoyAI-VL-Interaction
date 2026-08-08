@@ -50,11 +50,6 @@ def _get_inproc_asr():
 
 
 # ASR parameters
-ASR_URL = os.getenv("ASR_URL", "").strip()
-ASR_AUTHORIZATION = os.getenv(
-    "ASR_AUTHORIZATION",
-    "",
-)
 ASR_REQUEST_SID = os.getenv("ASR_REQUEST_SID", "browser-room")
 ASR_SAMPLE_RATE = int(os.getenv("ASR_SAMPLE_RATE", "16000"))
 ASR_CHUNK_SECONDS = float(os.getenv("ASR_CHUNK_SECONDS", "0.04"))
@@ -84,6 +79,78 @@ ASR_RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Runtime config source (hot-reload)
+# ---------------------------------------------------------------------------
+# The webui keeps the live service config in server._services_config["asr"].
+# server.py injects that dict into this module via set_asr_config_source() so
+# ASR reconnects pick up url/api_key changes without a process restart. Env
+# vars (ASR_URL / ASR_AUTHORIZATION / ASR_MODEL_DIR) are only a fallback used
+# when the runtime slot is empty, preserving local defaults.
+_ASR_CONFIG_SOURCE = None
+_ASR_CLIENT_EPOCH = 0
+
+
+def set_asr_config_source(config: dict) -> None:
+    """Point this module at the live services-config dict (server._services_config).
+
+    Parameters
+    ----------
+    config: dict
+        The shared runtime config dict owned by server.py.
+    """
+    global _ASR_CONFIG_SOURCE
+    _ASR_CONFIG_SOURCE = config
+
+
+def invalidate_asr_client() -> None:
+    """Bump the ASR client epoch (reserved hook for a future persistent client).
+
+    Real hot-reload does NOT happen here. The webui keeps a single shared
+    ``_services_config`` dict, and every browser ASR session is a lazy websocket
+    connection that reads the live config through ``_asr_cfg()`` at connect time.
+    So a config PUT already takes effect on the next session with no invalidation
+    needed. This epoch bump is only a lightweight hook that
+    ``server._propagate_services_to_runtime()`` calls when the asr slot actually
+    changes, so that IF a persistent/cached client is added later it can be
+    dropped and the next session reconnects with the new url/api_key.
+    """
+    global _ASR_CLIENT_EPOCH
+    _ASR_CLIENT_EPOCH += 1
+    logger.debug("ASR client invalidated (epoch=%s); next session reconnects", _ASR_CLIENT_EPOCH)
+
+
+def _asr_cfg() -> dict:
+    """Resolve the effective ASR config from the runtime source + env fallback.
+
+    Returns
+    -------
+    dict
+        Keys: ``url`` (websocket endpoint), ``api_key`` (Bearer token),
+        ``model`` (local sherpa-onnx model dir).
+    """
+    slot: dict = {}
+    if isinstance(_ASR_CONFIG_SOURCE, dict):
+        slot = _ASR_CONFIG_SOURCE.get("asr", {}) or {}
+    url = (slot.get("api_base") or "").strip() or os.getenv("ASR_URL", "").strip()
+    api_key = (slot.get("api_key") or "").strip() or os.getenv("ASR_AUTHORIZATION", "").strip()
+    model = (slot.get("model") or "").strip() or os.getenv("ASR_MODEL_DIR", "").strip()
+    return {"url": url, "api_key": api_key, "model": model}
+
+
+def get_asr_url() -> str:
+    """Return the currently configured ASR websocket URL (runtime or env)."""
+    return _asr_cfg().get("url", "")
+
+
+def _format_authorization(api_key: str) -> str | None:
+    if not api_key:
+        return None
+    lowered = api_key.lower()
+    if lowered.startswith("bearer ") or lowered.startswith("basic "):
+        return api_key
+    return "Bearer " + api_key
+
 
 def mask_secret(value):
     if not value:
@@ -93,17 +160,37 @@ def mask_secret(value):
     return f"{value[:4]}...{value[-4:]}"
 
 
-def build_asr_headers():
+def build_asr_headers(asr_cfg: dict | None = None) -> dict:
+    """Build the websocket request headers for an ASR connection.
+
+    Parameters
+    ----------
+    asr_cfg: dict | None
+        Effective ASR config (from :func:`_asr_cfg`). When omitted, the live
+        config is resolved. If ``api_key`` is present an ``Authorization: Bearer
+        <key>`` header is added; when absent the header is omitted so local
+        sherpa-onnx deployments stay backward compatible.
+
+    Returns
+    -------
+    dict
+        Headers dict for ``aiohttp`` ws_connect.
+    """
+    if asr_cfg is None:
+        asr_cfg = _asr_cfg()
     request_params = {
         "sid": ASR_REQUEST_SID,
         "reqid": str(uuid.uuid1()),
         "sample_rate": ASR_SAMPLE_RATE,
     }
-    return {
-        "authorization": ASR_AUTHORIZATION,
+    headers = {
         "request": json.dumps(request_params),
         "recognize": json.dumps(ASR_RECOGNIZE_PARAMS),
     }
+    authorization = _format_authorization(asr_cfg.get("api_key", ""))
+    if authorization:
+        headers["authorization"] = authorization
+    return headers
 
 
 def retry_asr_delay(attempt):
@@ -125,8 +212,16 @@ async def connect_asr_inproc(session_id):
 
 
 async def connect_asr(session_id):
-    if not ASR_URL:
-        raise RuntimeError("ASR_URL is not configured")
+    """Open a websocket to the (hot-reloaded) external ASR endpoint.
+
+    Reads url/api_key from the live runtime config. An empty url or a
+    network/401 error ultimately raises (no silent fallback); the caller may
+    then fall back to the local in-process sherpa-onnx engine.
+    """
+    cfg = _asr_cfg()
+    url = cfg.get("url", "")
+    if not url:
+        raise RuntimeError("ASR url is not configured")
 
     attempt = 0
     while True:
@@ -136,12 +231,12 @@ async def connect_asr(session_id):
                 "[%s] ASR connect attempt %s url=%s authorization=%s",
                 session_id,
                 attempt + 1,
-                ASR_URL,
-                mask_secret(ASR_AUTHORIZATION),
+                url,
+                mask_secret(cfg.get("api_key", "")),
             )
             asr_ws = await session.ws_connect(
-                ASR_URL,
-                headers=build_asr_headers(),
+                url,
+                headers=build_asr_headers(cfg),
                 timeout=ASR_OPEN_TIMEOUT,
                 heartbeat=20,
                 max_msg_size=0,
