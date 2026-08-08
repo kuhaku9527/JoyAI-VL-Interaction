@@ -71,6 +71,24 @@ def test_missing_key_raises_embedder_error(monkeypatch):
         emb.embed_texts(["x"])
 
 
+def test_api_http_error_raises_embedder_error(monkeypatch):
+    """HTTP 4xx/5xx from the hosted API must raise EmbedderError, never fall
+    back to local inference or return partial vectors."""
+
+    class _ErrResp:
+        def raise_for_status(self):
+            raise RuntimeError("401 Unauthorized")
+
+        def json(self):
+            return {}
+
+    monkeypatch.setattr("httpx.Client.post", lambda self, *a, **k: _ErrResp())
+    emb = BgeM3Embedder(provider="siliconflow", api_key="k")
+    with pytest.raises(EmbedderError) as exc:
+        emb.embed_texts(["x"])
+    assert "embedding API call failed" in str(exc.value)
+
+
 def test_health_uses_same_path(monkeypatch):
     monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
     h = BgeM3Embedder(provider="siliconflow").health()
