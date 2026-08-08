@@ -83,6 +83,23 @@ WebUI 默认使用的 ASR 上游地址为：
 ws://127.0.0.1:8994/ws/asr
 ```
 
+## 云端 ASR 供应商（可选）
+
+适配器使用 OpenAI `/v1/audio/transcriptions` 协议，因此可以指向任意兼容的云端端点。若要将 **硅基流动（SiliconFlow）** 作为上游，替代本地 vLLM 服务：
+
+```bash
+ASR_UPSTREAM_URL=https://api.siliconflow.cn/v1/audio/transcriptions
+ASR_MODEL=FunAudioLLM/SenseVoiceSmall
+ASR_API_KEY=sk-...
+```
+
+硅基流动免费模型推荐：
+
+- `FunAudioLLM/SenseVoiceSmall`（云端默认）：多语言 ASR，自动语种识别，支持情感/音频事件检测，延迟极低。
+- `TeleAI/TeleSpeechASR`：短音频上更快；针对普通话及 60 种中文方言优化，工业级准确率。
+
+两者目前在 SiliconFlow L0 均为免费（受平台公平使用限制，详见 [siliconflow.cn/pricing](https://siliconflow.cn/pricing)）。
+
 ## 测试
 
 不需要真实模型的单元测试：
@@ -99,8 +116,9 @@ joyvl-asr-adapter smoke --wav <mono-pcm16-wav-file>
 
 ## 环境变量
 
-- `ASR_UPSTREAM_URL`：vLLM 转写 API URL，默认 `http://127.0.0.1:8993/v1/audio/transcriptions`
-- `ASR_MODEL`：vLLM 模型名称，默认 `Qwen/Qwen3-ASR-1.7B`
+- `ASR_UPSTREAM_URL`：上游转写 API URL，默认 `http://127.0.0.1:8993/v1/audio/transcriptions`（云端 ASR 可设为 `https://api.siliconflow.cn/v1/audio/transcriptions`）
+- `ASR_MODEL`：上游模型名称，默认 `Qwen/Qwen3-ASR-1.7B`
+- `ASR_API_KEY`：云端端点的 Bearer token（如硅基流动）；本地上游无需设置
 - `ASR_SAMPLE_RATE`：默认采样率，默认 `16000`
 - `ASR_ADAPTER_HOST`：适配器监听 host，默认 `0.0.0.0`
 - `ASR_ADAPTER_PORT`：适配器监听端口，默认 `8994`

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-"""Joy VL Interaction ASR websocket adapter for the local speech model.
+"""Joy VL Interaction ASR websocket adapter.
 
 The adapter is intentionally backend-agnostic. The default
 ``ASR_UPSTREAM_URL`` (``http://127.0.0.1:8993/v1/audio/transcriptions``) is
@@ -16,6 +16,9 @@ transcriptions API:
   ``/v1/audio/transcriptions`` so the same URL works on Windows.
 * **Qwen3-ASR via llama.cpp** -- expose its audio transcriptions handler
   under the same path and the adapter requires no code changes.
+* **Cloud providers** (e.g. SiliconFlow) -- set ``ASR_UPSTREAM_URL`` to
+  their OpenAI-compatible endpoint and provide ``ASR_API_KEY``. The
+  adapter forwards the key as ``Authorization: Bearer <ASR_API_KEY>``.
 
 Override the URL with ``$env:ASR_UPSTREAM_URL`` if the upstream uses a
 different port, or a different path (e.g. ``/asr`` for sherpa-onnx).
@@ -72,6 +75,7 @@ class Settings:
     model: str = MODEL_NAME
     sample_rate: int = DEFAULT_SAMPLE_RATE
     request_timeout: float = DEFAULT_TIMEOUT_SECONDS
+    api_key: str = ""
 
 
 Transcriber = Callable[[bytes, int, Settings], Awaitable[str]]
@@ -85,6 +89,7 @@ def load_settings_from_env() -> Settings:
         request_timeout=float(
             env_value("ASR_REQUEST_TIMEOUT", default=str(DEFAULT_TIMEOUT_SECONDS))
         ),
+        api_key=env_value("ASR_API_KEY", default=""),
     )
 
 
@@ -136,9 +141,13 @@ def extract_transcription_text(payload: dict[str, Any]) -> str:
 
 async def transcribe_with_vllm(wav_bytes: bytes, sample_rate: int, settings: Settings) -> str:
     del sample_rate
+    headers: dict[str, str] = {}
+    if settings.api_key:
+        headers["Authorization"] = f"Bearer {settings.api_key}"
     async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
         response = await client.post(
             settings.upstream_url,
+            headers=headers,
             data={"model": settings.model},
             files={"file": ("audio.wav", wav_bytes, "audio/wav")},
         )

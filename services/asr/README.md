@@ -83,6 +83,23 @@ The ASR upstream address used by WebUI by default is:
 ws://127.0.0.1:8994/ws/asr
 ```
 
+## Cloud ASR provider (optional)
+
+The adapter speaks the OpenAI `/v1/audio/transcriptions` protocol, so it can be pointed at any compatible cloud endpoint. To use **SiliconFlow** as the upstream instead of a local vLLM service:
+
+```bash
+ASR_UPSTREAM_URL=https://api.siliconflow.cn/v1/audio/transcriptions
+ASR_MODEL=FunAudioLLM/SenseVoiceSmall
+ASR_API_KEY=sk-...
+```
+
+Supported free-tier models on SiliconFlow:
+
+- `FunAudioLLM/SenseVoiceSmall` (default cloud choice): multilingual ASR, automatic language identification, emotion/audio-event detection, very low latency.
+- `TeleAI/TeleSpeechASR`: faster on short audio; optimized for Mandarin + 60 Chinese dialects; industrial-grade accuracy.
+
+Both are currently priced at ¥0 on SiliconFlow L0 (subject to their fair-use limits; see [siliconflow.cn/pricing](https://siliconflow.cn/pricing)).
+
 ## Tests
 
 Unit tests that do not require a real model:
@@ -99,8 +116,9 @@ joyvl-asr-adapter smoke --wav <mono-pcm16-wav-file>
 
 ## Environment Variables
 
-- `ASR_UPSTREAM_URL`: vLLM transcription API URL, default `http://127.0.0.1:8993/v1/audio/transcriptions`
-- `ASR_MODEL`: vLLM model name, default `Qwen/Qwen3-ASR-1.7B`
+- `ASR_UPSTREAM_URL`: upstream transcription API URL, default `http://127.0.0.1:8993/v1/audio/transcriptions` (set to `https://api.siliconflow.cn/v1/audio/transcriptions` for cloud ASR)
+- `ASR_MODEL`: upstream model name, default `Qwen/Qwen3-ASR-1.7B`
+- `ASR_API_KEY`: Bearer token for cloud endpoints (e.g. SiliconFlow); omitted for local upstreams
 - `ASR_SAMPLE_RATE`: default sample rate, default `16000`
 - `ASR_ADAPTER_HOST`: adapter listen host, default `0.0.0.0`
 - `ASR_ADAPTER_PORT`: adapter listen port, default `8994`
