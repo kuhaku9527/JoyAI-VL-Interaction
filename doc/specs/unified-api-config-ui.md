@@ -4,7 +4,7 @@
 > 作者端点：`<前端 + 后端>`
 > 关联：`决策/服务-webui.md`、`doc/adr/0014-log-event-schema.md`、`决策/服务-语音栈.md` D-080、`决策/AI代码质量约法三章.md`、`决策/服务-memory-store.md` D-033
 > 合规：本 spec 套用 `决策/spec编写规范.md` 四要素（因果链 / 条件 harness / 负面约束 / 生命周期标记）。
-> retro 说明：本功能实际由 PR #118（commit `01eb1f7`，承 #115）实现并合入 main，**未经 spec-first 流程**。本文件为事后补捕（as-built），目的是止血防再漂，并明确剩余缺口归 #122。
+> retro 说明：本功能实际由 PR #118（commit `01eb1f7`，承 #115）实现并合入 main，**未经 spec-first 流程**。本文件为事后补捕（as-built），目的是止血防再漂。原列缺口中「持久化 + PUT 校验硬化」已由 #122（PR #125，2026-08-08）闭合；仅剩 memory-store 跨进程 reload 验证归 #124。
 
 ## 1. 因果链（Why / Why-this-choice）
 
@@ -27,7 +27,10 @@
   2. **不记 key 明文**：日志按 ADR-0014 脱敏（`***set***` / `***cleared***`），PII 红线见 D-061。
   3. **不改 memory-store 默认 provider=local 的立场**（D-033）；云 API 只是可选切换。
   4. **ASR 云 provider ≠ 加个 UI**：当前 ASR 仍是本地-only（whisper.cpp/FunASR/Qwen3-ASR vLLM :8993），真正的「ASR 云 provider」需要另行实现 provider 层，不在本 spec 范围。
-- **当前已知局限（归 #122）**：① 配置**不持久化**（PUT 只改内存，webui 重启回退 env/默认）；② PUT 对无效/不可达配置当前返回 HTTP 200 + `logger.warning` **沉默**（非显式报错，违反约法三章②的「响亮」要求，但已无 fallback）；③ memory-store 跨进程 reload 是否真正生效待验证。
+- **已知局限 / 闭合状态**：
+  - ① 配置**不持久化** → **已由 #122（PR #125）闭合**：`config/services.json` 原子写（tmp+`os.replace`+fsync，`chmod 0600`，gitignored）+ 启动深合并仅已知 slot/key，缺失/损坏回退默认不中止；重启保留。
+  - ② PUT 对无效/不可达配置返回 HTTP 200 + `logger.warning` **沉默** → **已由 #122（PR #125）闭合**：格式错 `400` / 不可达 `422` 结构化显式报错（含 `slot`/`field`/`reason`/`status`），无效槽绝不应用/落盘，无静默 fallback（守 D-080）；空 `api_base` 视为有效「用默认/本地」不探活。
+  - ③ memory-store 跨进程 reload 是否真正生效 → **仍开放，归 #124**（embedding provider 热重载端点 follow-up，OPEN）。
 
 ## 3. 设计（核心决策点）
 
@@ -54,5 +57,7 @@
 ## 5. 验收 / 排除
 
 - **验收判据（as-built 已满足部分）**：UI 可填/存 4 模块 key；PUT 即时热重载生效（当前会话 / 下一 session）；日志按 ADR-0014 脱敏。
-- **未竟之业（验收判据归 #122）**：webui 重启后配置保留（持久化）；无效配置 PUT 显式报错且服务不静默失效（校验硬化）；memory-store reload 行为已验证或已补端点。
+- **未竟之业**：
+  - 已由 #122（PR #125）闭合：webui 重启后配置保留（持久化）；无效配置 PUT 显式报错且服务不静默失效（校验硬化）。
+  - 仍开放（归 #124）：memory-store reload 行为已验证或已补端点（embedding provider 热重载端点）。
 - **明确排除**：bug 修复、bug 验证、运维操作不属本 spec（见 `决策/spec编写规范.md` §3）；相关 runbook 见 `docs/github-runbook.md`。ASR 云 provider 实现另立（见 §2 负面约束 4）。
