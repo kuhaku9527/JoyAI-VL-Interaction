@@ -7,7 +7,7 @@ name = "joyvl-asr-adapter"
 version = "0.1.0"
 description = "连接 JoyVL ASR 与本地语音模型的 FastAPI WebSocket 适配服务"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 dependencies = [
     "fastapi>=0.115.0",
