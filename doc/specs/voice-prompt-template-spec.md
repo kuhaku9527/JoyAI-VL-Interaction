@@ -22,3 +22,13 @@
 ## §5 验收
 - `tests/test_system_prompt_memory.py` 增用例：voice prompt 输出末尾含「不要 markdown」类约束。
 - 手验：Jarvis 模式 `[response]` 后 TTS 不再念出星号/表情蛋（对照 §10.4）。
+
+## §10.4 预处理（TTS 端轻量 strip 双保险）
+§1 选定「LLM 端 voice_prompt tail 强约束 + TTS 端轻量 strip 双保险」，本节约为后者落点（由 issue #109 实现）。
+
+- **落点**：`services/tts/tts_adapter.py` 的纯函数 `strip_markdown(text: str)`（仅依赖 `re`，无嵌套同定界符量词、无灾难性回溯）。在 `run_tts_session` 送上游前的最后一关以
+  `text = strip_markdown(normalize_text("".join(buffered_text)))` 接线，**vLLM 与 voice-clone 两路都拿到剥离后文本**（接线位于 voice-clone 分支之前）。
+- **剥离项**：行首标题 `#+`、引用 `> `、无序/有序列表 `- / * / + / 1. / 1)`、行内代码 `` `x` ``、链接 `[label](url)`→label、粗体 `**x**`/`__x__`、斜体 `*x*`/`_x_`、围栏代码块标记（保留内部文本）、分隔线 `---`/`***`/`___`（整行删除）；末尾 `" ".join(body.split())` 折叠多余空白。
+- **边界保护**：斜体/下划线用 ASCII-only 边界 `(?<![A-Za-z0-9*])` / `(?<![A-Za-z0-9_])`，避免误剥 `my_var` / `2*3` 类标识符；中文嵌入的强调（如 `说*强调*吧` → `说强调吧`）正常剥离。
+- **单测**：`services/tts/tests/test_tts_markdown_strip.py`（23 例，覆盖中文嵌入斜体/下划线、ASCII 标识符保留、缩进标题/列表、链接/代码块/分隔线、组合与幂等）。
+- **门禁**：`quality.yml` 的 pytest 矩阵已含 `tts`（CI 实际 collects 上述测试）；ruff 对 `services/tts` 走 `--extend-ignore D103,SIM105,D102,D101,RUF001`。
