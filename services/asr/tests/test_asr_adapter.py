@@ -8,7 +8,6 @@ import wave
 from io import BytesIO
 
 import pytest
-
 from asr_adapter import Settings, transcribe_with_vllm
 
 
