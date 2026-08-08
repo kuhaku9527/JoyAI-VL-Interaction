@@ -1,6 +1,8 @@
 """Smart Turn v3.2 semantic end-of-turn detection adapter.
 
-Adds a *semantic* layer on top of sherpa-onnx acoustic endpoint detection.
+A semantic end-of-turn layer on top of the backend-agnostic acoustic endpoint
+(silence) detection; independent of the ASR backend (cloud vLLM/SiliconFlow or
+local sherpa-onnx).
 Wraps the ``pipecat-ai/smart-turn-v3`` ONNX model (CPU, int8-quantized,
 ~8.6MB) and decides whether the user has actually finished speaking, catching
 cases acoustic endpoint detection misses (e.g. "嗯……那个" trailing thought, or
