@@ -84,6 +84,10 @@ agent-workspace/
 *.crt
 *.sqlite
 *.db
+
+# Per-deploy webui services config (may contain api_key plaintext; persisted at
+# runtime by PUT /api/services/config, chmod 0600, restart-safe). Local-only.
+config/services.json
 # Vector index sidecar (USearch HNSW) — regenerable local artifact produced by
 # Local Wiki /v1/external/sync; never commit (companion to *.sqlite above).
 *.usearch
