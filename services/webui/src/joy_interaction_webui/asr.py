@@ -1,6 +1,7 @@
 """ASR websocket bridge for browser microphone audio."""
 
 import asyncio
+import enum
 import json
 import logging
 import os
@@ -209,6 +210,85 @@ async def connect_asr_inproc(session_id):
     engine = _get_inproc_asr()
     engine.start()
     return None, engine
+
+
+class AsrFailureMode(str, enum.Enum):
+    """How ``asr_websocket_handler`` should react to a ``connect_asr`` failure.
+
+    * ``LOCAL_PRIMARY`` — no external url configured; the in-process sherpa
+      engine is the intended primary path (not a silent fallback).
+    * ``ERROR_NO_FALLBACK`` — external url configured but unreachable / auth
+      failed; surface an explicit error, do NOT silently fall back locally.
+    * ``DEGRADED_FAILOVER`` — same external failure, but the operator opted in
+      via ``ASR_ALLOW_LOCAL_FAILOVER=1``; degrade to local with a visible
+      ``degraded`` status tag.
+    """
+
+    LOCAL_PRIMARY = "local-primary"
+    ERROR_NO_FALLBACK = "error-no-fallback"
+    DEGRADED_FAILOVER = "degraded-failover"
+
+
+def _resolve_asr_failure_mode(connect_err: Exception, url_configured: bool) -> AsrFailureMode:
+    """Decide the ASR failure handling mode, per D-2026-08-08-080.
+
+    Parameters
+    ----------
+    connect_err: Exception
+        The exception raised by ``connect_asr``.
+    url_configured: bool
+        Whether an external ASR url was configured when the connect failed.
+
+    Returns
+    -------
+    AsrFailureMode
+        The mode the websocket handler should take.
+    """
+    if not url_configured:
+        return AsrFailureMode.LOCAL_PRIMARY
+    if os.getenv("ASR_ALLOW_LOCAL_FAILOVER") == "1":
+        return AsrFailureMode.DEGRADED_FAILOVER
+    return AsrFailureMode.ERROR_NO_FALLBACK
+
+
+async def _send_inproc_connected(ws, degraded: bool) -> None:
+    """Send the in-process sherpa connected status to the browser.
+
+    When ``degraded`` is True the status is tagged ``degraded: True`` with a
+    reason, so operators and users can see that the local engine is only a
+    fallback (external ASR was unreachable / auth failed).
+    """
+    payload = {
+        "type": "status",
+        "message": "connected",
+        "sample_rate": ASR_SAMPLE_RATE,
+    }
+    if degraded:
+        payload["degraded"] = True
+        payload["reason"] = "external-asr-unreachable"
+    await send_asr_client_json(ws, payload)
+
+
+async def _start_inproc_asr(ws, session_id, continuous_results, client_end_event):
+    """Start the in-process sherpa ASR forward/result tasks.
+
+    Returns the engine handle and the two asyncio tasks. Raises if the
+    in-process engine cannot be initialized, so the caller surfaces an
+    explicit error to the browser instead of silently degrading.
+    """
+    asr_session, asr_ws = await connect_asr_inproc(session_id)
+    audio_task = asyncio.create_task(
+        forward_asr_audio_inproc(session_id, ws, asr_ws, client_end_event)
+    )
+    result_task = asyncio.create_task(
+        forward_asr_results_inproc(
+            session_id,
+            ws,
+            asr_ws,
+            stop_on_final=not continuous_results,
+        )
+    )
+    return asr_session, asr_ws, audio_task, result_task
 
 
 async def connect_asr(session_id):
@@ -545,34 +625,67 @@ async def asr_websocket_handler(request):
             )
         )
     except Exception as connect_err:
-        logger.info(
-            "[%s] external ASR unreachable (%s); using in-process sherpa-onnx",
-            session_id,
-            connect_err,
-        )
-        inproc_mode = True
-        try:
-            asr_session, asr_ws = await connect_asr_inproc(session_id)
-            await send_asr_client_json(
-                ws,
-                {"type": "status", "message": "connected", "sample_rate": ASR_SAMPLE_RATE},
+        mode = _resolve_asr_failure_mode(connect_err, bool(get_asr_url()))
+        if mode is AsrFailureMode.LOCAL_PRIMARY:
+            logger.info(
+                "[%s] local in-proc sherpa ASR (no external endpoint configured)",
+                session_id,
             )
-            audio_task = asyncio.create_task(
-                forward_asr_audio_inproc(session_id, ws, asr_ws, client_end_event)
-            )
-            result_task = asyncio.create_task(
-                forward_asr_results_inproc(
-                    session_id,
-                    ws,
+            try:
+                (
+                    asr_session,
                     asr_ws,
-                    stop_on_final=not continuous_results,
+                    audio_task,
+                    result_task,
+                ) = await _start_inproc_asr(ws, session_id, continuous_results, client_end_event)
+                inproc_mode = True
+                await _send_inproc_connected(ws, degraded=False)
+            except Exception as inproc_err:
+                logger.error("[%s] in-process ASR init failed: %s", session_id, inproc_err)
+                await send_asr_client_json(
+                    ws,
+                    {"type": "error", "message": f"ASR unavailable: {inproc_err}"},
                 )
+                return
+        elif mode is AsrFailureMode.DEGRADED_FAILOVER:
+            logger.error(
+                "[%s] external ASR unreachable (%s); degrading to local in-proc sherpa "
+                "(ASR_ALLOW_LOCAL_FAILOVER=1)",
+                session_id,
+                connect_err,
             )
-        except Exception as inproc_err:
-            logger.error("[%s] in-process ASR init failed: %s", session_id, inproc_err)
+            try:
+                (
+                    asr_session,
+                    asr_ws,
+                    audio_task,
+                    result_task,
+                ) = await _start_inproc_asr(ws, session_id, continuous_results, client_end_event)
+                inproc_mode = True
+                await _send_inproc_connected(ws, degraded=True)
+            except Exception as inproc_err:
+                logger.error("[%s] in-process ASR init failed: %s", session_id, inproc_err)
+                await send_asr_client_json(
+                    ws,
+                    {"type": "error", "message": f"ASR unavailable: {inproc_err}"},
+                )
+                return
+        else:  # AsrFailureMode.ERROR_NO_FALLBACK
+            logger.error(
+                "[%s] external ASR unreachable (%s); local fallback disabled "
+                "(set ASR_ALLOW_LOCAL_FAILOVER=1 to degrade)",
+                session_id,
+                connect_err,
+            )
             await send_asr_client_json(
                 ws,
-                {"type": "error", "message": f"ASR unavailable: {inproc_err}"},
+                {
+                    "type": "error",
+                    "message": (
+                        f"external ASR unreachable: {connect_err}; "
+                        "local fallback disabled (set ASR_ALLOW_LOCAL_FAILOVER=1 to degrade)"
+                    ),
+                },
             )
             return
         done, pending = await asyncio.wait(

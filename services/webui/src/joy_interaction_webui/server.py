@@ -948,12 +948,20 @@ def _probe_asr(asr_cfg):
     return {"ok": False, "reason": "no api_base or model"}
 
 
-def _log_config_change(slot, changed_fields, redacted_values):
-    """Append one config_change event to logs/config-change.jsonl.
+def _log_config_change(slot, changed_fields, redacted_values, events_dir=None):
+    """Append one config_change event to the per-service JSONL event stream.
 
-    Follows the project JSONL convention (D-2026-08-01-060/061): ``ts`` is UTC
-    ISO-8601, ``event`` is kebab-case, and api_key is NEVER written in plaintext
-    (only ``***set***`` / ``***cleared***`` or a short redacted form).
+    Aligns with ADR-0014 (``doc/adr/0014-log-event-schema.md``): writes one
+    JSON object per line to ``logs/events/webui-<UTC-YYYY-MM-DD>.jsonl`` with
+    the four required fields — ``ts`` (ISO-8601 UTC), ``level`` ∈
+    {debug,info,warn,error,critical}, ``service`` (``"webui"``) and ``event``
+    (kebab-case ``config.services.patch``). The original ``slot`` /
+    ``changed_fields`` / ``redacted_values`` are carried inside the optional
+    ``extra`` object.
+
+    PII red line (spec S-1 / D-2026-08-01-061): api_key is NEVER written in
+    plaintext — the caller already replaces it with ``***set***`` /
+    ``***cleared***``, so this helper only persists what it is given.
 
     Parameters
     ----------
@@ -964,29 +972,39 @@ def _log_config_change(slot, changed_fields, redacted_values):
     redacted_values: dict
         Field -> redacted representation. Non-secret fields (api_base, model)
         may carry their plaintext; api_key must be redacted.
+    events_dir: str | None
+        Override for the events directory (used by tests to redirect output).
+        Defaults to ``<repo>/logs/events``.
     """
     try:
-        log_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "..",
-            "..",
-            "..",
-            "..",
-            "logs",
-        )
-        os.makedirs(log_dir, exist_ok=True)
-        log_path = os.path.join(log_dir, "config-change.jsonl")
+        if events_dir is None:
+            repo_logs = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "..",
+                "..",
+                "..",
+                "logs",
+            )
+            events_dir = os.path.join(repo_logs, "events")
+        os.makedirs(events_dir, exist_ok=True)
+        utc_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        log_path = os.path.join(events_dir, "webui-%s.jsonl" % utc_date)
         record = {
             "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "event": "config_change",
-            "module": slot,
-            "changed": list(changed_fields),
-            "values": dict(redacted_values),
+            "level": "info",
+            "service": "webui",
+            "event": "config.services.patch",
+            "extra": {
+                "slot": slot,
+                "changed_fields": list(changed_fields),
+                "redacted_values": dict(redacted_values),
+            },
         }
         with open(log_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception as exc:
-        logger.warning("failed to append config-change log: %s", exc)
+        logger.warning("failed to append config-change event: %s", exc)
 
 
 async def _services_config_handler(request):
