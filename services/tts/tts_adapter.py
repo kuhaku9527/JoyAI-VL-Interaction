@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
@@ -137,6 +138,65 @@ def normalize_text(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
+def strip_markdown(text: str) -> str:
+    """Strip Markdown markers that would be read aloud by the TTS engine.
+
+    Lightweight, dependency-free preprocessor used as a second line of
+    defence before text is sent to the speech model. Removes structural and
+    inline markers (headings, emphasis, inline code, links, list bullets,
+    block quotes, horizontal rules) while preserving the natural-language
+    text, then whitespace-collapses the result with ``" ".join(s.split())``.
+
+    The italic ``*`` / ``_`` boundaries are ASCII-only
+    (``[A-Za-z0-9]``) so emphasis embedded in CJK sentences (e.g.
+    ``说*强调*吧``) is still stripped, while ASCII identifiers such as
+    ``my_var`` and expressions like ``a*b`` are left intact.
+
+    Parameters
+    ----------
+    text:
+        Raw Markdown-ish text to clean.
+
+    Returns
+    -------
+    str
+        The cleaned, whitespace-collapsed text.
+    """
+    lines = text.splitlines()
+    cleaned_lines: list[str] = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        # Horizontal rules carry no speech; drop the whole line.
+        if line in ("---", "***", "___"):
+            continue
+        # Fenced code-block delimiters: drop the marker, keep inner text.
+        if re.match(r"^```+|~~~+", line):
+            continue
+        stripped = line
+        stripped = re.sub(r"^#+\s*", "", stripped)  # headings
+        stripped = re.sub(r"^>\s*", "", stripped)  # block quotes
+        stripped = re.sub(r"^[-*+]\s+", "", stripped)  # unordered bullets
+        stripped = re.sub(r"^\d+[.)]\s+", "", stripped)  # ordered markers
+        cleaned_lines.append(stripped)
+
+    body = "\n".join(cleaned_lines)
+
+    # Inline code: keep inner text, drop the backticks.
+    body = re.sub(r"`([^`]+)`", r"\1", body)
+    # Links: keep the visible label, drop the target URL.
+    body = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", body)
+    # Bold: **text** or __text__.
+    body = re.sub(r"\*\*(.+?)\*\*", r"\1", body)
+    body = re.sub(r"__(.+?)__", r"\1", body)
+    # Italic: *text* / _text_ (ASCII-only boundaries protect identifiers).
+    body = re.sub(r"(?<![A-Za-z0-9*])\*(?!\s)(.+?)(?<!\s)\*(?![A-Za-z0-9*])", r"\1", body)
+    body = re.sub(r"(?<![A-Za-z0-9_])\_(?!\s)(.+?)(?<!\s)\_(?![A-Za-z0-9_])", r"\1", body)
+    # Remove any stray backticks left by fenced blocks.
+    body = body.replace("`", "")
+
+    return " ".join(body.split())
+
+
 def build_session_config(
     config: dict[str, Any],
     *,
@@ -251,7 +311,7 @@ async def run_tts_session(
         await send_error(client_ws, f"Unsupported client event before commit: {message_type}")
         return
 
-    text = normalize_text("".join(buffered_text))
+    text = strip_markdown(normalize_text("".join(buffered_text)))
     if not text:
         await send_error(client_ws, "Text must not be empty")
         return

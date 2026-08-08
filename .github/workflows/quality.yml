@@ -263,7 +263,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [memory-store, background-agent, webinfer, webui]
+        service: [memory-store, background-agent, webinfer, webui, tts]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -293,6 +293,11 @@ jobs:
             # ModuleNotFoundError. Install editable to pull in the full declared
             # dependency graph in one shot — a minimal set is not sufficient.
             pip install -e ".[dev]"
+          elif [ "${{ matrix.service }}" = "tts" ]; then
+            # services/tts/tts_adapter.py imports websockets at module top-level,
+            # so the suite cannot be collected without it; install the lightweight
+            # set + websockets so the tests import successfully.
+            pip install fastapi pydantic "uvicorn[standard]" httpx websockets pytest pytest-asyncio
           else
             pip install fastapi pydantic "uvicorn[standard]" httpx pytest pytest-asyncio
           fi
