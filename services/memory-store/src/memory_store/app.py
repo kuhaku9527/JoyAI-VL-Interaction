@@ -21,6 +21,7 @@ from .config import NetworkConfig, ProviderNetConfig, get_network_config, update
 from .embedder import BgeM3Embedder, EmbedderError
 from .models import (
     DropNamespaceResponse,
+    EmbeddingSettingsRequest,
     NetworkSettingsRequest,
     PushRequest,
     PushResponse,
@@ -394,6 +395,51 @@ async def put_network_settings(req: NetworkSettingsRequest) -> dict:
         for name, pc in req.providers.items():
             merged_providers[name] = ProviderNetConfig(use_proxy=pc.use_proxy)
     update_network_config(NetworkConfig(proxy=proxy_cfg, providers=merged_providers))
+    return await providers_health()
+
+
+@app.post("/v1/settings/embedding")
+async def post_embedding_settings(req: EmbeddingSettingsRequest) -> dict:
+    """Hot-reload the embedding provider at runtime (issue #124).
+
+    Rebuilds the in-process ``BgeM3Embedder`` and re-points the sqlite backend
+    to it — no process restart. Invalid provider -> 400 (D-080, no silent
+    fallback). A provider that fails its health probe (missing key / unreachable
+    for cloud, absent weights for local) is rejected with an explicit error and
+    the live embedder is NOT swapped (no silent degrade). ``VectorIndexStore``
+    holds no embedder reference, so updating backend._embedder + app.state
+    embedder mirror is sufficient.
+
+    The optional ``api_key`` is never logged (ADR-0014 desensitization).
+    """
+    # 1) Validate + construct. Constructor raises ValueError on unknown provider
+    #    (D-080 guard) — surfaced as HTTP 400.
+    try:
+        new_embedder = BgeM3Embedder(provider=req.provider, api_key=req.api_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # 2) Fail-open probe: prove the provider actually works before swapping.
+    probe = new_embedder.health()
+    if not probe.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"embedding provider {req.provider!r} unhealthy: {probe.get('error')}",
+        )
+
+    # 3) Swap embedder references (recall path + app.state mirror).
+    backend = app.state.backend
+    if isinstance(backend, SqliteBackend):
+        backend.set_embedder(new_embedder)
+    app.state.embedder = new_embedder
+
+    logger.info("embedding provider hot-reloaded to %s", req.provider)
+    emit_event(
+        "memory-store",
+        "embedding_provider_switch",
+        level="info",
+        extra={"provider": req.provider},
+    )
     return await providers_health()
 
 

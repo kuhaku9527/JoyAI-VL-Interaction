@@ -159,6 +159,14 @@ class SqliteBackend:
         """Expose the configured embedder (or ``None``) for wiki vector ingest."""
         return self._embedder
 
+    def set_embedder(self, embedder: BgeM3Embedder) -> None:
+        """Replace the live embedder (runtime provider hot-reload, #124).
+
+        ``VectorIndexStore`` holds no embedder reference, so re-pointing this
+        is sufficient for both ingest and recall paths.
+        """
+        self._embedder = embedder
+
     # -- push ----------------------------------------------------------------
 
     async def push(self, session_id: str, blocks: list[MemoryBlock]) -> int:

@@ -135,3 +135,17 @@ class NetworkSettingsRequest(BaseModel):
 
     proxy: ProxySettings | None = None
     providers: dict[str, ProviderNetSettings] | None = None
+
+
+class EmbeddingSettingsRequest(BaseModel):
+    """Body for ``POST /v1/settings/embedding`` (issue #124).
+
+    Hot-reload the embedding provider at runtime. ``provider`` is required and
+    must be one of ``local`` / ``siliconflow`` / ``nvidia`` (else HTTP 400).
+    The optional ``api_key`` is for cloud providers; if omitted the embedder
+    reads it from env as usual. The switch is runtime-only — a restart reverts
+    to ``EMBEDDING_PROVIDER`` (deliberately NOT persisted, see ADR-0014).
+    """
+
+    provider: str
+    api_key: str | None = None
