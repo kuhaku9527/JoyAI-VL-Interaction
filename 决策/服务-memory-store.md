@@ -66,7 +66,8 @@
 | **来源** | ADR-0012 v5（2026-07-24 双栖定稿）+ `services/memory-store/src/memory_store/config.py` |
 | **校验** | `grep -nE "provider.*local|provider.*siliconflow|provider.*nvidia" services/memory-store/src/memory_store/config.py` |
 | **预期** | 命中 provider 枚举 |
-| **Drift** | ✅ **已解决（2026-08-08）**：默认 provider 已于 **PR #42** revert 回 `local`（`BgeM3Embedder()` 无 env 时默认 `local`），开箱即用、离线可用；`siliconflow`（`https://api.siliconflow.cn/v1`，模型 `BAAI/bge-m3`，国内可达、L0 免费额度 RPM 2000 / TPM 500K）与 `nvidia` 保留为显式可选，通过 `EMBEDDING_PROVIDER` env 或构造参数切换。**无 fallback**：API 路径失败时 `EmbedderError` 直接抛出，不静默回退 local；测试 `test_api_failure_raises_embedder_error` 与 `test_unknown_provider_raises_value_error` 锁死此行为。**modified: 2026-08-08｜by AI｜approved: 用户** |
+| **Drift** | ✅ **已解决（2026-08-08）**：默认 provider 已于 **PR #42** revert 回 `local`（`BgeM3Embedder()` 无 env 时默认 `local`），开箱即用、离线可用；`siliconflow`（`https://api.siliconflow.cn/v1`，模型 `BAAI/bge-m3`，国内可达、L0 免费额度 RPM 2000 / TPM 500K）与 `nvidia` 保留为显式可选，通过 `EMBEDDING_PROVIDER` env 或构造参数切换。**无 fallback**：API 路径失败时 `EmbedderError` 直接抛出，不静默回退 local；测试 `test_api_failure_raises_embedder_error` 与 `test_unknown_provider_raises_value_error` 锁死此行为。 |
+| **补充** | 2026-08-08 实测：新账号 `SILICONFLOW_API_KEY` 调 `/v1/embeddings`（model `BAAI/bge-m3`）返回 HTTP 200、2×1024 维向量、usage 正常，L0 免费额度可用；与本地权重 1024 维一致（空间一致性铁律满足）。旧账号曾不可用的记录作废，以本次实测为准。**modified: 2026-08-08｜by AI｜approved: 用户** |
 | **Owner** | 后端 |
 | **锁定** | ✅ |
 
