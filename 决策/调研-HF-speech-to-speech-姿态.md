@@ -46,12 +46,24 @@
 
 - modified: 2026-08-07｜by AI（审查组）｜approved: 用户
 
+## D 项约定（待触发、非不做）
+
+把矩阵「派生工单」里"D 搁置"的语义钉清：D **不是"不做"**，而是"待触发的前瞻目录约定"。
+
+### D. `archive/` / 实验路径隔离约定
+- HF 建议（桌面调研 §4.1）：将来若实验 Pocket TTS / Qwen3-TTS 等后端，**先丢 `services/tts/experimental/`** 隔离目录，别直接塞 `services/tts/` 触发 Lint 门禁；现状 `doc/deprecated/` 存在但代码几乎无 `archive/`，缺"明确隔开实验路径"的物理边界。
+- 性质：**非架构否决，是前瞻性目录约定**。HF 文档自身标注"等用户主动要做 TTS 后端切换再说，本调研不触发"。
+- 结论：**待触发（非不做）**。当前不创建目录、不开 ticket；仅当真正要做 TTS 后端切换时，由执行端按此约定隔离实验代码并补对应 spec。
+- 与 G/H 区别：G/H 因冲突 ADR 锁死不做；D 仅"此刻不触发"，无 ADR 冲突，保留未来采纳空间。
+
+- modified: 2026-08-08｜by AI（审查组）｜approved: 用户
+
 ## 派生工单（采纳项的 spec-first 路由）
 - A voice prompt → `doc/specs/voice-prompt-template-spec.md`
 - B partial transcript → `doc/specs/live-transcript-ui-spec.md`
 - C Design Tokens → `doc/specs/voice-ui-design-tokens-spec.md`
 - E Smart Turn → `doc/specs/smart-turn-end-of-turn-spec.md`（架构级，须 ADR `0018+`）
 - F README -Mode → `doc/specs/readme-mode-matrix-spec.md`
-- D / VAD-3 / I → 搁置或已做，不开工单。
+- D（待触发，见上「D 项约定」）/ VAD-3 / I → 搁置或已做，不开工单。
 
 - modified: 2026-08-06｜by AI（审查组）｜approved: 用户
