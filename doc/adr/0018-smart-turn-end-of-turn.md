@@ -53,3 +53,13 @@
 3. 决策点 5「onnxruntime 随 sherpa-onnx 已在运行时可用」被过度读成功能耦合（实为依赖可用性，且 `import onnxruntime` 失败也 fail-open）。
 
 **后续动作**：修正 `smart_turn_adapter.py:3` docstring 措辞（改为「on top of the backend-agnostic acoustic endpoint (silence) detection」），消除未来误判源（见代码 PR）。
+
+## 实现与标定（2026-08-08，审查组）
+
+**实现机制（精确）**：`is_end_of_turn()` 输入 16k mono int16 音频 → Whisper log-mel 特征 → ONNX 推理 → sigmoid 概率；默认阈值 `probability >= 0.5` 判「说完」（阈值见决策点 7，保持 0.5）。模型即 `smart-turn-v3.2-cpu.onnx`（CPU int8，~8.6MB）。
+
+**标定实测（2026-08-08）**：
+- 官方 test 集，默认阈值 0.5 → **acc 0.823 / F1 0.83**，保持默认不动。
+- 中文明细集仅作 **negative sanity**：得分为域偏移（domain shift）现象，**非 bug**，不据以调参（中文场景偏离官方训练分布）。
+
+> 因果链 / 标定结论归本 ADR（SSOT）；`MEMORY.md` §9 仅保留指针（模型路径 + `SMART_TURN_ENABLED` 默认关 + 本文件指针）。治理依据：`MEMORY.md` §0「记忆文件改动须用户同意」「因果链/分析结论不得写 MEMORY.md」。
