@@ -133,7 +133,7 @@
 | **校验** | `curl -s --max-time 12 http://127.0.0.1:8997/v1/providers/health` → 应 200 且 `embedding.ok=true, model="D:/AI/models/bge-m3"`。修复前基线为 500。 |
 | **预期** | 200，embedding.ok=true，不再 500。 |
 | **修复** | ①代码守卫：`embedder.py:_get_local_model` 把 `SentenceTransformer(name)` 包进 `try/except Exception → raise EmbedderError(...)`（health/sync 优雅降级，不再 500）。②运行时定址：`run-windows.env` 追加 `EMBEDDING_LOCAL_MODEL=D:/AI/models/bge-m3`（指向仓库外有效权重）。 |
-| **Drift** | 🟥 默认去仓库内坏缓存（空 config.json）加载，而非仓库外有效模型；且 `run-windows.env` 被 `.gitignore`（`*.env`）忽略，env 写入**不进版本控制**——若该文件被重置，需重设 `EMBEDDING_LOCAL_MODEL`。embedder.py 守卫是版本控制层的兜底（模型加载失败 → ok=false 而非 500）。后续建议：在 `run-windows.ps1`（git 跟踪）硬编码 `EMBEDDING_LOCAL_MODEL` 默认值以彻底版本控制定住。 |
+| **Drift** | ✅ **已解决（2026-08-08 复核）**：`run-windows.ps1:576`（`Start-MemoryStore`）已硬编码 `EMBEDDING_LOCAL_MODEL` 默认值 `D:/AI/models/bge-m3`（注释标明 2026-08-05 D-2026-08-05-001 即为此做），**且 git 跟踪、进版本控制**；env 文件若已设则优先，否则回退仓库外有效权重。原"后续建议"已成现状，本 Drift 关闭。embedder.py 守卫仍保留作兜底（模型加载失败 → ok=false 而非 500）。 |
 | **Owner** | 后端 |
 | **锁定** | ✅ |
 
