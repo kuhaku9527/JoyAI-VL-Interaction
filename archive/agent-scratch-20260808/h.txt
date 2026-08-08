@@ -1,0 +1,1 @@
+{"ok": true, "model": "streaming-infer-adapter", "backends": ["joyai-vl-interaction-preview"], "summarizer_enabled": true, "sessions": 1, "memory_store": {"enabled": true, "healthy": true, "url": "http://127.0.0.1:8997"}}

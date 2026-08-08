@@ -1,0 +1,589 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- D:\AI\workspace\JoyAI-VL-Interaction-local-wiki\services\memory-store\.venv_qa\Scripts\python.exe
+rootdir: D:\AI\workspace\JoyAI-VL-Interaction-local-wiki\services\memory-store
+configfile: pyproject.toml
+plugins: anyio-4.14.2, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/test_nvidia_real_recall.py::test_nvidia_default_provider_and_endpoint PASSED [ 14%]
+tests/test_nvidia_real_recall.py::test_nvidia_health_live FAILED         [ 28%]
+tests/test_nvidia_real_recall.py::test_nvidia_vector_shape_dtype_norm FAILED [ 42%]
+tests/test_nvidia_real_recall.py::test_nvidia_batch_shape_and_norm FAILED [ 57%]
+tests/test_nvidia_real_recall.py::test_nvidia_chinese_recall_at_1 FAILED [ 71%]
+tests/test_nvidia_real_recall.py::test_nvidia_identical_text_is_stable FAILED [ 85%]
+tests/test_nvidia_real_recall.py::test_nvidia_e2e_wiki_sync_and_recall FAILED [100%]
+
+================================== FAILURES ===================================
+___________________________ test_nvidia_health_live ___________________________
+
+    def test_nvidia_health_live():
+        emb = _real_embedder()
+        result = emb.health()
+>       assert result["ok"] is True, f"NVIDIA health failed: {result}"
+E       AssertionError: NVIDIA health failed: {'ok': False, 'provider': 'nvidia', 'model': 'baai/bge-m3', 'error': "embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"}
+E       assert False is True
+
+tests\test_nvidia_real_recall.py:82: AssertionError
+_____________________ test_nvidia_vector_shape_dtype_norm _____________________
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC820A99D0>
+texts = ['测试中文向量维度与归一化'], is_query = True
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+>           resp.raise_for_status()
+
+src\memory_store\embedder.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Response [500 Internal Server Error]>
+
+    def raise_for_status(self) -> Response:
+        """
+        Raise the `HTTPStatusError` if one occurred.
+        """
+        request = self._request
+        if request is None:
+            raise RuntimeError(
+                "Cannot call `raise_for_status` as the request "
+                "instance has not been set on this response."
+            )
+    
+        if self.is_success:
+            return self
+    
+        if self.has_redirect_location:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "Redirect location: '{0.headers[location]}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+        else:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+    
+        status_class = self.status_code // 100
+        error_types = {
+            1: "Informational response",
+            3: "Redirect response",
+            4: "Client error",
+            5: "Server error",
+        }
+        error_type = error_types.get(status_class, "Invalid status code")
+        message = message.format(self, error_type=error_type)
+>       raise HTTPStatusError(message, request=request, response=self)
+E       httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E       For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+.venv_qa\Lib\site-packages\httpx\_models.py:829: HTTPStatusError
+
+The above exception was the direct cause of the following exception:
+
+    def test_nvidia_vector_shape_dtype_norm():
+        emb = _real_embedder()
+>       vec = emb.embed_query("测试中文向量维度与归一化")
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_nvidia_real_recall.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\memory_store\embedder.py:110: in embed_query
+    return self.embed_texts([text], is_query=True)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\memory_store\embedder.py:124: in embed_texts
+    return self._embed_api(prepared, is_query=is_query)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC820A99D0>
+texts = ['测试中文向量维度与归一化'], is_query = True
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+>           raise EmbedderError(f"embedding API call failed: {exc}") from exc
+E           memory_store.embedder.EmbedderError: embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E           For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+src\memory_store\embedder.py:172: EmbedderError
+______________________ test_nvidia_batch_shape_and_norm _______________________
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC820C3A50>
+texts = ['玛莲妮亚是化圣雪原的圣树boss，使用水鸟乱舞，弱火属性与出血。', '拉塔恩是盖利德红狮子城的boss，使用重力魔法与陨石攻击。', '名刀月隐是智力流派太刀，战技为隙间月影，适合法师使用。', '黄金树是交界地的中心，是玛莉卡女王的神祇居所。']
+is_query = False
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+>           resp.raise_for_status()
+
+src\memory_store\embedder.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Response [500 Internal Server Error]>
+
+    def raise_for_status(self) -> Response:
+        """
+        Raise the `HTTPStatusError` if one occurred.
+        """
+        request = self._request
+        if request is None:
+            raise RuntimeError(
+                "Cannot call `raise_for_status` as the request "
+                "instance has not been set on this response."
+            )
+    
+        if self.is_success:
+            return self
+    
+        if self.has_redirect_location:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "Redirect location: '{0.headers[location]}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+        else:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+    
+        status_class = self.status_code // 100
+        error_types = {
+            1: "Informational response",
+            3: "Redirect response",
+            4: "Client error",
+            5: "Server error",
+        }
+        error_type = error_types.get(status_class, "Invalid status code")
+        message = message.format(self, error_type=error_type)
+>       raise HTTPStatusError(message, request=request, response=self)
+E       httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E       For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+.venv_qa\Lib\site-packages\httpx\_models.py:829: HTTPStatusError
+
+The above exception was the direct cause of the following exception:
+
+    def test_nvidia_batch_shape_and_norm():
+        emb = _real_embedder()
+>       vecs = emb.embed_texts(list(_CHINESE_DOCS.values()), is_query=False)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_nvidia_real_recall.py:103: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\memory_store\embedder.py:124: in embed_texts
+    return self._embed_api(prepared, is_query=is_query)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC820C3A50>
+texts = ['玛莲妮亚是化圣雪原的圣树boss，使用水鸟乱舞，弱火属性与出血。', '拉塔恩是盖利德红狮子城的boss，使用重力魔法与陨石攻击。', '名刀月隐是智力流派太刀，战技为隙间月影，适合法师使用。', '黄金树是交界地的中心，是玛莉卡女王的神祇居所。']
+is_query = False
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+>           raise EmbedderError(f"embedding API call failed: {exc}") from exc
+E           memory_store.embedder.EmbedderError: embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E           For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+src\memory_store\embedder.py:172: EmbedderError
+_______________________ test_nvidia_chinese_recall_at_1 _______________________
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC82159220>
+texts = ['玛莲妮亚是化圣雪原的圣树boss，使用水鸟乱舞，弱火属性与出血。', '拉塔恩是盖利德红狮子城的boss，使用重力魔法与陨石攻击。', '名刀月隐是智力流派太刀，战技为隙间月影，适合法师使用。', '黄金树是交界地的中心，是玛莉卡女王的神祇居所。']
+is_query = False
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+>           resp.raise_for_status()
+
+src\memory_store\embedder.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Response [500 Internal Server Error]>
+
+    def raise_for_status(self) -> Response:
+        """
+        Raise the `HTTPStatusError` if one occurred.
+        """
+        request = self._request
+        if request is None:
+            raise RuntimeError(
+                "Cannot call `raise_for_status` as the request "
+                "instance has not been set on this response."
+            )
+    
+        if self.is_success:
+            return self
+    
+        if self.has_redirect_location:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "Redirect location: '{0.headers[location]}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+        else:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+    
+        status_class = self.status_code // 100
+        error_types = {
+            1: "Informational response",
+            3: "Redirect response",
+            4: "Client error",
+            5: "Server error",
+        }
+        error_type = error_types.get(status_class, "Invalid status code")
+        message = message.format(self, error_type=error_type)
+>       raise HTTPStatusError(message, request=request, response=self)
+E       httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E       For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+.venv_qa\Lib\site-packages\httpx\_models.py:829: HTTPStatusError
+
+The above exception was the direct cause of the following exception:
+
+    def test_nvidia_chinese_recall_at_1():
+        emb = _real_embedder()
+        doc_keys = list(_CHINESE_DOCS.keys())
+        doc_texts = [_CHINESE_DOCS[k] for k in doc_keys]
+>       doc_vecs = emb.embed_texts(doc_texts, is_query=False)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_nvidia_real_recall.py:117: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\memory_store\embedder.py:124: in embed_texts
+    return self._embed_api(prepared, is_query=is_query)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC82159220>
+texts = ['玛莲妮亚是化圣雪原的圣树boss，使用水鸟乱舞，弱火属性与出血。', '拉塔恩是盖利德红狮子城的boss，使用重力魔法与陨石攻击。', '名刀月隐是智力流派太刀，战技为隙间月影，适合法师使用。', '黄金树是交界地的中心，是玛莉卡女王的神祇居所。']
+is_query = False
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+>           raise EmbedderError(f"embedding API call failed: {exc}") from exc
+E           memory_store.embedder.EmbedderError: embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E           For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+src\memory_store\embedder.py:172: EmbedderError
+____________________ test_nvidia_identical_text_is_stable _____________________
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC821C8F30>
+texts = ['玛莲妮亚的弱点在于火属性与出血累积'], is_query = True
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+>           resp.raise_for_status()
+
+src\memory_store\embedder.py:169: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <Response [500 Internal Server Error]>
+
+    def raise_for_status(self) -> Response:
+        """
+        Raise the `HTTPStatusError` if one occurred.
+        """
+        request = self._request
+        if request is None:
+            raise RuntimeError(
+                "Cannot call `raise_for_status` as the request "
+                "instance has not been set on this response."
+            )
+    
+        if self.is_success:
+            return self
+    
+        if self.has_redirect_location:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "Redirect location: '{0.headers[location]}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+        else:
+            message = (
+                "{error_type} '{0.status_code} {0.reason_phrase}' for url '{0.url}'\n"
+                "For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/{0.status_code}"
+            )
+    
+        status_class = self.status_code // 100
+        error_types = {
+            1: "Informational response",
+            3: "Redirect response",
+            4: "Client error",
+            5: "Server error",
+        }
+        error_type = error_types.get(status_class, "Invalid status code")
+        message = message.format(self, error_type=error_type)
+>       raise HTTPStatusError(message, request=request, response=self)
+E       httpx.HTTPStatusError: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E       For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+.venv_qa\Lib\site-packages\httpx\_models.py:829: HTTPStatusError
+
+The above exception was the direct cause of the following exception:
+
+    def test_nvidia_identical_text_is_stable():
+        """Space-consistency rule (design §2.3): same text → same vector."""
+        emb = _real_embedder()
+        text = "玛莲妮亚的弱点在于火属性与出血累积"
+>       a = emb.embed_query(text)
+            ^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_nvidia_real_recall.py:139: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\memory_store\embedder.py:110: in embed_query
+    return self.embed_texts([text], is_query=True)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\memory_store\embedder.py:124: in embed_texts
+    return self._embed_api(prepared, is_query=is_query)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <memory_store.embedder.BgeM3Embedder object at 0x000002BC821C8F30>
+texts = ['玛莲妮亚的弱点在于火属性与出血累积'], is_query = True
+
+    def _embed_api(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not self.api_key:
+            raise EmbedderError(f"{self.provider} API key not set")
+        # Route through the per-provider client factory so proxy configuration
+        # (reserved for phase 1) is honoured instead of a global HTTPS_PROXY.
+        from . import client_factory
+    
+        # NVIDIA NIM's bge-m3 endpoint requires an ``input_type`` discriminator
+        # (``query`` for recall, ``passage`` for ingest); siliconflow's
+        # OpenAI-compatible endpoint does not accept it. Keep the two payloads
+        # distinct so neither provider rejects the request.
+        payload = {"model": self.model, "input": texts, "encoding_format": "float"}
+        if self.provider == "nvidia":
+            payload["input_type"] = "query" if is_query else "passage"
+            payload["truncate"] = "NONE"
+        client = client_factory.get_sync_client(self.provider)
+        try:
+            resp = client.post(
+                f"{self.api_base}/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json=payload,
+                timeout=self._timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+>           raise EmbedderError(f"embedding API call failed: {exc}") from exc
+E           memory_store.embedder.EmbedderError: embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E           For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+
+src\memory_store\embedder.py:172: EmbedderError
+____________________ test_nvidia_e2e_wiki_sync_and_recall _____________________
+
+    def test_nvidia_e2e_wiki_sync_and_recall():
+        pytest.importorskip("usearch")
+        from memory_store.backends.sqlite_backend import SqliteBackend
+        from memory_store.models import RecallFilter
+        from memory_store.wiki_service import sync_wiki_dir
+    
+        emb = _real_embedder()
+        import tempfile
+        from pathlib import Path
+    
+        tmp = Path(tempfile.mkdtemp(prefix="nvidia_wiki_"))
+        wiki = tmp / "wiki" / "elden-ring"
+        wiki.mkdir(parents=True)
+        (wiki / "lore.md").write_text(
+            "\n".join(f"# {k}\n\n{v}\n" for k, v in _CHINESE_DOCS.items()),
+            encoding="utf-8",
+        )
+    
+        be = SqliteBackend(
+            str(tmp / "memory.sqlite"),
+            vec_dir=str(tmp / "vec"),
+            embedder=emb,
+        )
+        try:
+            result = sync_wiki_dir(be, emb, "wiki:elden-ring", str(wiki))
+>           assert result.embedded >= len(_CHINESE_DOCS), result
+E           AssertionError: SyncResponse(namespace='wiki:elden-ring', files=1, chunks=4, embedded=0, skipped_unchanged=0, dropped=False, errors=["embedding batch 0 failed: embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'
+E             For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"])
+E           assert 0 >= 4
+E            +  where 0 = SyncResponse(namespace='wiki:elden-ring', files=1, chunks=4, embedded=0, skipped_unchanged=0, dropped=False, errors=["embedding batch 0 failed: embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"]).embedded
+E            +  and   4 = len({'malenia': '玛莲妮亚是化圣雪原的圣树boss，使用水鸟乱舞，弱火属性与出血。', 'radahn': '拉塔恩是盖利德红狮子城的boss，使用重力魔法与陨石攻击。', 'moonveil': '名刀月隐是智力流派太刀，战技为隙间月影，适合法师使用。', 'erdtree': '黄金树是交界地的中心，是玛莉卡女王的神祇居所。'})
+
+tests\test_nvidia_real_recall.py:172: AssertionError
+============================== warnings summary ===============================
+tests/test_nvidia_real_recall.py::test_nvidia_e2e_wiki_sync_and_recall
+tests/test_nvidia_real_recall.py::test_nvidia_e2e_wiki_sync_and_recall
+tests/test_nvidia_real_recall.py::test_nvidia_e2e_wiki_sync_and_recall
+tests/test_nvidia_real_recall.py::test_nvidia_e2e_wiki_sync_and_recall
+  D:\AI\workspace\JoyAI-VL-Interaction-local-wiki\services\memory-store\src\memory_store\wiki_service.py:56: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_nvidia_real_recall.py::test_nvidia_health_live - AssertionE...
+FAILED tests/test_nvidia_real_recall.py::test_nvidia_vector_shape_dtype_norm
+FAILED tests/test_nvidia_real_recall.py::test_nvidia_batch_shape_and_norm - m...
+FAILED tests/test_nvidia_real_recall.py::test_nvidia_chinese_recall_at_1 - me...
+FAILED tests/test_nvidia_real_recall.py::test_nvidia_identical_text_is_stable
+FAILED tests/test_nvidia_real_recall.py::test_nvidia_e2e_wiki_sync_and_recall
+================== 6 failed, 1 passed, 4 warnings in 56.84s ===================

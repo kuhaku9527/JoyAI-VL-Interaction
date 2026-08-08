@@ -1,0 +1,82 @@
+[
+  {
+    "name": "ci/quality-gate",
+    "commit": {
+      "sha": "9ca8efc57e8b5e0e00d16f628a90199ce3055216",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/9ca8efc57e8b5e0e00d16f628a90199ce3055216"
+    },
+    "protected": false
+  },
+  {
+    "name": "feature/memory-store-v02-hooks",
+    "commit": {
+      "sha": "201736b5b1fc621215b88ecdb0a6f1eac831947e",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/201736b5b1fc621215b88ecdb0a6f1eac831947e"
+    },
+    "protected": false
+  },
+  {
+    "name": "fix/adapter-p0-correctness",
+    "commit": {
+      "sha": "2d53508f6d78b954a877ec6b7125286a9d13b236",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/2d53508f6d78b954a877ec6b7125286a9d13b236"
+    },
+    "protected": false
+  },
+  {
+    "name": "fix/backend-p1-hermes-webinfer",
+    "commit": {
+      "sha": "95c7c7a31228c44e78c03a28981ccca6ba22818c",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/95c7c7a31228c44e78c03a28981ccca6ba22818c"
+    },
+    "protected": false
+  },
+  {
+    "name": "fix/background-agent-test-ruff",
+    "commit": {
+      "sha": "4942c259a7db9d8f6cdc49c36530dde0689cc506",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/4942c259a7db9d8f6cdc49c36530dde0689cc506"
+    },
+    "protected": false
+  },
+  {
+    "name": "fix/webui-block5-connectws",
+    "commit": {
+      "sha": "913c25d9ed61ce93432795ae0243f50ce5e08e09",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/913c25d9ed61ce93432795ae0243f50ce5e08e09"
+    },
+    "protected": false
+  },
+  {
+    "name": "fix/webui-live-refs",
+    "commit": {
+      "sha": "029370cf922e518621c00edbac65cc4081c999ed",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/029370cf922e518621c00edbac65cc4081c999ed"
+    },
+    "protected": false
+  },
+  {
+    "name": "main",
+    "commit": {
+      "sha": "3fed7f875fa4dc2a7ff8ecac899554db83826ad6",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/3fed7f875fa4dc2a7ff8ecac899554db83826ad6"
+    },
+    "protected": false
+  },
+  {
+    "name": "milestone2-adapter-core-split",
+    "commit": {
+      "sha": "082b9161be4ea65a245ad546ca109b3cb0b94889",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/082b9161be4ea65a245ad546ca109b3cb0b94889"
+    },
+    "protected": false
+  },
+  {
+    "name": "test/webinfer-context-overflow",
+    "commit": {
+      "sha": "9f4521d0780736070f7c463e622efda64e2924f0",
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/9f4521d0780736070f7c463e622efda64e2924f0"
+    },
+    "protected": false
+  }
+]

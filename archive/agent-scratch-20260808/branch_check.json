@@ -1,0 +1,63 @@
+{
+  "name": "fix/background-agent-test-ruff",
+  "commit": {
+    "sha": "4942c259a7db9d8f6cdc49c36530dde0689cc506",
+    "node_id": "C_kwDOTWWnRNoAKDQ5NDJjMjU5YTdkYjlkOGY2Y2RjNDljMzY1MzBkZGUwNjg5Y2M1MDY",
+    "commit": {
+      "author": {
+        "name": "Codex",
+        "email": "codex@local",
+        "date": "2026-07-23T07:20:25Z"
+      },
+      "committer": {
+        "name": "Codex",
+        "email": "codex@local",
+        "date": "2026-07-23T07:20:25Z"
+      },
+      "message": "style(background-agent/tests): fix ruff I001/UP037 + format\n\nAuto-fix lint/format issues in test_hermes_api_enrich.py so the\nQuality Gate ruff job passes for PR #13.",
+      "tree": {
+        "sha": "639526713a74f5ea4966d7f1888b4fd6726c1ff1",
+        "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/git/trees/639526713a74f5ea4966d7f1888b4fd6726c1ff1"
+      },
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/git/commits/4942c259a7db9d8f6cdc49c36530dde0689cc506",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/4942c259a7db9d8f6cdc49c36530dde0689cc506",
+    "html_url": "https://github.com/kuhaku9527/JoyAI-VL-Interaction/commit/4942c259a7db9d8f6cdc49c36530dde0689cc506",
+    "comments_url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/4942c259a7db9d8f6cdc49c36530dde0689cc506/comments",
+    "author": null,
+    "committer": null,
+    "parents": [
+      {
+        "sha": "52a6cc67bb80492be0fce0f720e6f3fd12d63447",
+        "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/52a6cc67bb80492be0fce0f720e6f3fd12d63447",
+        "html_url": "https://github.com/kuhaku9527/JoyAI-VL-Interaction/commit/52a6cc67bb80492be0fce0f720e6f3fd12d63447"
+      }
+    ]
+  },
+  "_links": {
+    "self": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/branches/fix/background-agent-test-ruff",
+    "html": "https://github.com/kuhaku9527/JoyAI-VL-Interaction/tree/fix/background-agent-test-ruff"
+  },
+  "protected": false,
+  "protection": {
+    "enabled": false,
+    "required_status_checks": {
+      "enforcement_level": "off",
+      "contexts": [
+
+      ],
+      "checks": [
+
+      ]
+    }
+  },
+  "protection_url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/branches/fix/background-agent-test-ruff/protection"
+}

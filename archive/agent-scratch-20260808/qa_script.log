@@ -1,0 +1,9 @@
+================================================================
+ NVIDIA NIM baai/bge-m3 — real-machine vector recall check
+================================================================
+ provider : nvidia
+ api_base : https://integrate.api.nvidia.com/v1
+ model    : baai/bge-m3
+ dim      : 1024
+ health   : {'ok': False, 'provider': 'nvidia', 'model': 'baai/bge-m3', 'error': "embedding API call failed: Server error '500 Internal Server Error' for url 'https://integrate.api.nvidia.com/v1/embeddings'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500"}
+[FAIL] NVIDIA health check failed.

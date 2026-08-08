@@ -1,0 +1,9 @@
+CONTROL nv-embedqa-e5-v5 (model+input+input_type+encoding_format+truncate):
+   (200, '{"object":"list","data":[{"index":0,"embedding":[0.01221466064453125,-0.0027027130126953125,0.007534027099609375,0.038238525390625,0.0360107421875,-0.0267333984')
+
+baai/bge-m3 variants:
+  [v1 full+truncate NONE]: (500, '{"error":"Something went wrong with the request."}')
+  [v2 no truncate]:        (500, '{"error":"Something went wrong with the request."}')
+  [v3 truncate START]:     (500, '{"error":"Something went wrong with the request."}')
+  [v4 minimal model+input]: (500, '{"error":"Something went wrong with the request."}')
+  [v5 input as str]:       (500, '{"error":"Something went wrong with the request."}')

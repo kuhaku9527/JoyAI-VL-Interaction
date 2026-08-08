@@ -1,0 +1,63 @@
+{
+  "name": "ci/lint-gate-batch2",
+  "commit": {
+    "sha": "593c93d55baeaf05c883376ee19f6c1521060b68",
+    "node_id": "C_kwDOTWWnRNoAKDU5M2M5M2Q1NWJhZWFmMDVjODgzMzc2ZWUxOWY2YzE1MjEwNjBiNjg",
+    "commit": {
+      "author": {
+        "name": "JoyAI Architecture",
+        "email": "arch@joyai.local",
+        "date": "2026-07-24T04:13:07Z"
+      },
+      "committer": {
+        "name": "JoyAI Architecture",
+        "email": "arch@joyai.local",
+        "date": "2026-07-24T04:13:07Z"
+      },
+      "message": "docs(lint): ADR-0011 Batch 2 refinement + handoff\n\n- Correct false premise: no extend-ignore suppresses B904/B019/B007 (audit drift);\n  only the S family is missing from select.\n- Scope Batch 2 to specific S sub-rules (S104/S108/S110/S112/S310) + the already\n  active B019/B007/F841 -> 33 fixable violations, not the full S family (~216).\n- Add reports/handoff-lint-gate-batch2-20260724.md with exact file:line, pyproject\n  diff, and clear-fix vs review/noqa grouping. Code fixes owned by backend dialogue;\n  config flip lands with fixes in one PR.",
+      "tree": {
+        "sha": "8817011a282fed0443c7d7a597a919c90609c85f",
+        "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/git/trees/8817011a282fed0443c7d7a597a919c90609c85f"
+      },
+      "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/git/commits/593c93d55baeaf05c883376ee19f6c1521060b68",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/593c93d55baeaf05c883376ee19f6c1521060b68",
+    "html_url": "https://github.com/kuhaku9527/JoyAI-VL-Interaction/commit/593c93d55baeaf05c883376ee19f6c1521060b68",
+    "comments_url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/593c93d55baeaf05c883376ee19f6c1521060b68/comments",
+    "author": null,
+    "committer": null,
+    "parents": [
+      {
+        "sha": "72bd0a3bd000d6833c871cbaac5f4b0b5d854824",
+        "url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/commits/72bd0a3bd000d6833c871cbaac5f4b0b5d854824",
+        "html_url": "https://github.com/kuhaku9527/JoyAI-VL-Interaction/commit/72bd0a3bd000d6833c871cbaac5f4b0b5d854824"
+      }
+    ]
+  },
+  "_links": {
+    "self": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/branches/ci/lint-gate-batch2",
+    "html": "https://github.com/kuhaku9527/JoyAI-VL-Interaction/tree/ci/lint-gate-batch2"
+  },
+  "protected": false,
+  "protection": {
+    "enabled": false,
+    "required_status_checks": {
+      "enforcement_level": "off",
+      "contexts": [
+
+      ],
+      "checks": [
+
+      ]
+    }
+  },
+  "protection_url": "https://api.github.com/repos/kuhaku9527/JoyAI-VL-Interaction/branches/ci/lint-gate-batch2/protection"
+}

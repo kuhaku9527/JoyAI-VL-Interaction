@@ -1,0 +1,5226 @@
+
+        // ASR parameters
+        const ASR_TARGET_SAMPLE_RATE = 16000;
+        const ASR_SILENCE_AUTO_STOP_MS = 2000;
+        const ASR_SILENCE_RMS_THRESHOLD = 0.012;
+        const ASR_AUDIO_BUFFER_SIZE = 4096;
+        const ASR_FINAL_FALLBACK_MS = 1200;
+        const ASR_WS_PATH = '/ws/asr';
+
+        // Elements
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        const jdLogo = document.getElementById('jdLogo');
+        const videoElement = document.getElementById('videoElement');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const resultText = document.getElementById('resultText');
+
+        let vlmHistory = [];
+        if (typeof syncVlmHistoryEmpty === "function") syncVlmHistoryEmpty();
+        const currentPrompt = document.getElementById('currentPrompt');
+        const metricsInline = document.getElementById('metricsInline');
+        const markdownToggle = document.getElementById('markdownToggle');
+        const markdownIcon = document.getElementById('markdownIcon');
+        const markdownText = document.getElementById('markdownText');
+        const copyButton = document.getElementById('copyButton');
+        const latencyValue = document.getElementById('latencyValue');
+        const avgLatencyValue = document.getElementById('avgLatencyValue');
+        const countValue = document.getElementById('countValue');
+        const btMicLevelValue = document.getElementById('btMicLevelValue');
+        const btMicDeviceValue = document.getElementById('btMicDeviceValue');
+        const btAsrLatencyValue = document.getElementById('btAsrLatencyValue');
+        const btLlmLatencyValue = document.getElementById('btLlmLatencyValue');
+        const btTtsLatencyValue = document.getElementById('btTtsLatencyValue');
+        const btE2eLatencyValue = document.getElementById('btE2eLatencyValue');
+        const promptPresetBtn = document.getElementById('promptPresetBtn');
+        const promptPresetMenu = document.getElementById('promptPresetMenu');
+        const promptPresetOptions = document.querySelectorAll('.prompt-preset-option');
+        const promptEditor = document.getElementById('promptEditor');
+        const promptEditorHome = document.querySelector('.prompt-editor-inline');
+        const fullscreenPromptOverlay = document.getElementById('fullscreenPromptOverlay');
+        const promptText = document.getElementById('promptText');
+        const btListenBtn = document.getElementById('btListenBtn');
+        const btListenPlayer = document.getElementById('btListenPlayer');
+        const speechBtn = document.getElementById('speechBtn');
+        const speechButtons = [speechBtn].filter(Boolean);
+        const promptSendBtn = document.getElementById('promptSendBtn');
+        // Block 3 renamed the API form fields to service-scoped `svc-*` ids, so the
+        // legacy `modelSelect`/`apiBaseUrl`/`apiKey` element ids no longer exist. Point
+        // these closure refs at the LLM service inputs so applyApiSettings / fetchModels
+        // read the live values (fixes the null addEventListener crash + undeclared refs).
+        const modelSelect = document.getElementById('svc-llm-model');
+        const apiBaseUrl = document.getElementById('svc-llm-api-base');
+        const apiKey = document.getElementById('svc-llm-api-key');
+        const refreshModelsBtn = document.getElementById('refreshModelsBtn');
+        const processEvery = document.getElementById('processEvery');
+        const framesPerBatch = document.getElementById('framesPerBatch');
+        const maxLatency = document.getElementById('maxLatency');
+        const mirrorBtn = document.getElementById('mirrorBtn');
+        const quickCameraBtn = document.getElementById('quickCameraBtn');
+        const quickCameraLabel = document.getElementById('quickCameraLabel');
+        const ttsEnabledToggle = document.getElementById('ttsEnabledToggle');
+        const ttsSpeakingLine = document.getElementById('ttsSpeakingLine');
+        const ttsSpeakingText = document.getElementById('ttsSpeakingText');
+        const backgroundEnabledToggle = document.getElementById('backgroundEnabledToggle');
+        const backgroundFrameMultiplier = document.getElementById('backgroundFrameMultiplier');
+        const backgroundMaxFrames = document.getElementById('backgroundMaxFrames');
+
+        let peerConnection = null;
+        let localStream = null;
+        let btListenPeerConnection = null;
+        let btListenStream = null;
+        let btListening = false;
+        let btListeningStarting = false;
+        let btMicLevelAudioContext = null;
+        let btListenGainNode = null;
+        let btMicGainAudioContext = null;
+        let btMicLevelSource = null;
+        let btMicLevelAnalyser = null;
+        let btMicLevelFrame = null;
+        let btMicLevelBuffer = null;
+        // Install `llm_reply` WS event handler on a WebSocket. Used both
+        // by the WrappedWS IIFE below and directly inside connectWebSocket
+        // (where the IIFE has not yet run for the very first WS).
+        function installLlmReplyHandler(ws) {
+            if (!ws) {
+                console.error('[llm-handler] installLlmReplyHandler called with null ws');
+                return;
+            }
+            if (ws.__llmReplyHookInstalled) {
+                console.debug('[llm-handler] already installed on this ws (readyState=' + ws.readyState + ')');
+                return;
+            }
+            ws.__llmReplyHookInstalled = true;
+            ws.addEventListener('message', function (event) {
+                try {
+                    if (typeof event.data === 'string') {
+                        const data = JSON.parse(event.data);
+                        if (data && data.type === 'llm_reply') {
+                            btLatency.llmReplyAt = performance.now();
+                            renderBtLatency();
+                            appendJarvisToResult(data.text || '', data.source || 'jarvis');
+                            playLlmReplyAudio(data.text || '', { source: data.source || 'jarvis' });
+                        } else if (data && data.type === 'pilot_utterance') {
+                            // ASR final: drop the draft bubble and commit
+                            // the canonical pilot message.
+                            clearAsrDraft();
+                            appendPilotToResult(data.text || '');
+                        } else if (data && data.type === 'asr_partial') {
+                            // ASR streaming hypothesis: render as a draft
+                            // bubble so the operator can see what ASR is
+                            // currently thinking (replaces guesswork).
+                            if (data.is_final) {
+                                clearAsrDraft();
+                            } else if (data.text) {
+                                renderAsrDraft(data.text);
+                            }
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            });
+            console.log('[llm-handler] installed message listener on ws (readyState=' + ws.readyState + ', url=' + ws.url + ')');
+        }
+        function appendJarvisToResult(text, source) {
+            appendJarvisDialogEntry('assistant', text, source || 'jarvis');
+        }
+        function appendPilotToResult(text) {
+            appendJarvisDialogEntry('pilot', text, 'Pilot');
+        }
+        function appendJarvisDialogEntry(role, text, source) {
+            const cleanText = String(text || '').trim();
+            if (!cleanText) return;
+            const entry = {
+                key: `jarvis:${role}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+                kind: 'jarvis_dialog',
+                role,
+                source: source || (role === 'pilot' ? 'Pilot' : 'jarvis'),
+                response: cleanText,
+                rawText: cleanText,
+                contextExcluded: true,
+            };
+            vlmHistory.push(entry);
+            appendVlmHistoryEntry(entry, { animateLast: true });
+        }
+
+        // Live ASR draft bubble: shows the streaming hypothesis without
+        // committing to history. Cleared when pilot_utterance (final) fires.
+        let asrDraftElement = null;
+        function renderAsrDraft(text) {
+            const contentDiv = document.getElementById('resultTextContent');
+            if (!contentDiv) return;
+            if (!asrDraftElement || !asrDraftElement.isConnected) {
+                asrDraftElement = document.createElement('div');
+                asrDraftElement.className = 'result-text jarvis-pilot-message asr-draft';
+                const role = document.createElement('span');
+                role.className = 'jarvis-message-role';
+                role.textContent = window.JoyI18n.localizeUiString('Pilot (listening)');
+                const body = document.createElement('div');
+                body.className = 'jarvis-message-body';
+                asrDraftElement.appendChild(role);
+                asrDraftElement.appendChild(body);
+                contentDiv.appendChild(asrDraftElement);
+            }
+            const body = asrDraftElement.querySelector('.jarvis-message-body');
+            if (body) {
+                renderTextIntoElement(body, text);
+            }
+            if (typeof scrollVlmHistoryToBottom === 'function') {
+                scrollVlmHistoryToBottom();
+            }
+        }
+        function clearAsrDraft() {
+            if (asrDraftElement && asrDraftElement.parentNode) {
+                asrDraftElement.parentNode.removeChild(asrDraftElement);
+            }
+            asrDraftElement = null;
+        }
+
+        let websocket = null;
+        let serverConfigApplied = false;
+        let fadeTimeout = null;
+        let lastText = '';
+        let lastTtsEventKey = '';
+        let ttsEventSequence = 0;
+        let ttsRequestToken = 0;
+        let ttsWs = null;
+        let ttsWsReadyPromise = null;
+        let ttsAudioContext = null;
+        let ttsNextPlayTime = 0;
+        let ttsSources = [];
+        let ttsPcmRemainder = null;
+        let ttsSpeaking = false;
+        let pendingTtsText = '';
+        let ttsFinishTimer = null;
+        let currentPromptText = '';
+        let backgroundTaskEntries = new Map();
+        let backgroundSummaryEntries = new Map();
+        let lastReadyBackgroundTaskId = '';
+        let backgroundConfig = null;
+        let lastHistoryKey = null;
+        let lastLoggedInferenceCount = 0;
+        let pendingPromptEntry = null;
+        let streamStartToken = 0;
+        let revealVideoAfterMetricsToken = null;
+        let revealVideoFallbackTimeout = null;
+        let asrWs = null;
+        let asrStream = null;
+        let asrAudioContext = null;
+        let asrSource = null;
+        let asrProcessor = null;
+        let asrSilence = null;
+        let asrStarting = false;
+        let asrRecording = false;
+        let asrFinalText = '';
+        let asrPartialText = '';
+        let asrLastFinalText = '';
+        let asrLastVoiceTime = 0;
+        let asrSendPromptWhenFinal = false;
+        let asrStopMode = 'toggle';
+        let asrPointerId = null;
+        let ignoreNextSpeechClick = false;
+        let ignoreSpeechClickTimeout = null;
+        let asrStartToken = 0;
+        let asrFinalFallbackTimer = null;
+        let asrStopRequested = false;
+        let asrResettingSegment = false;
+        let asrPromptInputResetTimer = null;
+        let btLatency = {
+            asrStartAt: null,
+            asrMicReadyAt: null,
+            asrConnectedAt: null,
+            asrFirstPartialAt: null,
+            asrFinalAt: null,
+            sendStartAt: null,
+            sendAckAt: null,
+            llmReplyAt: null,
+            ttsStartAt: null,
+            ttsReadyAt: null,
+            ttsPlayAt: null,
+        };
+        let mobileVoiceMode = false;
+        // Multi-session: one ID per page/tab; sent in WebSocket and /offer so this tab gets only its VLM output
+        let sessionId = crypto.randomUUID ? crypto.randomUUID() : 'tab-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        window.sessionId = sessionId;
+        let isAnalysisRunning = false;
+        let selectedCameraId = null;
+        let videoDevices = [];
+        let preferredCameraFacing = 'environment';
+        let rtspSessionId = 'default';  // For RTSP mode
+        // Enable markdown by default (user can disable if they prefer raw text)
+        let markdownEnabled = localStorage.getItem('markdownEnabled') !== 'false';
+
+        function getCameraFacing(device, index = 0) {
+            const label = (device?.label || '').toLowerCase();
+            if (/front|user|face|前/.test(label)) {
+                return 'user';
+            }
+            if (/back|rear|environment|world|后/.test(label)) {
+                return 'environment';
+            }
+            return index === 0 ? 'user' : 'environment';
+        }
+
+        function syncQuickCameraButton() {
+            const activeDevice = videoDevices.find(device => device.deviceId === selectedCameraId);
+            const activeIndex = activeDevice ? videoDevices.indexOf(activeDevice) : 0;
+            const facing = getCameraFacing(activeDevice, activeIndex);
+            preferredCameraFacing = facing;
+
+            if (quickCameraLabel) {
+                quickCameraLabel.textContent = facing === 'user' ? '前置' : '后置';
+            }
+            if (quickCameraBtn) {
+                quickCameraBtn.disabled = videoDevices.length < 2;
+            }
+        }
+
+        // Enumerate and list available cameras
+        async function enumerateCameras() {
+            try {
+                // Request permission first to get device labels
+                const tempStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                tempStream.getTracks().forEach(track => track.stop());
+
+                // Now enumerate with labels
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+                const cameraSelect = document.getElementById('cameraSelect');
+                cameraSelect.innerHTML = '';
+
+                if (videoDevices.length === 0) {
+                    cameraSelect.innerHTML = '<option value="">' + window.JoyI18n.localizeUiString('No cameras found') + '</option>';
+                    return;
+                }
+
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    option.text = window.JoyI18n.localizeDeviceLabel(device.label) || (window.JoyI18n.localizeUiString('Camera') + (index + 1));
+                    cameraSelect.appendChild(option);
+                });
+
+                // Select first camera by default
+                selectedCameraId = videoDevices[0].deviceId;
+                syncQuickCameraButton();
+                console.log(`Found ${videoDevices.length} camera(s)`);
+            } catch (err) {
+                console.error('Error enumerating cameras:', err);
+                document.getElementById('cameraSelect').innerHTML = '<option value="">' + window.JoyI18n.localizeUiString('Error detecting cameras') + '</option>';
+            }
+        }
+
+        // Handle camera selection change (v3.38: use webcam module API)
+        document.getElementById('cameraSelect').addEventListener('change', async (e) => {
+            selectedCameraId = e.target.value;
+            syncQuickCameraButton();
+            console.log('Selected camera:', selectedCameraId);
+            if (window.isWebcamCapturing && window.isWebcamCapturing()) {
+                try {
+                    window.stopWebcamCapture();
+                    const constraints = {
+                        deviceId: { exact: selectedCameraId },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    };
+                    await window.startWebcamCapture(window.websocket, {
+                        constraints,
+                        sessionId: window.sessionId,
+                    });
+                    // 切换摄像头后同样接本地预览流到显示区
+                    const camStream = window.getWebcamStream && window.getWebcamStream();
+                    if (camStream && typeof videoElement !== "undefined" && videoElement) {
+                        videoElement.classList.remove("mirrored");
+                        videoElement.srcObject = camStream;
+                    }
+                } catch (err) {
+                    console.error('Error switching camera:', err);
+                }
+            }
+        });
+
+        // Also trigger flash on blur (when dropdown closes)
+        document.getElementById('cameraSelect').addEventListener('blur', () => {
+            const cameraSelect = document.getElementById('cameraSelect');
+            if (cameraSelect.value) {
+                // Trigger flash animation
+                cameraSelect.classList.add('applied');
+                setTimeout(() => {
+                    cameraSelect.classList.remove('applied');
+                }, 600);
+            }
+        });
+
+        function findCameraByFacing(facing) {
+            return videoDevices.find((device, index) => getCameraFacing(device, index) === facing);
+        }
+
+        async function switchCameraByFacing(facing) {
+            const cameraSelect = document.getElementById('cameraSelect');
+            let targetDevice = findCameraByFacing(facing);
+
+            if (!targetDevice && videoDevices.length > 1) {
+                const currentIndex = Math.max(0, videoDevices.findIndex(device => device.deviceId === selectedCameraId));
+                targetDevice = videoDevices[(currentIndex + 1) % videoDevices.length];
+            }
+
+            if (!targetDevice || targetDevice.deviceId === selectedCameraId) {
+                return;
+            }
+
+            preferredCameraFacing = getCameraFacing(targetDevice, videoDevices.indexOf(targetDevice));
+            selectedCameraId = targetDevice.deviceId;
+            if (cameraSelect) {
+                cameraSelect.value = selectedCameraId;
+                cameraSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            syncQuickCameraButton();
+        }
+
+        quickCameraBtn?.addEventListener('click', () => {
+            const nextFacing = preferredCameraFacing === 'user' ? 'environment' : 'user';
+            switchCameraByFacing(nextFacing);
+        });
+
+        // Tooltip positioning (for fixed position tooltips)
+        document.querySelectorAll('.tooltip-wrapper').forEach(wrapper => {
+            const icon = wrapper.querySelector('.tooltip-icon');
+            const tooltip = wrapper.querySelector('.tooltip-text');
+
+            if (icon && tooltip) {
+                wrapper.addEventListener('mouseenter', () => {
+                    const rect = icon.getBoundingClientRect();
+                    tooltip.style.left = `${rect.left}px`;
+                    tooltip.style.top = `${rect.bottom + 8}px`;
+                });
+            }
+        });
+
+        // Handle input source tabs (Webcam vs RTSP)
+        document.querySelectorAll('.input-source-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const source = tab.getAttribute('data-source');
+                const webcamControls = document.getElementById('webcamControls');
+                const rtspControls = document.getElementById('rtspControls');
+                const rtspBetaWarning = document.getElementById('rtspBetaWarning');
+                const startBtn = document.getElementById('startBtn');
+
+                // Update active tab
+                document.querySelectorAll('.input-source-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                // Show/hide controls
+                const screenControls = document.getElementById('screenControls');
+                if (source === 'webcam') {
+                    webcamControls.style.display = 'block';
+                    rtspControls.style.display = 'none';
+                    rtspBetaWarning.style.display = 'none';
+                    if (screenControls) screenControls.style.display = 'none';
+                } else if (source === 'rtsp') {
+                    webcamControls.style.display = 'none';
+                    rtspControls.style.display = 'block';
+                    rtspBetaWarning.style.display = 'flex';
+                    if (screenControls) screenControls.style.display = 'none';
+                } else if (source === 'screen') {
+                    webcamControls.style.display = 'none';
+                    rtspControls.style.display = 'none';
+                    rtspBetaWarning.style.display = 'none';
+                    if (screenControls) screenControls.style.display = 'block';
+                }
+            });
+        });
+
+        // Per-source capture handlers (v3.38). Each video source has its own
+        // start/stop button pair wired to its module. No global dispatcher.
+        (function () {
+            function setStatus(elem, text, color) {
+                if (!elem) return;
+                elem.textContent = text;
+                if (color) elem.style.color = color; else elem.style.color = "";
+            }
+
+            // Webcam
+            (function () {
+                const startBtn = document.getElementById("webcamStartBtn");
+                const stopBtn = document.getElementById("webcamStopBtn");
+                const status = document.getElementById("webcamStatus");
+                function refresh() {
+                    const running = !!(window.isWebcamCapturing && window.isWebcamCapturing());
+                    if (startBtn) startBtn.disabled = running;
+                    if (stopBtn) stopBtn.disabled = !running;
+                    setStatus(status, running ? "Streaming" : "Idle", running ? "var(--success-color, #4caf50)" : "");
+                }
+                if (startBtn) startBtn.addEventListener("click", async () => {
+                    try {
+                        const constraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+                        const sel = document.getElementById("cameraSelect");
+                        if (sel && sel.value) constraints.deviceId = { exact: sel.value };
+                        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+                            if (typeof connectWebSocket === "function") connectWebSocket();
+                        }
+                        await window.startWebcamCapture(window.websocket, {
+                            constraints: constraints,
+                            sessionId: window.sessionId,
+                        });
+                        // 接本地预览流到主显示区（与屏幕采集路径对齐：getScreenCaptureStream -> videoElement.srcObject，修复 OBS VC 黑屏）
+                        const camStream = window.getWebcamStream && window.getWebcamStream();
+                        if (camStream && typeof videoElement !== "undefined" && videoElement) {
+                            videoElement.classList.remove("mirrored");
+                            videoElement.srcObject = camStream;
+                        }
+                        setStatus(status, "Streaming", "var(--success-color, #4caf50)");
+                    } catch (err) {
+                        console.error("startWebcamCapture:", err);
+                        setStatus(status, "Error: " + (err && err.message ? err.message : err), "var(--error-color, #f44336)");
+                    }
+                });
+                if (stopBtn) stopBtn.addEventListener("click", () => {
+                    window.stopWebcamCapture();
+                    setStatus(status, "Idle");
+                    refresh();
+                });
+                setInterval(refresh, 1000);
+                refresh();
+            })();
+
+            // RTSP
+            (function () {
+                const startBtn = document.getElementById("rtspStartBtn");
+                const stopBtn = document.getElementById("rtspStopBtn");
+                const status = document.getElementById("rtspCaptureStatus");
+                const urlInput = document.getElementById("rtspUrl");
+                function refresh() {
+                    const running = !!(window.isRtspCapturing && window.isRtspCapturing());
+                    if (startBtn) startBtn.disabled = running;
+                    if (stopBtn) stopBtn.disabled = !running;
+                    if (urlInput) urlInput.disabled = running;
+                    setStatus(status, running ? "Streaming" : "Idle", running ? "var(--success-color, #4caf50)" : "");
+                }
+                if (startBtn) startBtn.addEventListener("click", async () => {
+                    const url = urlInput ? urlInput.value.trim() : "";
+                    if (!url) { alert("Please enter an RTSP URL"); return; }
+                    try {
+                        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+                            if (typeof connectWebSocket === "function") connectWebSocket();
+                        }
+                        await window.startRtspCapture(window.websocket, {
+                            rtspUrl: url,
+                            sessionId: window.sessionId,
+                        });
+                        setStatus(status, "Streaming", "var(--success-color, #4caf50)");
+                    } catch (err) {
+                        console.error("startRtspCapture:", err);
+                        setStatus(status, "Error: " + (err && err.message ? err.message : err), "var(--error-color, #f44336)");
+                    }
+                });
+                if (stopBtn) stopBtn.addEventListener("click", () => {
+                    window.stopRtspCapture();
+                    setStatus(status, "Idle");
+                    refresh();
+                });
+                setInterval(refresh, 1000);
+                refresh();
+            })();
+
+            // Screen Capture
+            (function () {
+                const startBtn = document.getElementById("screenStartBtn");
+                const stopBtn = document.getElementById("screenStopBtn");
+                const status = document.getElementById("screenStatus");
+                function refresh() {
+                    const running = !!(window.isScreenCapturing && window.isScreenCapturing());
+                    if (startBtn) startBtn.disabled = running;
+                    if (stopBtn) stopBtn.disabled = !running;
+                    setStatus(status, running ? "Capturing (1 fps)" : "Idle", running ? "var(--success-color, #4caf50)" : "");
+                }
+                if (startBtn) startBtn.addEventListener("click", async () => {
+                    try {
+                        if (!window.websocket || window.websocket.readyState !== WebSocket.OPEN) {
+                            if (typeof connectWebSocket === "function") connectWebSocket();
+                        }
+                        await window.startScreenCapture(window.websocket, { fps: 1 });
+                        const previewStream = window.getScreenCaptureStream && window.getScreenCaptureStream();
+                        if (previewStream && typeof videoElement !== "undefined" && videoElement) {
+                            videoElement.classList.remove("mirrored");
+                            videoElement.srcObject = previewStream;
+                        }
+                        setStatus(status, "Capturing (1 fps)", "var(--success-color, #4caf50)");
+                    } catch (err) {
+                        console.error("startScreenCapture:", err);
+                        setStatus(status, "Error: " + (err && err.message ? err.message : err), "var(--error-color, #f44336)");
+                    }
+                });
+                if (stopBtn) stopBtn.addEventListener("click", () => {
+                    window.stopScreenCapture();
+                    setStatus(status, "Idle");
+                    refresh();
+                });
+                setInterval(refresh, 1000);
+                refresh();
+            })();
+        })();
+
+        // Services panel (v3.38): load / save / probe 4 API slots (LLM / Summary / TTS / ASR)
+        // (function bodies extracted to config_services.js → window.JoyConfig)
+        (function () {
+            const { readForm, writeForm, load, probe, save } = window.JoyConfig;
+            const saveBtn = document.getElementById("svcSaveBtn");
+            const probeBtn = document.getElementById("svcProbeBtn");
+            if (saveBtn) saveBtn.addEventListener("click", save);
+            if (probeBtn) probeBtn.addEventListener("click", probe);
+            load();
+        })();
+
+        // Clear RTSP status message when user types
+        const rtspUrlInput = document.getElementById('rtspUrl');
+        rtspUrlInput.addEventListener('input', () => {
+            const statusDiv = document.getElementById('rtspStatus');
+            statusDiv.style.display = 'none';
+        });
+
+        // Green flash animation when RTSP URL is set (same as API Base URL)
+        rtspUrlInput.addEventListener('blur', () => {
+            if (rtspUrlInput.value.trim()) {
+                rtspUrlInput.classList.add('applied');
+                setTimeout(() => {
+                    rtspUrlInput.classList.remove('applied');
+                }, 600);
+            }
+        });
+
+        // Test RTSP connection
+        document.getElementById('testRtspBtn').addEventListener('click', async () => {
+            const rtspUrl = document.getElementById('rtspUrl').value.trim();
+            const statusDiv = document.getElementById('rtspStatus');
+            const testBtn = document.getElementById('testRtspBtn');
+
+            if (!rtspUrl) {
+                statusDiv.textContent = '⚠️ Please enter an RTSP URL';
+                statusDiv.style.display = 'block';
+                statusDiv.style.color = '#ff6b35';
+                return;
+            }
+
+            testBtn.disabled = true;
+            statusDiv.textContent = '🔄 Testing connection...';
+            statusDiv.style.display = 'block';
+            statusDiv.style.color = '#76b900';
+
+            try {
+                const response = await fetch('/api/rtsp/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        rtsp_url: rtspUrl,
+                        session_id: 'test-' + Date.now()
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const info = data.stream_info;
+                    statusDiv.innerHTML = `✅ Connected!<br>${info.codec} ${info.width}x${info.height} @${info.fps}fps`;
+                    statusDiv.style.color = '#76b900';
+
+                    // Stop the test connection after 2 seconds
+                    setTimeout(async () => {
+                        await fetch('/api/rtsp/stop', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ session_id: data.session_id })
+                        });
+                    }, 2000);
+                } else {
+                    statusDiv.textContent = '❌ ' + (data.error || 'Connection failed');
+                    statusDiv.style.color = '#ff6b35';
+                }
+            } catch (err) {
+                console.error('RTSP test error:', err);
+                statusDiv.textContent = '❌ Connection failed: ' + err.message;
+                statusDiv.style.color = '#ff6b35';
+            } finally {
+                testBtn.disabled = false;
+            }
+        });
+
+        // Tooltip positioning - dynamically position tooltip to avoid clipping
+        document.querySelectorAll('.tooltip-wrapper').forEach(wrapper => {
+            const icon = wrapper.querySelector('.tooltip-icon');
+            const tooltip = wrapper.querySelector('.tooltip-text');
+
+            if (icon && tooltip) {
+                icon.addEventListener('mouseenter', () => {
+                    const rect = icon.getBoundingClientRect();
+                    const tooltipWidth = 380; // Match CSS width
+
+                    // Position below the icon
+                    let left = rect.left - 10; // Slight offset to left
+                    let top = rect.bottom + 8;
+
+                    // Ensure tooltip doesn't go off right edge of viewport
+                    if (left + tooltipWidth > window.innerWidth - 20) {
+                        left = window.innerWidth - tooltipWidth - 20;
+                    }
+
+                    // Ensure tooltip doesn't go off left edge
+                    if (left < 20) {
+                        left = 20;
+                    }
+
+                    tooltip.style.left = left + 'px';
+                    tooltip.style.top = top + 'px';
+                });
+            }
+        });
+
+        // Single source of truth for stripping model decision/control tokens
+        // from text before it reaches the chat UI. The VLM may emit internal
+        // decision markers (</silence>, </response>, <delegation>/</delegation>,
+        // and the open-tag variants) that must never be shown to the end user.
+        // Callers must route VLM output through this before rendering.
+        function getVlmDisplayText(text) {
+            if (!text) return '';
+
+            const rawText = String(text);
+            if (rawText.trim() === '' || rawText.trim() === 'Initializing...') {
+                return '';
+            }
+
+            // <silence> or </silence> means the model chose not to speak — show nothing.
+            if (/<\/?silence>/i.test(rawText)) {
+                if (/<\/?(?:response|delegation|silence)>/i.test(rawText)) {
+                    console.debug('[vlm] dropped silent output containing decision tokens');
+                }
+                return '';
+            }
+
+            // Strip the remaining control tokens, keeping the surrounding reply text
+            // (e.g. the reply body that follows </response>, or the delegated question).
+            const cleaned = rawText.replace(/<\/?(?:response|delegation|silence)>/gi, '');
+            if (cleaned !== rawText) {
+                console.debug('[vlm] stripped decision tokens from display text');
+            }
+            return cleaned.trim();
+        }
+
+        // Recursively strip decision tokens from any string value inside a debug
+        // payload so the raw API response JSON view never exposes them either.
+        function sanitizeDebugPayload(value) {
+            if (typeof value === 'string') {
+                return value.replace(/<\/?(?:response|delegation|silence)>/gi, '');
+            }
+            if (Array.isArray(value)) {
+                return value.map(sanitizeDebugPayload);
+            }
+            if (value && typeof value === 'object') {
+                const out = {};
+                for (const key of Object.keys(value)) {
+                    out[key] = sanitizeDebugPayload(value[key]);
+                }
+                return out;
+            }
+            return value;
+        }
+
+        // Markdown rendering helpers moved to render_markdown.js (window.JoyRender).
+        // Local aliases keep existing call sites (renderMarkdown, escapeHtml, ...) working.
+        const {
+            escapeHtml,
+            decodeHtmlEntities,
+            protectMarkdownCodeSpans,
+            restoreMarkdownCodeSpans,
+            renderMathToHtml,
+            renderMarkdownMath,
+            renderMarkdown,
+            openLinksInNewTabs,
+        } = window.JoyRender;
+
+        // Update markdown toggle UI
+        function updateMarkdownToggleUI() {
+            const contentDiv = document.getElementById('resultTextContent');
+            if (markdownEnabled) {
+                markdownIcon.innerHTML = '<i data-lucide="code"></i>';
+                markdownText.textContent = window.JoyI18n.localizeUiString('Markdown');
+                if (contentDiv) {
+                    contentDiv.classList.add('markdown-rendered');
+                } else {
+                    resultText.classList.add('markdown-rendered');
+                }
+            } else {
+                markdownIcon.innerHTML = '<i data-lucide="file-text"></i>';
+                markdownText.textContent = window.JoyI18n.localizeUiString('Plain Text');
+                if (contentDiv) {
+                    contentDiv.classList.remove('markdown-rendered');
+                } else {
+                    resultText.classList.remove('markdown-rendered');
+                }
+            }
+            lucide.createIcons();
+        }
+
+        // Markdown toggle handler
+        markdownToggle.addEventListener('click', () => {
+            markdownEnabled = !markdownEnabled;
+            localStorage.setItem('markdownEnabled', markdownEnabled.toString());
+            updateMarkdownToggleUI();
+
+            // Re-render current text with new mode
+            renderVlmHistory();
+        });
+
+        // Initialize markdown toggle state
+        updateMarkdownToggleUI();
+
+        // Copy to clipboard functionality
+        copyButton.addEventListener('click', async () => {
+            const contentDiv = document.getElementById('resultTextContent');
+            let textToCopy = '';
+
+            if (contentDiv) {
+                // If markdown is enabled, copy the raw text (not HTML)
+                if (markdownEnabled) {
+                    // Get the raw text by reading from lastText or extracting from content
+                    const latestEntry = vlmHistory[vlmHistory.length - 1] || {};
+                    textToCopy = latestEntry.response || latestEntry.error || contentDiv.innerText || contentDiv.textContent;
+                } else {
+                    const latestEntry = vlmHistory[vlmHistory.length - 1] || {};
+                    textToCopy = latestEntry.response || latestEntry.error || contentDiv.textContent || contentDiv.innerText;
+                }
+            } else {
+                textToCopy = resultText.textContent || resultText.innerText;
+            }
+
+            if (!textToCopy || textToCopy.trim() === '') {
+                return; // Nothing to copy
+            }
+
+            try {
+                await navigator.clipboard.writeText(textToCopy);
+
+                // Visual feedback
+                const originalHTML = copyButton.innerHTML;
+
+                copyButton.classList.add('copied');
+                copyButton.innerHTML = '<i data-lucide="check"></i>';
+                lucide.createIcons();
+
+                // Reset after 0.8 seconds
+                setTimeout(() => {
+                    copyButton.classList.remove('copied');
+                    copyButton.innerHTML = originalHTML;
+                    lucide.createIcons();
+                }, 800);
+            } catch (err) {
+                console.error('Failed to copy text:', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = textToCopy;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    copyButton.classList.add('copied');
+                    setTimeout(() => copyButton.classList.remove('copied'), 500);
+                } catch (e) {
+                    console.error('Fallback copy failed:', e);
+                }
+                document.body.removeChild(textArea);
+            }
+        });
+
+        function renderTextIntoElement(element, text) {
+            if (markdownEnabled) {
+                element.innerHTML = renderMarkdown(text);
+            } else {
+                element.textContent = text;
+            }
+        }
+
+        function extractFencedBlocks(text, language) {
+            return extractFencedBlockCandidates(text, language, { includeUnclosed: false })
+                .map(candidate => candidate.text);
+        }
+
+        function extractFencedBlockCandidates(text, language, options = {}) {
+            const blocks = [];
+            const source = String(text || '');
+            const pattern = /```[ \t]*([a-zA-Z0-9_-]*)[ \t]*\r?\n?/g;
+            const requestedLanguage = String(language || '').toLowerCase();
+            let match;
+            while ((match = pattern.exec(source)) !== null) {
+                const lang = (match[1] || '').toLowerCase();
+                const contentStart = pattern.lastIndex;
+                const closingIndex = source.indexOf('```', contentStart);
+                if (!requestedLanguage || lang === requestedLanguage) {
+                    if (closingIndex >= 0) {
+                        blocks.push({
+                            text: source.slice(contentStart, closingIndex).trim(),
+                            incomplete: false
+                        });
+                    } else if (options.includeUnclosed) {
+                        blocks.push({
+                            text: source.slice(contentStart).trim(),
+                            incomplete: true
+                        });
+                    }
+                }
+                if (closingIndex >= 0) {
+                    pattern.lastIndex = closingIndex + 3;
+                } else {
+                    break;
+                }
+            }
+            return blocks;
+        }
+
+        function extractInlineJsonObjectCandidates(text, requiredType = '') {
+            const source = String(text || '');
+            const candidates = [];
+            const wantedType = String(requiredType || '').toLowerCase();
+
+            for (let start = 0; start < source.length; start += 1) {
+                if (source[start] !== '{') continue;
+
+                let depth = 0;
+                let inString = false;
+                let escaped = false;
+
+                for (let index = start; index < source.length; index += 1) {
+                    const char = source[index];
+                    if (inString) {
+                        if (escaped) {
+                            escaped = false;
+                        } else if (char === '\\') {
+                            escaped = true;
+                        } else if (char === '"') {
+                            inString = false;
+                        }
+                        continue;
+                    }
+
+                    if (char === '"') {
+                        inString = true;
+                    } else if (char === '{') {
+                        depth += 1;
+                    } else if (char === '}') {
+                        depth -= 1;
+                        if (depth === 0) {
+                            const end = index + 1;
+                            const candidate = source.slice(start, end).trim();
+                            if (candidate.includes('"type"')) {
+                                try {
+                                    const parsed = JSON.parse(candidate);
+                                    const type = String(parsed?.type || '').toLowerCase();
+                                    if (!wantedType || type === wantedType) {
+                                        candidates.push({ text: candidate, start, end, parsed });
+                                    }
+                                } catch (err) {
+                                    // This was a brace-balanced object, but not valid JSON.
+                                }
+                            }
+                            start = end - 1;
+                            break;
+                        }
+                    }
+
+                    if (index - start > 160000) {
+                        break;
+                    }
+                }
+            }
+
+            return candidates;
+        }
+
+        function stripInlineStructuredJsonFromText(text) {
+            let source = String(text || '');
+            const removable = extractInlineJsonObjectCandidates(source)
+                .filter(candidate => {
+                    const type = String(candidate.parsed?.type || '').toLowerCase();
+                    return type === 'bar_chart' || type === 'html';
+                })
+                .sort((a, b) => b.start - a.start);
+
+            removable.forEach((candidate) => {
+                let start = candidate.start;
+                const prefix = source.slice(Math.max(0, start - 12), start);
+                const jsonLabel = prefix.match(/(?:^|\s)json\s*$/i);
+                if (jsonLabel) {
+                    start -= jsonLabel[0].length;
+                }
+                source = `${source.slice(0, start)}${source.slice(candidate.end)}`;
+            });
+
+            return source.replace(/[ \t]{2,}/g, ' ').trim();
+        }
+
+        function parseBackgroundChart(text) {
+            const candidates = extractFencedBlocks(text, 'json');
+            extractInlineJsonObjectCandidates(text, 'bar_chart').forEach(candidate => {
+                candidates.push(candidate.text);
+            });
+            const trimmed = String(text || '').trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                candidates.unshift(trimmed);
+            }
+
+            for (const candidate of candidates) {
+                try {
+                    const parsed = JSON.parse(candidate);
+                    if (
+                        parsed &&
+                        parsed.type === 'bar_chart' &&
+                        Array.isArray(parsed.labels) &&
+                        Array.isArray(parsed.values)
+                    ) {
+                        const labels = parsed.labels.map(label => String(label));
+                        const values = parsed.values.map(value => Number(value));
+                        if (labels.length && labels.length === values.length && values.every(Number.isFinite)) {
+                            return {
+                                title: String(parsed.title || ''),
+                                labels,
+                                values
+                            };
+                        }
+                    }
+                } catch (err) {
+                    // Keep looking for a valid structured block.
+                }
+            }
+            return null;
+        }
+
+        function extractBackgroundHtml(text) {
+            return extractBackgroundHtmlDetails(text).html;
+        }
+
+        function extractBackgroundExplanation(text) {
+            let source = String(text || '').trim();
+            if (!source) return '';
+
+            source = source
+                .replace(/```[ \t]*html[ \t]*\r?\n[\s\S]*?(?:\r?\n```|$)/gi, '')
+                .replace(/```[ \t]*json[ \t]*\r?\n\s*\{[\s\S]*?"type"\s*:\s*"(?:html|bar_chart)"[\s\S]*?(?:\r?\n```|$)/gi, '')
+                .trim();
+            source = stripInlineStructuredJsonFromText(source);
+
+            const doctypeIndex = source.search(/<!doctype html/i);
+            const htmlIndex = source.search(/<html[\s>]/i);
+            const starts = [doctypeIndex, htmlIndex].filter(index => index >= 0);
+            if (starts.length) {
+                source = source.slice(0, Math.min(...starts)).trim();
+            }
+
+            return source;
+        }
+
+        function extractBackgroundHtmlDetails(text) {
+            const explicitHtmlCandidates = [];
+            const htmlBlocks = extractFencedBlockCandidates(text, 'html', { includeUnclosed: true });
+            htmlBlocks.forEach((block) => {
+                explicitHtmlCandidates.push({
+                    text: block.text,
+                    incomplete: block.incomplete
+                });
+            });
+
+            const candidates = extractFencedBlocks(text, 'json');
+            extractInlineJsonObjectCandidates(text, 'html').forEach(candidate => {
+                candidates.push(candidate.text);
+            });
+            const trimmed = String(text || '').trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                candidates.unshift(trimmed);
+            }
+            for (const candidate of candidates) {
+                try {
+                    const parsed = JSON.parse(candidate);
+                    if (parsed && parsed.type === 'html' && typeof parsed.html === 'string') {
+                        explicitHtmlCandidates.push({
+                            text: parsed.html,
+                            incomplete: false
+                        });
+                    }
+                } catch (err) {
+                    // Keep looking.
+                }
+            }
+
+            const explicitBest = pickBestBackgroundHtmlCandidate(explicitHtmlCandidates);
+            if (explicitBest) {
+                return explicitBest;
+            }
+
+            const fallbackBest = pickBestBackgroundHtmlCandidate([{
+                text: trimmed,
+                incomplete: false
+            }]);
+            if (fallbackBest) {
+                return fallbackBest;
+            }
+            return { html: '', incomplete: false };
+        }
+
+        function pickBestBackgroundHtmlCandidate(htmlCandidates) {
+            let best = null;
+            htmlCandidates.forEach((candidate) => {
+                const details = normalizeExtractedHtmlDetails(candidate.text, {
+                    sourceIncomplete: candidate.incomplete
+                });
+                if (!details.html) return;
+                const scored = {
+                    ...details,
+                    score: scoreHtmlCandidate(details.html, details.incomplete)
+                };
+                if (!best || scored.score > best.score) {
+                    best = scored;
+                }
+            });
+
+            if (best) {
+                return {
+                    html: best.html,
+                    incomplete: best.incomplete
+                };
+            }
+            return null;
+        }
+
+        function normalizeExtractedHtml(value) {
+            return normalizeExtractedHtmlDetails(value).html;
+        }
+
+        function normalizeExtractedHtmlDetails(value, options = {}) {
+            let html = decodeHtmlEntities(value).trim();
+            if (!html) {
+                return { html: '', incomplete: false };
+            }
+
+            html = html
+                .replace(/^```[ \t]*(?:html)?[ \t]*\r?\n?/i, '')
+                .replace(/\r?\n?```[ \t]*$/i, '')
+                .trim();
+
+            const doctypeIndex = html.search(/<!doctype html/i);
+            const htmlIndex = html.search(/<html[\s>]/i);
+            const startCandidates = [doctypeIndex, htmlIndex].filter(index => index >= 0);
+            if (!startCandidates.length) {
+                if (/<(head|body|main|section|style|div|h1|p)\b/i.test(html)) {
+                    return {
+                        html: completeStaticHtmlDocument(`<!doctype html>\n<html><head><meta charset="UTF-8"></head><body>${html}`),
+                        incomplete: Boolean(options.sourceIncomplete || looksIncompleteHtml(html))
+                    };
+                }
+                return { html: '', incomplete: false };
+            }
+
+            const startIndex = Math.min(...startCandidates);
+            const endMatch = /<\/html\s*>/i.exec(html.slice(startIndex));
+            if (endMatch) {
+                const endIndex = startIndex + endMatch.index + endMatch[0].length;
+                return {
+                    html: html.slice(startIndex, endIndex).trim(),
+                    incomplete: false
+                };
+            }
+            return {
+                html: completeStaticHtmlDocument(html.slice(startIndex).trim()),
+                incomplete: true
+            };
+        }
+
+        function scoreHtmlCandidate(html, incomplete = false) {
+            const source = String(html || '');
+            const lower = source.toLowerCase();
+            let score = Math.min(source.length, 20000);
+            if (!incomplete) score += 5000;
+            if (lower.includes('<style')) score += 2500;
+            if (lower.includes('<body')) score += 1500;
+            if (/<(body|main|section|article|aside|header|footer|nav|div|h[1-6]|p|button|ul|ol|li|span|img|figure|table)\b/i.test(source)) {
+                score += 1500;
+            }
+            const structuralMatches = source.match(/<(?:div|section|main|header|nav|footer|button|h[1-6]|p|li)\b/gi) || [];
+            score += Math.min(structuralMatches.length * 120, 3000);
+            const placeholderCount = (source.match(/\.{3}|…/g) || []).length;
+            score -= placeholderCount * 3000;
+            const placeholderElementCount = (source.match(/>\s*\.{3}\s*</g) || []).length;
+            score -= placeholderElementCount * 5000;
+            return score;
+        }
+
+        function looksIncompleteHtml(value) {
+            const html = String(value || '');
+            return (
+                (/<html\b/i.test(html) && !/<\/html\s*>/i.test(html)) ||
+                (/<body\b/i.test(html) && !/<\/body\s*>/i.test(html)) ||
+                (/<head\b/i.test(html) && !/<\/head\s*>/i.test(html)) ||
+                (/<style\b/i.test(html) && !/<\/style\s*>/i.test(html))
+            );
+        }
+
+        // Static-HTML sanitizers moved to sanitize_static_html.js (window.JoySanitize).
+        // Local aliases keep existing call sites (completeStaticHtmlDocument, sanitizeStaticHtml, ...) working.
+        const {
+            completeStaticHtmlDocument,
+            sanitizeStaticHtml,
+            normalizeStaticHtmlDocument,
+            sanitizeStaticHtmlFallback,
+            makeStaticHtmlNodeCleaner,
+            isSafeStaticUrl,
+            sanitizeStaticCss,
+        } = window.JoySanitize;
+
+
+        function drawBackgroundBarChart(canvas, chart) {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            const width = Math.max(320, Math.floor(rect.width || canvas.clientWidth || 640));
+            const height = Math.max(220, Math.floor(rect.height || canvas.clientHeight || 280));
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, width, height);
+
+            const styles = getComputedStyle(document.documentElement);
+            const textColor = styles.getPropertyValue('--text-primary').trim() || '#f5f5f5';
+            const mutedColor = styles.getPropertyValue('--text-secondary').trim() || '#aaa';
+            const accentColor = styles.getPropertyValue('--warning-color').trim() || '#FFA726';
+            const gridColor = styles.getPropertyValue('--border-color').trim() || '#333';
+            const padding = { top: chart.title ? 36 : 20, right: 18, bottom: 58, left: 48 };
+            const plotW = width - padding.left - padding.right;
+            const plotH = height - padding.top - padding.bottom;
+            const maxValue = Math.max(...chart.values, 0);
+            const scaleMax = maxValue <= 0 ? 1 : maxValue * 1.12;
+
+            ctx.font = '600 14px system-ui, sans-serif';
+            ctx.fillStyle = textColor;
+            if (chart.title) {
+                ctx.fillText(chart.title, padding.left, 22);
+            }
+
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, padding.top);
+            ctx.lineTo(padding.left, padding.top + plotH);
+            ctx.lineTo(padding.left + plotW, padding.top + plotH);
+            ctx.stroke();
+
+            const barGap = Math.max(6, Math.min(18, plotW / chart.labels.length * 0.18));
+            const barW = Math.max(10, (plotW - barGap * (chart.labels.length - 1)) / chart.labels.length);
+            ctx.textAlign = 'center';
+            ctx.font = '12px system-ui, sans-serif';
+            chart.values.forEach((value, index) => {
+                const x = padding.left + index * (barW + barGap);
+                const barH = Math.max(1, (value / scaleMax) * plotH);
+                const y = padding.top + plotH - barH;
+                ctx.fillStyle = accentColor;
+                ctx.fillRect(x, y, barW, barH);
+                ctx.fillStyle = textColor;
+                ctx.fillText(String(value), x + barW / 2, Math.max(padding.top + 12, y - 6));
+                ctx.fillStyle = mutedColor;
+                const label = chart.labels[index];
+                const shortLabel = label.length > 14 ? label.slice(0, 13) + '…' : label;
+                ctx.fillText(shortLabel, x + barW / 2, padding.top + plotH + 22);
+            });
+            ctx.textAlign = 'left';
+        }
+
+        let activeBackgroundModal = null;
+
+        function createBackgroundActionButton(icon, label, onClick) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'background-rich-action';
+            button.innerHTML = `<i data-lucide="${icon}"></i><span>${label}</span>`;
+            button.addEventListener('click', onClick);
+            return button;
+        }
+
+        function openHtmlArtifact(url) {
+            const value = String(url || '').trim();
+            if (!value) return;
+            window.open(value, '_blank', 'noopener,noreferrer');
+        }
+
+        function renderBackgroundRawView(view, text, options = {}) {
+            view.className = 'background-raw-shell';
+            const toolbar = document.createElement('div');
+            toolbar.className = 'background-raw-toolbar';
+
+            const copyButton = createBackgroundActionButton('copy', '复制', async () => {
+                try {
+                    await navigator.clipboard.writeText(String(text || ''));
+                    copyButton.innerHTML = '<i data-lucide="check"></i><span>已复制</span>';
+                    lucide.createIcons();
+                    setTimeout(() => {
+                        copyButton.innerHTML = '<i data-lucide="copy"></i><span>复制</span>';
+                        lucide.createIcons();
+                    }, 900);
+                } catch (err) {
+                    console.error('Failed to copy background raw result:', err);
+                }
+            });
+            toolbar.appendChild(copyButton);
+
+            if (!options.modal) {
+                toolbar.appendChild(createBackgroundActionButton('maximize-2', '放大', () => {
+                    openBackgroundModal('原始', (body) => renderBackgroundRawView(body, text, { modal: true }));
+                }));
+            }
+
+            const pre = document.createElement('pre');
+            pre.className = 'background-raw-block';
+            pre.textContent = String(text || '');
+            view.appendChild(toolbar);
+            view.appendChild(pre);
+        }
+
+        function renderBackgroundChartView(view, chart, options = {}) {
+            view.className = 'background-view-shell';
+            if (!options.modal) {
+                const toolbar = document.createElement('div');
+                toolbar.className = 'background-view-toolbar';
+                toolbar.appendChild(createBackgroundActionButton('maximize-2', '放大', () => {
+                    openBackgroundModal('图表', (body) => renderBackgroundChartView(body, chart, { modal: true }));
+                }));
+                view.appendChild(toolbar);
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.className = 'background-chart';
+            view.appendChild(canvas);
+            requestAnimationFrame(() => drawBackgroundBarChart(canvas, chart));
+        }
+
+        function renderBackgroundHtmlView(view, html, options = {}) {
+            view.className = 'background-view-shell';
+            if (!options.modal) {
+                const toolbar = document.createElement('div');
+                toolbar.className = 'background-view-toolbar';
+                if (options.htmlUrl) {
+                    toolbar.appendChild(createBackgroundActionButton('external-link', '打开', () => {
+                        openHtmlArtifact(options.htmlUrl);
+                    }));
+                }
+                toolbar.appendChild(createBackgroundActionButton('maximize-2', '放大', () => {
+                    openBackgroundModal('预览', (body) => renderBackgroundHtmlView(body, html, {
+                        modal: true,
+                        incomplete: options.incomplete,
+                        htmlUrl: options.htmlUrl
+                    }));
+                }));
+                view.appendChild(toolbar);
+            } else if (options.htmlUrl) {
+                const toolbar = document.createElement('div');
+                toolbar.className = 'background-view-toolbar';
+                toolbar.appendChild(createBackgroundActionButton('external-link', '打开', () => {
+                    openHtmlArtifact(options.htmlUrl);
+                }));
+                view.appendChild(toolbar);
+            }
+
+            if (options.incomplete) {
+                const warning = document.createElement('div');
+                warning.className = 'background-preview-warning';
+                warning.textContent = '后台 HTML 可能被截断，预览已尽量补齐闭合标签；请以“原始”内容为准。';
+                view.appendChild(warning);
+            }
+
+            const iframe = document.createElement('iframe');
+            iframe.className = 'background-html-frame';
+            iframe.setAttribute('sandbox', '');
+            iframe.srcdoc = sanitizeStaticHtml(html);
+            view.appendChild(iframe);
+        }
+
+        function openBackgroundModal(title, renderContent) {
+            closeBackgroundModal();
+
+            const backdrop = document.createElement('div');
+            backdrop.className = 'background-modal-backdrop';
+            backdrop.setAttribute('role', 'dialog');
+            backdrop.setAttribute('aria-modal', 'true');
+
+            const dialog = document.createElement('div');
+            dialog.className = 'background-modal-dialog';
+            dialog.addEventListener('click', (event) => event.stopPropagation());
+
+            const header = document.createElement('div');
+            header.className = 'background-modal-header';
+            const titleElement = document.createElement('h3');
+            titleElement.className = 'background-modal-title';
+            titleElement.textContent = title;
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'background-modal-close';
+            closeButton.setAttribute('aria-label', '关闭');
+            closeButton.innerHTML = '<i data-lucide="x"></i>';
+            closeButton.addEventListener('click', closeBackgroundModal);
+            header.appendChild(titleElement);
+            header.appendChild(closeButton);
+
+            const body = document.createElement('div');
+            body.className = 'background-modal-body';
+            renderContent(body);
+
+            dialog.appendChild(header);
+            dialog.appendChild(body);
+            backdrop.appendChild(dialog);
+            backdrop.addEventListener('click', closeBackgroundModal);
+
+            document.body.appendChild(backdrop);
+            document.body.classList.add('background-modal-open');
+            activeBackgroundModal = backdrop;
+            lucide.createIcons();
+            closeButton.focus();
+        }
+
+        function closeBackgroundModal() {
+            if (!activeBackgroundModal) return;
+            activeBackgroundModal.remove();
+            activeBackgroundModal = null;
+            document.body.classList.remove('background-modal-open');
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && activeBackgroundModal) {
+                closeBackgroundModal();
+            }
+        });
+
+        function renderBackgroundRichContent(element, text, rich = null) {
+            const structuredChart = rich && rich.chart && Array.isArray(rich.chart.labels) && Array.isArray(rich.chart.values)
+                ? {
+                    title: String(rich.chart.title || ''),
+                    labels: rich.chart.labels.map(label => String(label)),
+                    values: rich.chart.values.map(value => Number(value))
+                }
+                : null;
+            const chart = structuredChart || parseBackgroundChart(text);
+            let htmlDetails;
+            if (rich && typeof rich.html === 'string' && rich.html.trim()) {
+                htmlDetails = normalizeExtractedHtmlDetails(rich.html, {
+                    sourceIncomplete: Boolean(rich.html_incomplete)
+                });
+                htmlDetails.incomplete = Boolean(rich.html_incomplete || htmlDetails.incomplete);
+            } else {
+                htmlDetails = extractBackgroundHtmlDetails(text);
+            }
+            const html = htmlDetails.html;
+            const hasRich = Boolean(chart || html);
+            const explanation = extractBackgroundExplanation(text);
+            if (!hasRich) {
+                renderTextIntoElement(element, text);
+                element.classList.toggle('markdown-rendered', markdownEnabled);
+                return;
+            }
+
+            element.innerHTML = '';
+            element.classList.add('background-rich-content');
+
+            const tabs = document.createElement('div');
+            tabs.className = 'background-rich-tabs';
+            const body = document.createElement('div');
+            const views = [];
+            let preferredViewLabel = chart ? '图表' : html ? '预览' : explanation ? '说明' : '原始';
+
+            const addView = (label, render) => {
+                const tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = 'background-rich-tab';
+                tab.textContent = label;
+                const view = document.createElement('div');
+                view.style.display = 'none';
+                render(view);
+                tab.addEventListener('click', () => {
+                    views.forEach(item => {
+                        item.tab.classList.toggle('active', item.view === view);
+                        item.view.style.display = item.view === view ? 'block' : 'none';
+                    });
+                });
+                tabs.appendChild(tab);
+                body.appendChild(view);
+                views.push({ label, tab, view });
+            };
+
+            if (explanation) {
+                addView('说明', (view) => {
+                    view.className = 'background-view-shell markdown-rendered';
+                    renderTextIntoElement(view, explanation);
+                });
+            }
+
+            addView('原始', (view) => {
+                renderBackgroundRawView(view, text);
+            });
+
+            if (chart) {
+                addView('图表', (view) => {
+                    renderBackgroundChartView(view, chart);
+                });
+            }
+
+            if (html) {
+                addView('预览', (view) => {
+                    renderBackgroundHtmlView(view, html, {
+                        incomplete: htmlDetails.incomplete,
+                        htmlUrl: rich && typeof rich.html_url === 'string' ? rich.html_url : ''
+                    });
+                });
+            }
+
+            element.appendChild(tabs);
+            element.appendChild(body);
+            if (views.length) {
+                const defaultView = views.find(item => item.label === preferredViewLabel) || views[0];
+                defaultView.tab.click();
+                lucide.createIcons();
+            }
+        }
+
+        function isVlmHistoryNearBottom(element) {
+            if (!element) return false;
+            if (element.scrollHeight <= element.clientHeight) return true;
+            return element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
+        }
+
+        function scrollVlmHistoryToBottom(element) {
+            if (!element) return;
+
+            requestAnimationFrame(() => {
+                element.scrollTop = element.scrollHeight;
+                requestAnimationFrame(() => {
+                    element.scrollTop = element.scrollHeight;
+                });
+            });
+        }
+
+        function updateTtsSpeakingDisplay(text = '') {
+            const speakingText = String(text || '').trim();
+            if (ttsSpeakingLine) {
+                ttsSpeakingLine.classList.toggle('show', Boolean(speakingText));
+            }
+            if (ttsSpeakingText) {
+                ttsSpeakingText.textContent = speakingText;
+            }
+        }
+
+        function stopTtsPlayback() {
+            ttsRequestToken += 1;
+
+            if (ttsWs && ttsWs.readyState === WebSocket.OPEN) {
+                ttsWs._acceptingAudio = false;
+                ttsWs._requestId = '';
+                ttsWs.send(JSON.stringify({
+                    type: 'stop',
+                    request_id: String(ttsRequestToken)
+                }));
+            }
+
+            ttsSources.forEach(source => {
+                try {
+                    source.stop();
+                } catch (e) {
+                    // Source may have already ended.
+                }
+            });
+            ttsSources = [];
+            ttsNextPlayTime = 0;
+            ttsPcmRemainder = null;
+            ttsSpeaking = false;
+            pendingTtsText = '';
+            updateTtsSpeakingDisplay('');
+            if (ttsFinishTimer) {
+                clearTimeout(ttsFinishTimer);
+                ttsFinishTimer = null;
+            }
+        }
+
+        function closeTtsWebSocket() {
+            stopTtsPlayback();
+            if (ttsWs && [WebSocket.CONNECTING, WebSocket.OPEN].includes(ttsWs.readyState)) {
+                ttsWs.close();
+            }
+            ttsWs = null;
+            ttsWsReadyPromise = null;
+        }
+
+        function maybeSpeakPendingTts() {
+            if (ttsSpeaking || !pendingTtsText) {
+                return;
+            }
+
+            const nextText = pendingTtsText;
+            pendingTtsText = '';
+            ttsRequestToken += 1;
+            startTtsSpeech(nextText);
+        }
+
+        function getTtsWebSocket() {
+            if (ttsWs && ttsWs.readyState === WebSocket.OPEN) {
+                return Promise.resolve(ttsWs);
+            }
+
+            if (ttsWsReadyPromise && ttsWs && ttsWs.readyState === WebSocket.CONNECTING) {
+                return ttsWsReadyPromise;
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/tts`;
+            const ws = new WebSocket(wsUrl);
+            ttsWs = ws;
+            ws.binaryType = 'arraybuffer';
+
+            ttsWsReadyPromise = new Promise((resolve, reject) => {
+                ws.onopen = () => {
+                    if (ttsWs === ws) {
+                        resolve(ws);
+                    } else {
+                        reject(new Error('TTS websocket was replaced'));
+                    }
+                };
+                ws.onerror = (error) => {
+                    if (ttsWs === ws) {
+                        lastTtsEventKey = '';
+                    }
+                    reject(error instanceof Error ? error : new Error('TTS websocket failed'));
+                };
+            });
+
+            ws.onmessage = (event) => {
+                if (!settings.ttsEnabled) {
+                    return;
+                }
+
+                if (typeof event.data === 'string') {
+                    let message;
+                    try {
+                        message = JSON.parse(event.data);
+                    } catch (error) {
+                        console.warn('TTS sent invalid control message:', event.data);
+                        return;
+                    }
+
+                    if (message.type === 'start') {
+                        const startedRequestId = String(message.request_id || message.reqid || '');
+                        if (startedRequestId === ws._pendingRequestId) {
+                            ws._sampleRate = Number(message.sample_rate) || ws._sampleRate || 24000;
+                            ws._requestId = startedRequestId;
+                            ws._acceptingAudio = true;
+                            ws._serverDone = false;
+                        }
+                    } else if (message.type === 'done' || message.type === 'stopped') {
+                        if (message.request_id && String(message.request_id) === ws._requestId) {
+                            ws._acceptingAudio = false;
+                            ws._serverDone = true;
+                            scheduleTtsFinishCheck(String(message.request_id));
+                            maybeFinishTtsSpeech(String(message.request_id));
+                        }
+                    } else if (message.type === 'error') {
+                        lastTtsEventKey = '';
+                        console.warn('TTS playback failed:', message.error);
+                        if (message.request_id && String(message.request_id) === ws._requestId) {
+                            ws._acceptingAudio = false;
+                            ws._serverDone = true;
+                            maybeFinishTtsSpeech(String(message.request_id), { failed: true });
+                        }
+                    }
+                    return;
+                }
+
+                const activeRequestId = String(ttsRequestToken);
+                if (!ws._acceptingAudio || ws._requestId !== activeRequestId) {
+                    return;
+                }
+                queueTtsPcmChunk(event.data, ws._sampleRate || 24000, ttsRequestToken);
+            };
+
+            ws.onclose = () => {
+                if (ttsWs === ws) {
+                    ttsWs = null;
+                    ttsWsReadyPromise = null;
+                }
+            };
+
+            return ttsWsReadyPromise;
+        }
+
+        function ensureTtsAudioContext() {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                throw new Error('Web Audio API is not supported');
+            }
+            if (!ttsAudioContext || ttsAudioContext.state === 'closed') {
+                ttsAudioContext = new AudioContextClass();
+            }
+            if (ttsAudioContext.state === 'suspended') {
+                ttsAudioContext.resume();
+            }
+            return ttsAudioContext;
+        }
+
+        function pcm16ToAudioBuffer(arrayBuffer, sampleRate) {
+            const context = ensureTtsAudioContext();
+            const pcm = new Int16Array(arrayBuffer);
+            const audioBuffer = context.createBuffer(1, pcm.length, sampleRate);
+            const channel = audioBuffer.getChannelData(0);
+
+            for (let i = 0; i < pcm.length; i += 1) {
+                channel[i] = Math.max(-1, Math.min(1, pcm[i] / 32768));
+            }
+
+            return audioBuffer;
+        }
+
+        function normalizePcmChunk(arrayBuffer) {
+            let bytes = new Uint8Array(arrayBuffer);
+
+            if (ttsPcmRemainder?.length) {
+                const combined = new Uint8Array(ttsPcmRemainder.length + bytes.length);
+                combined.set(ttsPcmRemainder, 0);
+                combined.set(bytes, ttsPcmRemainder.length);
+                bytes = combined;
+                ttsPcmRemainder = null;
+            }
+
+            if (bytes.length % 2 !== 0) {
+                ttsPcmRemainder = bytes.slice(bytes.length - 1);
+                bytes = bytes.slice(0, bytes.length - 1);
+            }
+
+            return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        }
+
+        function queueTtsPcmChunk(arrayBuffer, sampleRate, requestToken) {
+            if (requestToken !== ttsRequestToken || !settings.ttsEnabled || arrayBuffer.byteLength === 0) {
+                return;
+            }
+
+            const pcmBuffer = normalizePcmChunk(arrayBuffer);
+            if (pcmBuffer.byteLength === 0) {
+                return;
+            }
+
+            const context = ensureTtsAudioContext();
+            const source = context.createBufferSource();
+            source.buffer = pcm16ToAudioBuffer(pcmBuffer, sampleRate);
+            source.connect(context.destination);
+
+            const startAt = Math.max(context.currentTime + 0.02, ttsNextPlayTime || 0);
+            ttsNextPlayTime = startAt + source.buffer.duration;
+            ttsSources.push(source);
+            scheduleTtsFinishCheck(String(requestToken));
+            source.onended = () => {
+                ttsSources = ttsSources.filter(item => item !== source);
+                maybeFinishTtsSpeech(String(requestToken));
+            };
+            source.start(startAt);
+        }
+
+        function scheduleTtsFinishCheck(requestId) {
+            if (ttsFinishTimer) {
+                clearTimeout(ttsFinishTimer);
+            }
+
+            let delayMs = 100;
+            if (ttsAudioContext && ttsNextPlayTime > ttsAudioContext.currentTime) {
+                delayMs = Math.max(100, (ttsNextPlayTime - ttsAudioContext.currentTime) * 1000 + 80);
+            }
+
+            ttsFinishTimer = setTimeout(() => {
+                ttsFinishTimer = null;
+                maybeFinishTtsSpeech(requestId);
+            }, delayMs);
+        }
+
+        function maybeFinishTtsSpeech(requestId, { failed = false } = {}) {
+            const ws = ttsWs;
+            const activeRequestId = ws?._requestId || '';
+            const hasQueuedAudio = ttsSources.length > 0;
+            const serverStillStreaming = ws?._acceptingAudio && activeRequestId === requestId;
+            const serverDone = ws?._serverDone && activeRequestId === requestId;
+
+            if (serverStillStreaming || hasQueuedAudio) {
+                return;
+            }
+
+            if ((String(ttsRequestToken) === requestId && serverDone) || failed) {
+                if (ws && activeRequestId === requestId) {
+                    ws._requestId = '';
+                    ws._serverDone = false;
+                }
+                if (ttsFinishTimer) {
+                    clearTimeout(ttsFinishTimer);
+                    ttsFinishTimer = null;
+                }
+                ttsSpeaking = false;
+                ttsPcmRemainder = null;
+                updateTtsSpeakingDisplay('');
+                maybeSpeakPendingTts();
+            }
+        }
+
+        function startTtsSpeech(speechText) {
+            const requestToken = ttsRequestToken;
+            ttsSpeaking = true;
+            updateTtsSpeakingDisplay(speechText);
+            ttsPcmRemainder = null;
+            ttsNextPlayTime = 0;
+
+            getTtsWebSocket().then(ws => {
+                if (requestToken !== ttsRequestToken || !settings.ttsEnabled) {
+                    ttsSpeaking = false;
+                    updateTtsSpeakingDisplay('');
+                    maybeSpeakPendingTts();
+                    return;
+                }
+                ws._sampleRate = 24000;
+                ws._requestId = '';
+                ws._pendingRequestId = String(requestToken);
+                ws._acceptingAudio = false;
+                ws._serverDone = false;
+                ws.send(JSON.stringify({
+                    type: 'speak',
+                    text: speechText,
+                    session_id: sessionId,
+                    request_id: String(requestToken)
+                }));
+            }).catch(error => {
+                if (requestToken === ttsRequestToken) {
+                    lastTtsEventKey = '';
+                    ttsSpeaking = false;
+                    updateTtsSpeakingDisplay('');
+                    console.warn('TTS playback failed:', error);
+                    maybeSpeakPendingTts();
+                }
+            });
+        }
+
+        function speakVlmText(text, eventKey = '') {
+            const speechText = String(text || '').trim();
+            const speechEventKey = String(eventKey || '').trim();
+            if (!settings.ttsEnabled || !speechText) {
+                return;
+            }
+            if (speechEventKey && speechEventKey === lastTtsEventKey) {
+                return;
+            }
+
+            lastTtsEventKey = speechEventKey || `event:${++ttsEventSequence}`;
+
+            if (ttsSpeaking) {
+                pendingTtsText = speechText;
+                return;
+            }
+
+            ttsRequestToken += 1;
+            startTtsSpeech(speechText);
+        }
+
+        function clearVlmConversation() {
+            closeTtsWebSocket();
+            vlmHistory = [];
+            backgroundTaskEntries.clear();
+            backgroundSummaryEntries.clear();
+            lastReadyBackgroundTaskId = '';
+            lastText = '';
+            lastTtsEventKey = '';
+            lastHistoryKey = null;
+            currentPromptText = '';
+            pendingPromptEntry = null;
+
+            resultText.classList.remove('fade');
+            renderVlmHistory();
+
+            videoOverlay.textContent = '';
+            videoOverlay.classList.remove('show', 'top', 'bottom');
+
+            currentPrompt.style.display = 'none';
+            currentPrompt.textContent = '';
+            metricsInline.style.display = 'flex';
+            latencyValue.textContent = '0';
+            avgLatencyValue.textContent = '0';
+            countValue.textContent = '0';
+
+            const requestPayloadDebug = document.getElementById('requestPayloadDebug');
+            const requestPayloadContent = document.getElementById('requestPayloadContent');
+            const responsePayloadDebug = document.getElementById('responsePayloadDebug');
+            const responsePayloadContent = document.getElementById('responsePayloadContent');
+            if (requestPayloadDebug) requestPayloadDebug.style.display = 'none';
+            if (requestPayloadContent) requestPayloadContent.textContent = '';
+            if (responsePayloadDebug) responsePayloadDebug.style.display = 'none';
+            if (responsePayloadContent) responsePayloadContent.textContent = '';
+            const memoryStateDebug = document.getElementById('memoryStateDebug');
+            if (memoryStateDebug) memoryStateDebug.style.display = 'none';
+            const midTermMemoryContent = document.getElementById('midTermMemoryContent');
+            if (midTermMemoryContent) midTermMemoryContent.textContent = '';
+            const longTermMemoryContent = document.getElementById('longTermMemoryContent');
+            if (longTermMemoryContent) longTermMemoryContent.textContent = '';
+
+            syncVlmToFullscreen();
+        }
+
+        function hasVisiblePrompt(entry) {
+            return Boolean(entry?.prompt && entry.prompt.trim() && entry.prompt.trim() !== '--');
+        }
+
+        function hasJarvisDialogHistory() {
+            return vlmHistory.some(entry => entry?.kind === 'jarvis_dialog');
+        }
+
+        function shouldShowVlmHistoryShell() {
+            // BT-7274 链路下 chat 容器始终展开，方便 Pilot 看到对话；
+            // 空状态下由 .vlm-history-empty-state 提供占位文案。
+            return true;
+        }
+
+        // empty-state 是 resultText 子级，不会被 innerHTML 清掉
+        function syncVlmHistoryEmpty() {
+            const empty = document.getElementById("vlmHistoryEmpty");
+            if (!empty) return;
+            const hasReal = Array.isArray(vlmHistory) && vlmHistory.length > 0;
+            empty.classList.toggle("is-hidden", hasReal);
+        }
+
+        function createJarvisDialogNode(entry, animateResponse = false) {
+            const responseDiv = document.createElement('div');
+            const isPilot = entry.role === 'pilot';
+            responseDiv.className = `result-text ${isPilot ? 'jarvis-pilot-message' : 'jarvis-reply-message'}`;
+            if (animateResponse && settings.popIn) {
+                responseDiv.classList.add('new-message');
+                if (settings.glow) {
+                    responseDiv.classList.add('with-glow');
+                }
+            }
+
+            const role = document.createElement('span');
+            role.className = 'jarvis-message-role';
+            role.textContent = isPilot ? 'Pilot' : 'BT-7274';
+
+            const body = document.createElement('div');
+            body.className = 'jarvis-message-body';
+            renderTextIntoElement(body, entry.response || '');
+
+            responseDiv.appendChild(role);
+            responseDiv.appendChild(body);
+            requestAnimationFrame(() => lucide.createIcons());
+            return responseDiv;
+        }
+
+        function createHistoryNodes(entry, animateResponse = false) {
+            let promptDiv = null;
+            if (hasVisiblePrompt(entry)) {
+                promptDiv = document.createElement('div');
+                promptDiv.className = 'result-prompt';
+                promptDiv.textContent = cleanBackgroundQuestionText(entry.prompt.trim());
+            }
+
+            let responseDiv = null;
+            if (entry.kind === 'jarvis_dialog') {
+                responseDiv = createJarvisDialogNode(entry, animateResponse);
+            } else if (entry.kind === 'background') {
+                responseDiv = createBackgroundHistoryNode(entry, animateResponse);
+            } else if (entry.response) {
+                responseDiv = document.createElement('div');
+                responseDiv.className = 'result-text';
+                if (animateResponse && settings.popIn) {
+                    responseDiv.classList.add('new-message');
+                    if (settings.glow) {
+                        responseDiv.classList.add('with-glow');
+                    }
+                }
+                renderStandardResponseIntoElement(responseDiv, entry);
+            }
+
+            entry.promptElement = promptDiv;
+            entry.responseElement = responseDiv;
+
+            return { promptDiv, responseDiv };
+        }
+
+        function renderStandardResponseIntoElement(responseDiv, entry) {
+            renderStandardRichContent(responseDiv, entry);
+            appendBackgroundJumpButton(responseDiv, entry);
+            requestAnimationFrame(() => lucide.createIcons());
+        }
+
+        function isBackgroundSummaryEntry(entry) {
+            return entry?.kind === 'background_summary' ||
+                Boolean(entry?.backgroundSummary) ||
+                Boolean(resolveBackgroundJumpTaskId(entry));
+        }
+
+        function isForegroundHistoryEntry(entry) {
+            return Boolean(entry) && entry.kind !== 'background' && !isBackgroundSummaryEntry(entry);
+        }
+
+        function formatInlineJsonAsMarkdown(text) {
+            let source = String(text || '');
+            const inlineBlocks = extractInlineJsonObjectCandidates(source)
+                .sort((a, b) => b.start - a.start);
+
+            inlineBlocks.forEach((candidate) => {
+                let start = candidate.start;
+                const prefix = source.slice(Math.max(0, start - 12), start);
+                const jsonLabel = prefix.match(/(?:^|\s)json\s*$/i);
+                if (jsonLabel) {
+                    start -= jsonLabel[0].length;
+                }
+
+                let prettyJson = candidate.text;
+                try {
+                    prettyJson = JSON.stringify(JSON.parse(candidate.text), null, 2);
+                } catch (err) {
+                    // Keep the original JSON string if prettifying fails.
+                }
+
+                const block = `\n\n\`\`\`json\n${prettyJson}\n\`\`\`\n`;
+                source = `${source.slice(0, start).trimEnd()}${block}${source.slice(candidate.end).trimStart()}`;
+            });
+
+            return source.trim();
+        }
+
+        function renderBackgroundSummaryMarkdown(responseDiv, text) {
+            responseDiv.innerHTML = '';
+            responseDiv.classList.remove('standard-rich-response');
+            responseDiv.classList.add('background-summary-message');
+
+            const label = document.createElement('div');
+            label.className = 'background-summary-label';
+            label.innerHTML = '<i data-lucide="sparkles"></i><span>摘要</span>';
+
+            const body = document.createElement('div');
+            body.className = 'background-summary-body markdown-rendered';
+            renderTextIntoElement(body, String(text || '').trim());
+
+            responseDiv.appendChild(label);
+            responseDiv.appendChild(body);
+        }
+
+        function renderStandardRichContent(responseDiv, entry) {
+            const text = entry?.response || '';
+            if (isBackgroundSummaryEntry(entry)) {
+                renderBackgroundSummaryMarkdown(responseDiv, text);
+                return;
+            }
+
+            const chart = parseBackgroundChart(text);
+            const htmlDetails = extractBackgroundHtmlDetails(text);
+            const html = htmlDetails.html;
+
+            if (!chart && !html) {
+                responseDiv.classList.remove('standard-rich-response');
+                if (!isBackgroundSummaryEntry(entry)) {
+                    responseDiv.classList.remove('background-summary-message');
+                }
+                renderTextIntoElement(responseDiv, text);
+                return;
+            }
+
+            responseDiv.innerHTML = '';
+            responseDiv.classList.add('standard-rich-response');
+            responseDiv.classList.remove('background-summary-message');
+            const explanation = extractBackgroundExplanation(text);
+            if (explanation) {
+                const explanationElement = document.createElement('div');
+                explanationElement.className = 'standard-rich-explanation markdown-rendered';
+                renderTextIntoElement(explanationElement, explanation);
+                responseDiv.appendChild(explanationElement);
+            }
+
+            if (chart) {
+                const chartElement = document.createElement('div');
+                chartElement.className = 'standard-rich-chart';
+                renderBackgroundChartView(chartElement, chart);
+                responseDiv.appendChild(chartElement);
+            }
+
+            if (html) {
+                const htmlElement = document.createElement('div');
+                htmlElement.className = 'standard-rich-html';
+                renderBackgroundHtmlView(htmlElement, html, {
+                    incomplete: htmlDetails.incomplete
+                });
+                responseDiv.appendChild(htmlElement);
+            }
+        }
+
+        function getLatestReadyBackgroundEntry() {
+            if (lastReadyBackgroundTaskId && backgroundTaskEntries.has(lastReadyBackgroundTaskId)) {
+                const entry = backgroundTaskEntries.get(lastReadyBackgroundTaskId);
+                if (entry?.ready && entry.status === 'ready') {
+                    return entry;
+                }
+            }
+
+            for (let index = vlmHistory.length - 1; index >= 0; index -= 1) {
+                const entry = vlmHistory[index];
+                if (entry?.kind === 'background' && entry.ready && entry.status === 'ready') {
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        function cleanBackgroundQuestionText(question) {
+            return String(question || '')
+                .replace(/^\s*请(?:回答|解答)这道(?:简答题|数学题|题目|问题)[，,、\s]*(?:并(?:提供|给出)必要的推理过程和最终答案)?[：:]\s*/u, '')
+                .replace(/\[User Query[^\]]*\]\s*/gi, '')
+                .replace(/^Prompt:\s*/i, '')
+                .replace(/[ \t]{2,}/g, ' ')
+                .trim();
+        }
+
+        function isBackgroundWaitingNotice(text) {
+            const value = String(text || '').trim();
+            return /(?:需要|正在)调用后台模型|后台模型(?:正在)?处理|请稍等/.test(value)
+                && /继续(?:向我)?提问|期间/.test(value);
+        }
+
+        function resolveBackgroundJumpTaskId(entry) {
+            const directTaskId = entry?.backgroundHandoff?.task_id;
+            if (directTaskId && backgroundTaskEntries.has(String(directTaskId))) {
+                return String(directTaskId);
+            }
+
+            return '';
+        }
+
+        function appendBackgroundJumpButton(responseDiv, entry) {
+            if (!isBackgroundSummaryEntry(entry)) {
+                return;
+            }
+            const taskId = resolveBackgroundJumpTaskId(entry);
+            if (!taskId) {
+                return;
+            }
+
+            const backgroundEntry = backgroundTaskEntries.get(String(taskId));
+            const questionText = cleanBackgroundQuestionText(
+                entry?.backgroundHandoff?.question ||
+                backgroundEntry?.question ||
+                ''
+            );
+
+            const row = document.createElement('div');
+            row.className = 'background-jump-row';
+            row.dataset.backgroundTaskId = taskId;
+            if (questionText) {
+                const question = document.createElement('div');
+                question.className = 'background-jump-question';
+                const label = document.createElement('span');
+                label.className = 'background-jump-question-label';
+                label.textContent = '对应问题';
+                const value = document.createElement('span');
+                value.className = 'background-jump-question-text';
+                value.textContent = questionText;
+                question.appendChild(label);
+                question.appendChild(value);
+                row.appendChild(question);
+            }
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'background-jump-button';
+            button.dataset.backgroundTaskId = taskId;
+            button.innerHTML = '<i data-lucide="corner-down-left"></i><span>跳转</span>';
+            button.title = '跳转到对应的后台结果';
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                jumpToBackgroundResult(button.dataset.backgroundTaskId || taskId);
+            });
+            row.appendChild(button);
+            responseDiv.appendChild(row);
+        }
+
+        function findBackgroundResultElement(taskId) {
+            const expectedTaskId = String(taskId || '');
+            if (!expectedTaskId) return null;
+
+            const domTarget = Array.from(document.querySelectorAll('[data-background-result-task-id]'))
+                .find(element => element.dataset.backgroundResultTaskId === expectedTaskId);
+            if (domTarget) {
+                return domTarget;
+            }
+
+            const entry = backgroundTaskEntries.get(expectedTaskId);
+            return entry?.responseElement || null;
+        }
+
+        function getScrollableAncestors(element) {
+            const ancestors = [];
+            let node = element?.parentElement || null;
+            while (node && node !== document.body) {
+                const style = window.getComputedStyle(node);
+                const canScroll = /(auto|scroll|overlay)/.test(style.overflowY)
+                    && node.scrollHeight > node.clientHeight + 1;
+                if (canScroll) {
+                    ancestors.push(node);
+                }
+                node = node.parentElement;
+            }
+
+            const root = document.scrollingElement || document.documentElement;
+            if (root) {
+                ancestors.push(root);
+            }
+            return ancestors;
+        }
+
+        function scrollElementIntoContainer(target, container, behavior = 'smooth') {
+            if (!target || !container) return;
+            const containerRect = container.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const targetTop = container.scrollTop
+                + targetRect.top
+                - containerRect.top
+                - 16;
+            container.scrollTo({
+                top: Math.max(0, targetTop),
+                behavior
+            });
+        }
+
+        function flashBackgroundJumpTarget(target) {
+            if (!target) return;
+            target.classList.add('jump-highlight');
+            setTimeout(() => target.classList.remove('jump-highlight'), 1800);
+        }
+
+        function findBackgroundOriginEntry(entry) {
+            const question = cleanBackgroundQuestionText(entry?.question || '');
+            if (!question) return null;
+            for (let index = vlmHistory.length - 1; index >= 0; index -= 1) {
+                const candidate = vlmHistory[index];
+                if (!isForegroundHistoryEntry(candidate)) continue;
+                if (cleanBackgroundQuestionText(candidate.prompt || '') === question) {
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        function jumpToBackgroundOrigin(entry) {
+            const originEntry = findBackgroundOriginEntry(entry);
+            const target = originEntry?.promptElement || null;
+            if (!target) return;
+
+            const historyContainer = document.getElementById('resultTextContent');
+            if (historyContainer && historyContainer.contains(target)) {
+                scrollElementIntoContainer(target, historyContainer, 'smooth');
+            }
+            getScrollableAncestors(target).forEach(container => {
+                scrollElementIntoContainer(target, container, 'smooth');
+            });
+            target.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+            flashBackgroundJumpTarget(target);
+        }
+
+        function jumpToBackgroundResult(taskId) {
+            const normalizedTaskId = String(taskId || '');
+            const entry = backgroundTaskEntries.get(normalizedTaskId);
+            if (!entry) return;
+            entry.expanded = true;
+            renderVlmHistory();
+
+            const performJump = (attempt = 0) => {
+                const target = findBackgroundResultElement(normalizedTaskId);
+                if (!target) {
+                    if (attempt < 3) {
+                        setTimeout(() => performJump(attempt + 1), 80);
+                    }
+                    return;
+                }
+
+                const behavior = attempt === 0 ? 'smooth' : 'auto';
+                const historyContainer = document.getElementById('resultTextContent');
+                if (historyContainer && historyContainer.contains(target)) {
+                    scrollElementIntoContainer(target, historyContainer, behavior);
+                }
+                getScrollableAncestors(target).forEach(container => {
+                    scrollElementIntoContainer(target, container, behavior);
+                });
+                target.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+                flashBackgroundJumpTarget(target);
+
+                if (attempt < 2) {
+                    setTimeout(() => performJump(attempt + 1), attempt === 0 ? 180 : 360);
+                }
+            };
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => performJump(0));
+            });
+        }
+
+        function createBackgroundHistoryNode(entry, animateResponse = false) {
+            const responseDiv = document.createElement('div');
+            responseDiv.className = 'result-text background-result';
+            if (entry.taskId) {
+                responseDiv.dataset.backgroundResultTaskId = String(entry.taskId);
+            }
+            if (animateResponse && settings.popIn) {
+                responseDiv.classList.add('new-message');
+            }
+
+            const shell = document.createElement('div');
+            shell.className = 'background-result-shell';
+
+            const header = document.createElement('div');
+            header.className = 'background-result-header';
+
+            const icon = document.createElement('div');
+            icon.className = 'background-result-icon';
+            icon.innerHTML = '<i data-lucide="sparkles"></i>';
+
+            const title = document.createElement('div');
+            title.className = 'background-result-title';
+            title.textContent = entry.status === 'error'
+                ? '后台模型处理失败'
+                : entry.ready
+                    ? '后台模型返回结果了，现在查看吗？'
+                    : '后台模型正在处理...';
+
+            if (entry.question) {
+                const question = document.createElement('div');
+                question.className = 'background-result-question';
+                question.textContent = entry.question;
+                title.appendChild(question);
+            }
+
+            const action = document.createElement('button');
+            action.type = 'button';
+            action.className = 'background-result-action';
+            action.textContent = entry.expanded ? '收起' : entry.ready ? '查看' : '等待中';
+            action.disabled = !entry.ready && entry.status !== 'error';
+            action.addEventListener('click', () => {
+                entry.expanded = !entry.expanded;
+                renderVlmHistory();
+            });
+
+            const originEntry = findBackgroundOriginEntry(entry);
+            let originAction = null;
+            if (originEntry) {
+                originAction = document.createElement('button');
+                originAction.type = 'button';
+                originAction.className = 'background-result-action background-origin-action';
+                originAction.innerHTML = '<i data-lucide="corner-up-left"></i>';
+                originAction.title = '跳转到原问题';
+                originAction.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    jumpToBackgroundOrigin(entry);
+                });
+            }
+
+            header.appendChild(icon);
+            header.appendChild(title);
+            if (originAction) {
+                header.appendChild(originAction);
+            }
+            header.appendChild(action);
+            shell.appendChild(header);
+
+            if (entry.expanded) {
+                const content = document.createElement('div');
+                content.className = 'result-text-content markdown-rendered';
+                if (entry.status === 'error') {
+                    content.textContent = entry.error || 'Background model failed.';
+                } else {
+                    renderBackgroundRichContent(content, entry.response || '', entry.rich || null);
+                }
+                shell.appendChild(content);
+            }
+
+            responseDiv.appendChild(shell);
+            entry.responseElement = responseDiv;
+            requestAnimationFrame(() => lucide.createIcons());
+            return responseDiv;
+        }
+
+        function appendVlmHistoryEntry(entry, { animateLast = false } = {}) {
+            const contentDiv = document.getElementById('resultTextContent');
+            if (!contentDiv) return;
+
+            const shouldAutoScroll = isVlmHistoryNearBottom(contentDiv);
+            const { promptDiv, responseDiv } = createHistoryNodes(entry, animateLast);
+
+            if (promptDiv) {
+                contentDiv.appendChild(promptDiv);
+            }
+            if (responseDiv) {
+                contentDiv.appendChild(responseDiv);
+            }
+            resultText.style.display = (settings.overlayPosition === 'none' || entry.kind === 'jarvis_dialog') ? 'flex' : 'none';
+
+            if (shouldAutoScroll) {
+                scrollVlmHistoryToBottom(contentDiv);
+            }
+            syncVlmHistoryEmpty();
+
+            const videoCard = document.getElementById('videoCard');
+            if (videoCard && videoCard.classList.contains('fullscreen')) {
+                syncVlmToFullscreen();
+            }
+        }
+
+        function renderVlmHistory({ animateLast = false } = {}) {
+            // Latency instrumentation (issue #43): tRenderStart marks the moment
+            // just before the VLM assistant response(s) are committed to the chat
+            // DOM. The duration below measures DOM insertion cost — render segment.
+            const tRenderStart = performance.now();
+            const contentDiv = document.getElementById('resultTextContent');
+            if (!contentDiv) {
+                console.info('[latency][render]', { skipped: true, reason: 'resultTextContent missing' });
+                return;
+            }
+
+            const shouldAutoScroll = isVlmHistoryNearBottom(contentDiv);
+
+            contentDiv.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            vlmHistory.forEach((entry, index) => {
+                const { promptDiv, responseDiv } = createHistoryNodes(
+                    entry,
+                    animateLast && index === vlmHistory.length - 1
+                );
+                if (promptDiv) {
+                    fragment.appendChild(promptDiv);
+                }
+                if (responseDiv) {
+                    fragment.appendChild(responseDiv);
+                }
+            });
+            contentDiv.appendChild(fragment);
+            console.info('[latency][render]', {
+                ms: performance.now() - tRenderStart,
+                entries: vlmHistory.length,
+            });
+
+            resultText.style.display = shouldShowVlmHistoryShell() ? "flex" : "none";
+            syncVlmHistoryEmpty();
+            if (shouldAutoScroll) {
+                scrollVlmHistoryToBottom(contentDiv);
+            }
+
+            // Auto-sync to fullscreen overlay if in fullscreen mode
+            const videoCard = document.getElementById('videoCard');
+            if (videoCard && videoCard.classList.contains('fullscreen')) {
+                syncVlmToFullscreen();
+            }
+        }
+
+        function appendPromptHistoryEntry(prompt) {
+            const latest = vlmHistory[vlmHistory.length - 1];
+            const cleanPrompt = cleanBackgroundQuestionText(prompt);
+
+            if (latest && latest.pending && latest.prompt === cleanPrompt) {
+                pendingPromptEntry = latest;
+                return;
+            }
+
+            const entry = {
+                key: `prompt:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+                prompt: cleanPrompt,
+                response: '',
+                rawText: '',
+                pending: true
+            };
+            vlmHistory.push(entry);
+            pendingPromptEntry = entry;
+            appendVlmHistoryEntry(entry);
+        }
+
+        function resolveBackgroundSummaryText(data) {
+            return String(data?.summary_text || '后台模型已返回结果。').trim();
+        }
+
+        function resolveBackgroundSummaryDetailText(data) {
+            const direct = String(data?.background_summary || '').trim();
+            if (direct) return direct;
+            const text = String(data?.text || '').trim();
+            if (text) return text;
+            const handoff = data?.interaction_handoff;
+            if (handoff && typeof handoff === 'object') {
+                return String(handoff.summary || '').trim();
+            }
+            return '';
+        }
+
+        function updateBackgroundSummaryEntry(data, summaryText = null, rawText = null) {
+            const taskId = String(data?.task_id || '').trim();
+            const summary = String(summaryText ?? resolveBackgroundSummaryText(data)).trim();
+            const detailText = String(rawText ?? resolveBackgroundSummaryDetailText(data)).trim();
+            if (!taskId || !summary) {
+                return null;
+            }
+
+            let entry = backgroundSummaryEntries.get(taskId);
+            if (!entry) {
+                entry = {
+                    key: `background-summary:${taskId}`,
+                    kind: 'background_summary',
+                    contextExcluded: true,
+                    prompt: '',
+                    response: summary,
+                    rawText: detailText || summary,
+                    backgroundSummary: true,
+                    backgroundHandoff: {
+                        task_id: taskId,
+                        question: cleanBackgroundQuestionText(data.question || '')
+                    }
+                };
+                backgroundSummaryEntries.set(taskId, entry);
+            } else {
+                entry.kind = 'background_summary';
+                entry.contextExcluded = true;
+                entry.backgroundSummary = true;
+                entry.response = summary;
+                entry.rawText = detailText || summary;
+                entry.backgroundHandoff = {
+                    task_id: taskId,
+                    question: cleanBackgroundQuestionText(data.question || entry.backgroundHandoff?.question || '')
+                };
+            }
+            return entry;
+        }
+
+        function appendOrUpdateBackgroundSummaryEntry(data) {
+            updateBackgroundSummaryEntry(data);
+        }
+
+        function appendOrUpdateBackgroundSummaryHistoryEntry(data, summaryText = null, rawText = null) {
+            const entry = updateBackgroundSummaryEntry(data, summaryText, rawText);
+            if (!entry) {
+                return null;
+            }
+
+            const alreadyInHistory = vlmHistory.includes(entry);
+            if (!alreadyInHistory) {
+                vlmHistory.push(entry);
+                appendVlmHistoryEntry(entry, { animateLast: true });
+            } else if (entry.responseElement) {
+                renderStandardResponseIntoElement(entry.responseElement, entry);
+            } else {
+                renderVlmHistory({ animateLast: true });
+            }
+            return entry;
+        }
+
+        function appendOrUpdateBackgroundEntry(data) {
+            const taskId = String(data.task_id || `background:${Date.now()}`);
+            let entry = backgroundTaskEntries.get(taskId);
+            const isReady = data.type === 'background_result_ready';
+            const isError = data.type === 'background_result_error';
+
+            if (!entry) {
+                entry = {
+                    key: `background:${taskId}`,
+                    kind: 'background',
+                    contextExcluded: true,
+                    taskId,
+                    question: data.question || '',
+                    response: '',
+                    rawText: '',
+                    error: '',
+                    ready: false,
+                    expanded: false,
+                    status: 'running'
+                };
+                backgroundTaskEntries.set(taskId, entry);
+                vlmHistory.push(entry);
+            }
+
+            entry.question = data.question || entry.question || '';
+            entry.foregroundText = data.foreground_text || entry.foregroundText || '';
+            entry.metrics = data.metrics || entry.metrics || null;
+            entry.model = data.model || entry.model || '';
+            entry.contextExcluded = true;
+
+            if (isReady) {
+                entry.response = data.text || '';
+                entry.rawText = data.text || '';
+                entry.rich = data.rich || null;
+                entry.ready = true;
+                entry.status = 'ready';
+                lastReadyBackgroundTaskId = taskId;
+                appendOrUpdateBackgroundSummaryHistoryEntry(data);
+            } else if (isError) {
+                entry.error = data.error || 'Background model failed.';
+                entry.ready = true;
+                entry.status = 'error';
+            }
+
+            renderVlmHistory({ animateLast: true });
+        }
+
+        function applyBackgroundConfig(config) {
+            if (!config) return;
+            backgroundConfig = config;
+            if (backgroundEnabledToggle && typeof config.enabled === 'boolean') {
+                backgroundEnabledToggle.checked = config.enabled;
+            }
+            if (backgroundFrameMultiplier && config.frame_multiplier != null) {
+                backgroundFrameMultiplier.value = String(config.frame_multiplier);
+            }
+            if (backgroundMaxFrames) {
+                backgroundMaxFrames.value = String(config.max_frames || 100);
+            }
+        }
+
+        function sendBackgroundConfig() {
+            if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+            websocket.send(JSON.stringify({
+                type: 'update_background_config',
+                enabled: !!backgroundEnabledToggle?.checked,
+                frame_multiplier: parseInt(backgroundFrameMultiplier?.value, 10) || 2,
+                max_frames: parseInt(backgroundMaxFrames?.value, 10) || 100
+            }));
+        }
+
+        // Function to update result text (handles both markdown and plain text)
+        function updateResultText(text, metrics = null, backgroundHandoff = null) {
+            const displayText = getVlmDisplayText(text);
+            if (displayText.trim() === '') {
+                resultText.style.display = shouldShowVlmHistoryShell() ? 'flex' : 'none';
+                return;
+            }
+
+            const resolvedBackgroundHandoff = isBackgroundWaitingNotice(displayText)
+                ? null
+                : (backgroundHandoff || null);
+            const prompt = currentPromptText || '';
+            const hasInferenceKey = metrics?.total_inferences != null;
+            const historyKey = hasInferenceKey
+                ? `count:${metrics.total_inferences}`
+                : `text:${text}`;
+            const ttsEventKey = hasInferenceKey
+                ? historyKey
+                : `event:${++ttsEventSequence}`;
+            speakVlmText(displayText, ttsEventKey);
+            const pendingEntry = pendingPromptEntry && vlmHistory.includes(pendingPromptEntry)
+                && isForegroundHistoryEntry(pendingPromptEntry)
+                ? pendingPromptEntry
+                : null;
+
+            if (resolvedBackgroundHandoff?.task_id) {
+                appendOrUpdateBackgroundSummaryHistoryEntry(
+                    {
+                        task_id: resolvedBackgroundHandoff.task_id,
+                        question: resolvedBackgroundHandoff.question || ''
+                    },
+                    displayText,
+                    text
+                );
+                syncVlmToFullscreen();
+                return;
+            }
+
+            const latest = [...vlmHistory].reverse().find(isForegroundHistoryEntry);
+
+            if (latest && latest.key === historyKey) {
+                const handoffChanged = JSON.stringify(latest.backgroundHandoff || null)
+                    !== JSON.stringify(resolvedBackgroundHandoff || latest.backgroundHandoff || null);
+                if (latest.rawText === text && latest.response === displayText && !handoffChanged) {
+                    return;
+                }
+                const contentDiv = document.getElementById('resultTextContent');
+                const shouldAutoScroll = isVlmHistoryNearBottom(contentDiv);
+                latest.rawText = text;
+                latest.response = displayText;
+                latest.backgroundHandoff = resolvedBackgroundHandoff || latest.backgroundHandoff || null;
+                if (latest.responseElement) {
+                    renderStandardResponseIntoElement(latest.responseElement, latest);
+                } else {
+                    renderVlmHistory();
+                }
+                if (shouldAutoScroll) {
+                    scrollVlmHistoryToBottom(contentDiv);
+                }
+            } else if (pendingEntry) {
+                const contentDiv = document.getElementById('resultTextContent');
+                const shouldAutoScroll = isVlmHistoryNearBottom(contentDiv);
+                pendingEntry.key = historyKey;
+                pendingEntry.response = displayText;
+                pendingEntry.rawText = text;
+                pendingEntry.backgroundHandoff = resolvedBackgroundHandoff || pendingEntry.backgroundHandoff || null;
+                pendingEntry.pending = false;
+                lastHistoryKey = historyKey;
+                currentPromptText = '';
+                pendingPromptEntry = null;
+
+                if (pendingEntry.responseElement) {
+                    renderStandardResponseIntoElement(pendingEntry.responseElement, pendingEntry);
+                } else if (pendingEntry.promptElement) {
+                    const responseDiv = document.createElement('div');
+                    responseDiv.className = 'result-text';
+                    if (settings.popIn) {
+                        responseDiv.classList.add('new-message');
+                        if (settings.glow) {
+                            responseDiv.classList.add('with-glow');
+                        }
+                    }
+                    renderStandardResponseIntoElement(responseDiv, pendingEntry);
+                    pendingEntry.responseElement = responseDiv;
+                    pendingEntry.promptElement.insertAdjacentElement('afterend', responseDiv);
+                } else {
+                    renderVlmHistory({ animateLast: true });
+                }
+
+                if (shouldAutoScroll) {
+                    scrollVlmHistoryToBottom(contentDiv);
+                }
+            } else if (historyKey !== lastHistoryKey && (hasInferenceKey || text !== lastText)) {
+                const entry = {
+                    key: historyKey,
+                    prompt,
+                    response: displayText,
+                    rawText: text,
+                    backgroundHandoff: resolvedBackgroundHandoff || null
+                };
+                vlmHistory.push(entry);
+                lastHistoryKey = historyKey;
+                currentPromptText = '';
+                appendVlmHistoryEntry(entry, { animateLast: true });
+            }
+
+            syncVlmToFullscreen();
+        }
+
+        function logLatencyBreakdown(metrics) {
+            if (!metrics || !metrics.latency_breakdown_ms) return;
+            const inferenceCount = Number(metrics.total_inferences) || 0;
+            if (inferenceCount <= lastLoggedInferenceCount) return;
+            lastLoggedInferenceCount = inferenceCount;
+
+            const toMs = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(2) : '--';
+            const frameTiming = metrics.frame_timing_ms || {};
+            const vlmTiming = metrics.latency_breakdown_ms || {};
+            console.groupCollapsed(
+                `[VLM latency] #${inferenceCount} total ${toMs(metrics.last_latency_ms)} ms`
+            );
+            console.table([
+                { phase: 'Frame to ndarray', scope: 'Before Latency', ms: toMs(frameTiming.frame_to_ndarray_ms) },
+                { phase: 'Frame copy', scope: 'Before Latency', ms: toMs(frameTiming.frame_copy_ms) },
+                { phase: 'BGR to RGB + PIL', scope: 'Before Latency', ms: toMs(frameTiming.bgr_to_rgb_pil_ms) },
+                { phase: 'Pre-VLM subtotal', scope: 'Before Latency', ms: toMs(frameTiming.pre_vlm_total_ms) },
+                { phase: 'JPEG encode', scope: 'Latency', ms: toMs(vlmTiming.jpeg_encode_ms) },
+                { phase: 'Base64 encode', scope: 'Latency', ms: toMs(vlmTiming.base64_encode_ms) },
+                { phase: 'Request build/debug payload', scope: 'Latency', ms: toMs(vlmTiming.request_build_ms) },
+                { phase: 'API call + VLM inference', scope: 'Latency', ms: toMs(vlmTiming.api_call_ms) },
+                { phase: 'Response payload record', scope: 'Latency', ms: toMs(vlmTiming.response_payload_ms) },
+                { phase: 'Response extract', scope: 'Latency', ms: toMs(vlmTiming.response_extract_ms) },
+                { phase: 'Latency total', scope: 'Latency', ms: toMs(vlmTiming.total_ms) },
+            ]);
+            console.groupEnd();
+        }
+
+        // Enumerate cameras on page load
+        enumerateCameras();
+
+        // Theme management: Honor OS preference with manual override support
+        function applyTheme(theme) {
+            // theme can be 'light', 'dark', or 'auto'
+            if (theme === 'light') {
+                document.body.classList.add('light-theme');
+                themeIcon.innerHTML = '<i data-lucide="sun"></i>';
+                themeText.textContent = window.JoyI18n.localizeUiString('Light');
+            } else if (theme === 'dark') {
+                document.body.classList.remove('light-theme');
+                themeIcon.innerHTML = '<i data-lucide="moon"></i>';
+                themeText.textContent = window.JoyI18n.localizeUiString('Dark');
+            } else { // 'auto' - follow OS preference
+                const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+                if (prefersLight) {
+                    document.body.classList.add('light-theme');
+                } else {
+                    document.body.classList.remove('light-theme');
+                }
+                // Always show monitor icon for AUTO mode
+                themeIcon.innerHTML = '<i data-lucide="monitor"></i>';
+                themeText.textContent = window.JoyI18n.localizeUiString('Auto');
+            }
+            lucide.createIcons();
+
+        }
+
+        // Theme Toggle: cycles through Auto -> Light -> Dark -> Auto
+        jdLogo.addEventListener('click', () => {
+            window.location.reload();
+        });
+
+        jdLogo.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                window.location.reload();
+            }
+        });
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = localStorage.getItem('theme') || 'auto';
+            let nextTheme;
+
+            if (currentTheme === 'auto' || !currentTheme) {
+                nextTheme = 'light';
+            } else if (currentTheme === 'light') {
+                nextTheme = 'dark';
+            } else { // dark
+                nextTheme = 'auto';
+            }
+
+            // Only save manual overrides (light/dark) to localStorage
+            // Don't save 'auto' - always check OS preference when in auto mode
+            if (nextTheme === 'auto') {
+                localStorage.removeItem('theme');
+            } else {
+                localStorage.setItem('theme', nextTheme);
+            }
+            applyTheme(nextTheme);
+        });
+
+        // Load saved theme or detect OS preference
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+            // User has manually set a preference - use it
+            applyTheme(savedTheme);
+        } else {
+            // No manual preference saved - follow OS preference
+            applyTheme('auto');
+        }
+
+        // Listen for OS preference changes when in 'auto' mode
+        const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: light)');
+        colorSchemeQuery.addEventListener('change', (e) => {
+            const currentTheme = localStorage.getItem('theme');
+            // Only update if user hasn't manually set a preference
+            if (!currentTheme || currentTheme === 'auto') {
+                applyTheme('auto');
+            }
+        });
+
+        // Load saved colorful UI accents setting (default: disabled for clean two-tone system)
+        const colorfulFocusToggle = document.getElementById('colorfulFocusToggle');
+        const colorfulFocusSaved = localStorage.getItem('colorfulFocus');
+        if (colorfulFocusSaved === 'true') {
+            document.body.classList.add('colorful-focus');
+            colorfulFocusToggle.checked = true;
+        } else {
+            // Default: neutral white/gray icons and focus glows with red flash
+            document.body.classList.remove('colorful-focus');
+            colorfulFocusToggle.checked = false;
+        }
+
+        // Settings Modal
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const settingsClose = document.getElementById('settingsClose');
+        const popInToggle = document.getElementById('popInToggle');
+        const glowToggle = document.getElementById('glowToggle');
+        const fadeToggle = document.getElementById('fadeToggle');
+        const overlayPosition = document.getElementById('overlayPosition');
+        const layoutOrder = document.getElementById('layoutOrder');
+        const videoOverlay = document.getElementById('videoOverlay');
+
+        // Settings state
+        const settings = {
+            popIn: localStorage.getItem('popIn') !== 'false',
+            glow: localStorage.getItem('glow') !== 'false',
+            fade: localStorage.getItem('fade') !== 'false',
+            overlayPosition: localStorage.getItem('overlayPosition') || 'none',
+            layoutOrder: localStorage.getItem('layoutOrder') || 'vlm-first',
+            ttsEnabled: localStorage.getItem('ttsEnabled') !== 'false'
+        };
+
+        // Load saved settings
+        popInToggle.checked = settings.popIn;
+        glowToggle.checked = settings.glow;
+        fadeToggle.checked = settings.fade;
+        overlayPosition.value = settings.overlayPosition;
+        layoutOrder.value = settings.layoutOrder;
+        if (ttsEnabledToggle) {
+            ttsEnabledToggle.checked = settings.ttsEnabled;
+        }
+
+        // Apply overlay position
+        function applyOverlayPosition(position) {
+            videoOverlay.classList.remove('show', 'top', 'bottom');
+            const resultText = document.getElementById('resultText');
+            const hasDisplayText = (vlmHistory[vlmHistory.length - 1]?.response || getVlmDisplayText(lastText)).trim() !== '';
+            const hasJarvisDialog = hasJarvisDialogHistory();
+
+            if (position !== 'none') {
+                // Overlay enabled - show on video, hide response balloon (keep prompt visible)
+                if (hasDisplayText) {
+                    videoOverlay.classList.add('show', position);
+                }
+                resultText.style.display = hasJarvisDialog ? 'flex' : 'none';
+            } else {
+                // Overlay disabled - hide from video, show response balloon
+                resultText.style.display = hasDisplayText ? 'flex' : 'none';
+            }
+        }
+        applyOverlayPosition(settings.overlayPosition);
+
+        // Apply layout order
+        function isMobileLayout() {
+            return window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        function isPressToTalkLayout() {
+            return isMobileLayout() && mobileVoiceMode;
+        }
+
+        function applyLayoutOrder(order) {
+            const mainContent = document.querySelector('.main-content');
+            const videoCard = document.querySelector('.video-card');
+            const resultCard = document.getElementById('vlmOutputCard');
+
+            if (!mainContent || !videoCard || !resultCard) {
+                return;
+            }
+
+            if (isMobileLayout()) {
+                mainContent.insertBefore(videoCard, resultCard);
+            } else if (order === 'vlm-first') {
+                // VLM Output Info at top, Camera below (default)
+                mainContent.insertBefore(resultCard, videoCard);
+            } else {
+                // Camera at top, VLM Output Info below
+                mainContent.insertBefore(videoCard, resultCard);
+            }
+        }
+        applyLayoutOrder(settings.layoutOrder);
+
+        window.matchMedia('(max-width: 768px)').addEventListener('change', () => {
+            applyLayoutOrder(settings.layoutOrder);
+            updatePromptAvailability();
+            syncSpeechButtons();
+        });
+
+        // Open settings modal
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.classList.add('show');
+            if (window.JoyWiki) {
+                window.JoyWiki.loadHealth();
+                window.JoyWiki.loadNetwork();
+            }
+        });
+
+        // Close settings modal
+        settingsClose.addEventListener('click', () => {
+            settingsModal.classList.remove('show');
+        });
+
+        // Close modal when clicking outside
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                settingsModal.classList.remove('show');
+            }
+        });
+
+        // Handle settings changes
+        popInToggle.addEventListener('change', (e) => {
+            settings.popIn = e.target.checked;
+            localStorage.setItem('popIn', settings.popIn);
+        });
+
+        glowToggle.addEventListener('change', (e) => {
+            settings.glow = e.target.checked;
+            localStorage.setItem('glow', settings.glow);
+        });
+
+        fadeToggle.addEventListener('change', (e) => {
+            settings.fade = e.target.checked;
+            localStorage.setItem('fade', settings.fade);
+        });
+
+        if (ttsEnabledToggle) {
+            ttsEnabledToggle.addEventListener('change', (e) => {
+                settings.ttsEnabled = e.target.checked;
+                localStorage.setItem('ttsEnabled', settings.ttsEnabled);
+                if (!settings.ttsEnabled) {
+                    closeTtsWebSocket();
+                } else {
+                    try {
+                        ensureTtsAudioContext();
+                    } catch (error) {
+                        console.warn('Unable to initialize TTS audio context:', error);
+                    }
+                }
+            });
+        }
+
+        colorfulFocusToggle.addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            localStorage.setItem('colorfulFocus', enabled);
+            if (enabled) {
+                document.body.classList.add('colorful-focus');
+            } else {
+                document.body.classList.remove('colorful-focus');
+            }
+            // Force icon re-render to apply new colors
+            lucide.createIcons();
+        });
+
+        overlayPosition.addEventListener('change', (e) => {
+            settings.overlayPosition = e.target.value;
+            localStorage.setItem('overlayPosition', settings.overlayPosition);
+            applyOverlayPosition(settings.overlayPosition);
+        });
+
+        layoutOrder.addEventListener('change', (e) => {
+            settings.layoutOrder = e.target.value;
+            localStorage.setItem('layoutOrder', settings.layoutOrder);
+            applyLayoutOrder(settings.layoutOrder);
+        });
+
+        // Panel Toggle
+        function togglePanel(panelId) {
+            const sidebar = document.getElementById('sidebar');
+            const content = document.getElementById(panelId);
+            const toggle = document.getElementById(panelId + 'Toggle');
+            const sidebarPanelIds = ['vlmConfig', 'cameraConfig'];
+            const isSidebarPanel = sidebarPanelIds.includes(panelId);
+
+            if (isSidebarPanel && sidebar?.classList.contains('docked')) {
+                sidebar.classList.remove('docked');
+                sidebarPanelIds.forEach(id => {
+                    const panelContent = document.getElementById(id);
+                    const panelToggle = document.getElementById(id + 'Toggle');
+                    const isActive = id === panelId;
+                    panelContent?.classList.toggle('collapsed', !isActive);
+                    panelToggle?.classList.toggle('collapsed', !isActive);
+                });
+                return;
+            }
+
+            content?.classList.toggle('collapsed');
+            toggle?.classList.toggle('collapsed');
+
+            // [Local Wiki] F4: lazy-load namespace list when the panel opens
+            if (panelId === 'knowledgeBase' && window.JoyWiki) {
+                window.JoyWiki.loadNamespaces();
+            }
+
+            const allSidebarPanelsCollapsed = sidebarPanelIds
+                .every(id => document.getElementById(id)?.classList.contains('collapsed'));
+            if (isSidebarPanel && allSidebarPanelsCollapsed) {
+                sidebar?.classList.add('docked');
+            }
+        }
+
+
+        // Fullscreen Toggle
+        function toggleFullscreen() {
+            const videoCard = document.getElementById('videoCard');
+            const fullscreenIcon = document.getElementById('fullscreenIcon');
+
+            videoCard.classList.toggle('fullscreen');
+
+            // Update icon: maximize when normal, minimize when fullscreen
+            if (videoCard.classList.contains('fullscreen')) {
+                fullscreenIcon.setAttribute('data-lucide', 'minimize');
+                if (fullscreenPromptOverlay && promptEditor) {
+                    fullscreenPromptOverlay.appendChild(promptEditor);
+                }
+                // Sync current VLM output to fullscreen overlay
+                syncVlmToFullscreen();
+            } else {
+                fullscreenIcon.setAttribute('data-lucide', 'maximize');
+                restorePromptEditorHome();
+            }
+            lucide.createIcons();
+        }
+
+        function restorePromptEditorHome() {
+            if (promptEditorHome && promptEditor && promptEditor.parentElement !== promptEditorHome) {
+                promptEditorHome.appendChild(promptEditor);
+            }
+        }
+
+        // Sync VLM output to fullscreen overlay
+        function syncVlmToFullscreen() {
+            const fullscreenVlmContent = document.getElementById('fullscreenVlmContent');
+            const fullscreenVlmMetrics = document.getElementById('fullscreenVlmMetrics');
+
+            if (fullscreenVlmContent) {
+                fullscreenVlmContent.textContent = getFullscreenVlmText();
+            }
+
+            // Add metrics if available
+            const latency = document.getElementById('latencyValue')?.textContent;
+            const count = document.getElementById('countValue')?.textContent;
+            if (latency && count) {
+                fullscreenVlmMetrics.innerHTML = `<span>Latency: ${latency}ms</span><span>Count: ${count}</span>`;
+            }
+        }
+
+        function normalizeFullscreenLine(text) {
+            return String(text || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function getFullscreenVlmText() {
+            const lines = [];
+
+            vlmHistory.forEach(entry => {
+                if (entry.kind === 'background' || entry.contextExcluded) {
+                    return;
+                }
+                const prompt = normalizeFullscreenLine(entry.prompt);
+                const response = normalizeFullscreenLine(entry.response);
+
+                if (hasVisiblePrompt(entry) && prompt) {
+                    lines.push(`输入：${prompt}`);
+                }
+                if (response) {
+                    lines.push(`输出：${response}`);
+                }
+            });
+
+            const liveResponse = normalizeFullscreenLine(getVlmDisplayText(lastText));
+            if (!lines.length && liveResponse) {
+                lines.push(`输出：${liveResponse}`);
+            }
+
+            return lines.slice(-4).join('\n') || window.JoyI18n.localizeUiString('Ready');
+        }
+
+        // ESC key to exit fullscreen
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const videoCard = document.getElementById('videoCard');
+                if (videoCard.classList.contains('fullscreen')) {
+                    toggleFullscreen();
+                }
+            }
+        });
+
+        // API Key Field Toggle
+        function toggleApiKeyField() {
+            const field = document.getElementById('apiKeyField');
+            const toggle = document.getElementById('apiKeyToggle');
+            field.classList.toggle('collapsed');
+            toggle.classList.toggle('collapsed');
+        }
+
+        // Check if API Base URL requires API key
+        function checkApiKeyRequirement(url) {
+            const apiKeyField = document.getElementById('apiKeyField');
+            const apiKeyToggle = document.getElementById('apiKeyToggle');
+
+            // Check if URL is a remote service (not localhost or 127.0.0.1)
+            const isLocal = url.includes('localhost') || url.includes('127.0.0.1') || url.includes('0.0.0.0');
+            const isRemote = !isLocal;
+
+            if (isRemote) {
+                // Show API key field for remote services
+                if (apiKeyField && apiKeyToggle) {
+                    apiKeyField.classList.remove('collapsed');
+                    apiKeyToggle.classList.remove('collapsed');
+                }
+                console.log('Remote API detected - API Key field expanded');
+            } else {
+                // Hide API key field for local services
+                if (apiKeyField && apiKeyToggle) {
+                    apiKeyField.classList.add('collapsed');
+                    apiKeyToggle.classList.add('collapsed');
+                }
+                console.log('Local API detected - API Key field collapsed');
+            }
+        }
+
+        // Status Update
+        function updateStatus(message, state) {
+            connectionStatus.textContent = message;
+            connectionStatus.className = `status-badge ${state}`;
+        }
+
+        function updatePromptAvailability() {
+            const canSendPrompt = true;
+            promptSendBtn.disabled = false;
+            speechButtons.forEach(button => {
+                button.disabled = false;
+            });
+            promptText.placeholder = '输入文字，或点麦克风语音识别后发送给 BT-7274';
+            promptSendBtn.title = '发送给 BT-7274';
+            syncSpeechButtons();
+
+            if (processEvery) {
+                processEvery.disabled = isAnalysisRunning;
+                processEvery.title = isAnalysisRunning ? '推理中不可修改，请先停止视频' : '';
+            }
+            if (framesPerBatch) {
+                framesPerBatch.disabled = isAnalysisRunning;
+                framesPerBatch.title = isAnalysisRunning ? '推理中不可修改，请先停止视频' : '';
+            }
+        }
+
+        function setVideoWaitingForStream(waiting) {
+            const videoCard = document.getElementById('videoCard');
+            videoCard?.classList.toggle('waiting-for-stream', waiting);
+        }
+
+        function resetVideoButtons() {
+            // v3.38: red Start / small Stop removed. Each capture source refreshes its own button.
+        }
+
+        function cancelRevealVideoFallback() {
+            if (revealVideoFallbackTimeout) {
+                clearTimeout(revealVideoFallbackTimeout);
+                revealVideoFallbackTimeout = null;
+            }
+        }
+
+        function revealVideoWhenReady(token) {
+            if (token !== streamStartToken) {
+                return;
+            }
+            cancelRevealVideoFallback();
+            revealVideoAfterMetricsToken = null;
+            setVideoWaitingForStream(false);
+            updateStatus(window.JoyI18n.localizeUiString('Streaming'), 'connected');
+        }
+
+        function showProcessedVideoStream(stream, token) {
+            if (token !== streamStartToken) {
+                return;
+            }
+            videoElement.srcObject = stream;
+
+            const markStreaming = () => {
+                if (token !== streamStartToken || videoElement.srcObject !== stream) {
+                    return;
+                }
+                isAnalysisRunning = true;
+                updatePromptAvailability();
+                if (revealVideoAfterMetricsToken === token) {
+                    updateStatus(window.JoyI18n.localizeUiString('Preparing first metrics...'), 'processing');
+                    cancelRevealVideoFallback();
+                    revealVideoFallbackTimeout = setTimeout(() => {
+                        revealVideoWhenReady(token);
+                    }, 5000);
+                } else {
+                    revealVideoWhenReady(token);
+                }
+            };
+
+            const playPromise = videoElement.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.then(markStreaming).catch(err => {
+                    console.error('Error playing video:', err);
+                    markStreaming();
+                });
+            } else {
+                markStreaming();
+            }
+        }
+
+        // Detect Local VLM Services
+        async function detectServices() {
+            try {
+                const response = await fetch('/detect-services');
+                const data = await response.json();
+
+                if (data.default) {
+                    const service = data.default;
+                    console.log('Detected service:', service.name);
+
+                    // Update API Base URL
+                    apiBaseUrl.value = service.url;
+
+                    // Check if API key is required
+                    checkApiKeyRequirement(service.url);
+
+                    // Update hint text (svc-llm-api-base has no hint sibling after
+                    // Block 3's form refactor, so guard against a null element).
+                    const hintDiv = apiBaseUrl.nextElementSibling;
+                    if (hintDiv) {
+                        if (data.detected.length > 1) {
+                            const serviceNames = data.detected.map(s => s.name).join(', ');
+                            hintDiv.textContent = `Detected: ${serviceNames}`;
+                        } else if (service.name === 'NVIDIA API Catalog') {
+                            hintDiv.textContent = window.JoyI18n.localizeUiString('No local VLM services found. Using NVIDIA API Catalog (requires API key from build.nvidia.com)');
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error detecting services:', error);
+                // Default to showing API key field on error
+                checkApiKeyRequirement('https://');
+            }
+        }
+
+        // Fetch Models
+        function isValidModelName(model) {
+            const value = String(model || '').trim();
+            return Boolean(value) && !['undefined', 'null', 'none'].includes(value.toLowerCase());
+        }
+
+        async function fetchModels() {
+            try {
+                if (!apiBaseUrl || !apiKey || !modelSelect) return;
+
+                // Get current API settings from UI
+                const currentApiBase = apiBaseUrl.value.trim();
+                const currentApiKey = apiKey.value.trim();
+
+                // Build query params
+                const params = new URLSearchParams();
+                if (currentApiBase) {
+                    params.append('api_base', currentApiBase);
+                }
+                if (currentApiKey) {
+                    params.append('api_key', currentApiKey);
+                }
+
+                const url = `/models${params.toString() ? '?' + params.toString() : ''}`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                const validModels = (data.models || []).filter(model => isValidModelName(model && model.id));
+                if (validModels.length > 0) {
+                    // `modelSelect` is now the `svc-llm-model` text input (Block 3), not a
+                    // <select>, so prefill its value instead of building <option>s.
+                    let currentModel = (modelSelect.value || '').trim();
+                    if (!currentModel) {
+                        const current = validModels.find(m => m.current);
+                        const autoSelectedModel = current ? current.id : validModels[0].id;
+                        modelSelect.value = autoSelectedModel;
+                        currentModel = autoSelectedModel;
+
+                        // Auto-apply the new model
+                        console.log(`Auto-selected model: ${autoSelectedModel}`);
+                        applyApiSettings({ showFeedback: false });
+                    }
+
+                    // Update model name in VLM output header
+                    if (currentModel) {
+                        const nameEl = document.getElementById('modelName');
+                        if (nameEl) nameEl.textContent = currentModel;
+                    }
+                } else {
+                    console.warn('fetchModels: no models available from', currentApiBase);
+                }
+            } catch (error) {
+                console.error('Error fetching models:', error);
+            }
+        }
+
+        // Handle model change
+        modelSelect.addEventListener('change', (e) => {
+            const newModel = e.target.value;
+            if (!newModel) return;
+
+            // Update model name in VLM output header
+            document.getElementById('modelName').textContent = newModel;
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                // Send model, API base, and API key together
+                websocket.send(JSON.stringify({
+                    type: 'update_model',
+                    model: newModel,
+                    api_base: apiBaseUrl.value.trim(),
+                    api_key: apiKey.value.trim()
+                }));
+                updateStatus(window.JoyI18n.localizeUiString('Model configured'), 'connected');
+            }
+
+            // Trigger flash animation
+            modelSelect.classList.add('applied');
+            setTimeout(() => {
+                modelSelect.classList.remove('applied');
+            }, 600);
+        });
+
+        // Also trigger flash on blur (when dropdown closes)
+        modelSelect.addEventListener('blur', () => {
+            const currentModel = modelSelect.value;
+            if (currentModel) {
+                // Trigger flash animation
+                modelSelect.classList.add('applied');
+                setTimeout(() => {
+                    modelSelect.classList.remove('applied');
+                }, 600);
+            }
+        });
+
+        // Helper function to apply prompt settings
+        function applyPromptSettings() {
+            if (!isAnalysisRunning) {
+                updateStatus('请先开始视频', 'disconnected');
+                updatePromptAvailability();
+                return false;
+            }
+
+            const newPrompt = cleanBackgroundQuestionText(promptText.value.trim());
+
+            currentPromptText = newPrompt;
+            if (newPrompt) {
+                appendPromptHistoryEntry(newPrompt);
+            } else {
+                pendingPromptEntry = null;
+            }
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'update_prompt',
+                    prompt: newPrompt
+                }));
+            }
+
+            // Clear input after applying (one-shot mode)
+            promptText.value = '';
+            resetAsrTranscriptState('');
+            resetActiveAsrSegment();
+            resizePromptInput();
+            return true;
+        }
+
+        function resizePromptInput() {
+            promptText.style.height = 'auto';
+            promptText.style.height = Math.min(promptText.scrollHeight, 120) + 'px';
+        }
+
+        function closePromptPopovers(except = null) {
+            if (except !== 'presets') {
+                promptPresetMenu.classList.add('hidden');
+                promptPresetBtn.classList.remove('active');
+            }
+        }
+
+        function flashPromptControl(element) {
+            element.classList.add('applied');
+            setTimeout(() => {
+                element.classList.remove('applied');
+            }, 600);
+        }
+
+
+        function setBtMicLevel(levelText, deviceText) {
+            if (btMicLevelValue) btMicLevelValue.textContent = levelText || '--';
+            if (deviceText !== undefined && btMicDeviceValue) btMicDeviceValue.textContent = window.JoyI18n.localizeDeviceLabel(deviceText) || '--';
+        }
+
+        function stopBtMicLevelMonitor() {
+            if (btMicLevelFrame) {
+                cancelAnimationFrame(btMicLevelFrame);
+                btMicLevelFrame = null;
+            }
+            if (btMicLevelSource) {
+                try { btMicLevelSource.disconnect(); } catch (_) {}
+                btMicLevelSource = null;
+            }
+            if (btMicLevelAudioContext) {
+                btMicLevelAudioContext.close().catch(() => {});
+                btMicLevelAudioContext = null;
+            }
+            btMicLevelAnalyser = null;
+            btMicLevelBuffer = null;
+            setBtMicLevel('--', '--');
+        }
+
+        function startBtMicLevelMonitor(stream) {
+            stopBtMicLevelMonitor();
+            const track = stream?.getAudioTracks?.()[0];
+            const label = track?.label || 'mic';
+            const shortLabel = label.replace(/^默认 - /, '').replace(/^通讯 - /, '');
+            setBtMicLevel('0%', shortLabel);
+            try {
+                const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextCtor || !stream) return;
+                btMicLevelAudioContext = new AudioContextCtor();
+                btMicLevelSource = btMicLevelAudioContext.createMediaStreamSource(stream);
+                btMicLevelAnalyser = btMicLevelAudioContext.createAnalyser();
+                btMicLevelAnalyser.fftSize = 512;
+                btMicLevelBuffer = new Uint8Array(btMicLevelAnalyser.fftSize);
+                btMicLevelSource.connect(btMicLevelAnalyser);
+                const tick = () => {
+                    if (!btMicLevelAnalyser || !btMicLevelBuffer) return;
+                    btMicLevelAnalyser.getByteTimeDomainData(btMicLevelBuffer);
+                    let sum = 0;
+                    for (let i = 0; i < btMicLevelBuffer.length; i += 1) {
+                        const v = (btMicLevelBuffer[i] - 128) / 128;
+                        sum += v * v;
+                    }
+                    const rms = Math.sqrt(sum / Math.max(1, btMicLevelBuffer.length));
+                    const percent = Math.min(100, Math.round(rms * 220));
+                    setBtMicLevel(percent <= 1 ? 'silent' : `${percent}%`);
+                    btMicLevelFrame = requestAnimationFrame(tick);
+                };
+                tick();
+            } catch (error) {
+                console.warn('BT mic level monitor unavailable:', error);
+                setBtMicLevel('n/a', shortLabel);
+            }
+        }
+        function setBtListeningActive(active) {
+            btListening = Boolean(active);
+            if (!btListenBtn) return;
+            btListenBtn.classList.toggle('listening', btListening);
+            btListenBtn.setAttribute('aria-pressed', btListening ? 'true' : 'false');
+            btListenBtn.title = btListening ? '停止监听 BT 唤醒词' : '监听 BT 唤醒词';
+            btListenBtn.disabled = Boolean(btListeningStarting && !btListening);
+            lucide.createIcons();
+        }
+
+        function attachBtListenRemoteAudio(event) {
+            if (!btListenPlayer || event.track.kind !== 'audio') return;
+            const remoteStream = event.streams && event.streams[0]
+                ? event.streams[0]
+                : new MediaStream([event.track]);
+            btListenPlayer.srcObject = remoteStream;
+            btListenPlayer.muted = false;
+            btListenPlayer.play().catch(error => {
+                console.warn('BT listening audio play blocked:', error);
+            });
+        }
+
+        async function startBtListening() {
+            if (btListening || btListeningStarting) return;
+            btListeningStarting = true;
+            try { await fetch('/api/jarvis/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId }) }); } catch (e) { console.warn('reset jarvis session failed', e); }
+            setBtListeningActive(true);
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('当前浏览器不支持麦克风采集，或页面没有麦克风权限。');
+                }
+                if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                    connectWebSocket();
+                }
+                btListenStream = await navigator.mediaDevices.getUserMedia({ audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                }, video: false });
+                const audioTrack = btListenStream.getAudioTracks()[0];
+                startBtMicLevelMonitor(btListenStream);
+                if (!audioTrack) {
+                // Apply user-selected mic gain via Web Audio API so KWS sees a stronger signal.
+                // Uses a separate AudioContext so the AnalyserNode tap in startBtMicLevelMonitor still works.
+                try {
+                    const gainValue = parseFloat(document.getElementById('btMicGainSelect').value || '1.0');
+                    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+                    btMicGainAudioContext = new AudioContextCtor();
+                    const source = btMicGainAudioContext.createMediaStreamSource(btListenStream);
+                    const gain = btMicGainAudioContext.createGain();
+                    gain.gain.value = gainValue;
+                    const destination = btMicGainAudioContext.createMediaStreamDestination();
+                    btMicGainAudioContext._btGainRef = gain;
+                    source.connect(gain).connect(destination);
+                    const boostedTrack = destination.stream.getAudioTracks()[0];
+                    if (boostedTrack) {
+                        // KWS sees the boosted signal; mic level monitor keeps watching the raw stream so the display matches what user hears.
+                        boostedTrack._btOriginalAudioTrack = audioTrack;
+                        audioTrack = boostedTrack;
+                    }
+                } catch (gainErr) {
+                    console.warn('Mic gain init failed, using raw track:', gainErr);
+                }
+                // Allow live gain change without reconnecting: store gain node and update on select change.
+                btListenGainNode = null;
+                btListenGainNode = gain;
+                }
+                btListenPeerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                btListenPeerConnection.ontrack = attachBtListenRemoteAudio;
+                btListenPeerConnection.oniceconnectionstatechange = () => {
+                    const state = btListenPeerConnection?.iceConnectionState;
+                    console.log('BT listening ICE state:', state);
+                    if (['disconnected', 'failed', 'closed'].includes(state)) {
+                        stopBtListening({ notifyServer: state !== 'closed' });
+                    }
+                };
+                const audioTransceiver = btListenPeerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+                await audioTransceiver.sender.replaceTrack(audioTrack);
+                const offer = await btListenPeerConnection.createOffer();
+                await btListenPeerConnection.setLocalDescription(offer);
+                const response = await fetch('/offer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sdp: btListenPeerConnection.localDescription.sdp,
+                        type: btListenPeerConnection.localDescription.type,
+                        session_id: sessionId,
+                        jarvis_audio: true
+                    })
+                });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.error || `监听启动失败：HTTP ${response.status}`);
+                }
+                const answer = await response.json();
+                await btListenPeerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                updateStatus(window.JoyI18n.localizeUiString('BT listening'), 'connected');
+                setBtListeningActive(true);
+            } catch (error) {
+                console.error('Error starting BT listening:', error);
+                updateStatus(getMicErrorMessage(error), 'disconnected');
+                await stopBtListening({ notifyServer: false });
+            } finally {
+                btListeningStarting = false;
+                setBtListeningActive(Boolean(btListenPeerConnection && btListenStream));
+            }
+        }
+
+        async function stopBtListening({ notifyServer = true } = {}) {
+            btListeningStarting = false;
+            stopBtMicLevelMonitor();
+            if (btListenPeerConnection) {
+                btListenPeerConnection.oniceconnectionstatechange = null;
+                btListenPeerConnection.ontrack = null;
+                btListenPeerConnection.close();
+                btListenPeerConnection = null;
+            }
+            if (btListenStream) {
+                btListenStream.getTracks().forEach(track => track.stop());
+                btListenStream = null;
+            btListenGainNode = null;
+            if (btMicGainAudioContext) {
+                try { await btMicGainAudioContext.close(); } catch (_) {}
+                btMicGainAudioContext = null;
+            }
+            }
+            if (btListenPlayer) {
+                btListenPlayer.pause();
+                btListenPlayer.srcObject = null;
+            }
+            setBtListeningActive(false);
+            if (notifyServer) {
+                try {
+                    await fetch('/api/jarvis/stop', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: sessionId })
+                    });
+                } catch (error) {
+                    console.warn('BT listening stop failed:', error);
+                }
+            }
+            updateStatus(window.JoyI18n.localizeUiString('Connected'), 'connected');
+        }
+        function syncSpeechButtons() {
+            const pressMode = isPressToTalkLayout();
+            const speechActive = isSpeechActive();
+            const speechVisualActive = isSpeechVisualActive();
+            const idleTitle = isMobileLayout()
+                ? (pressMode ? '按住说话' : '切换到语音输入')
+                : '点击语音识别';
+
+            promptEditor?.classList.toggle('mobile-voice-mode', pressMode);
+            promptEditor?.classList.toggle('voice-ripple-active', pressMode && speechVisualActive);
+            fullscreenPromptOverlay?.classList.toggle('voice-panel-open', pressMode);
+
+            speechButtons.forEach(button => {
+                button.classList.toggle('recording', speechVisualActive);
+                button.title = speechVisualActive
+                    ? (pressMode ? '松开停止' : '停止说话')
+                    : idleTitle;
+
+                const label = button.querySelector('.speech-label');
+                if (label) {
+                    if (speechVisualActive) {
+                        label.textContent = pressMode ? '松手发送，上滑取消' : '停止说话';
+                    } else {
+                        label.textContent = pressMode ? '按住说话' : '说话';
+                    }
+                }
+            });
+            lucide.createIcons();
+        }
+
+        function isSpeechActive() {
+            return Boolean(asrStarting || asrRecording);
+        }
+
+        function isSpeechVisualActive() {
+            if (isPressToTalkLayout()) {
+                return asrPointerId !== null || asrStarting || asrRecording || Boolean(asrStream || asrAudioContext || asrWs);
+            }
+            return isSpeechActive();
+        }
+
+        function setSpeechRecording(recording) {
+            asrStarting = false;
+            asrRecording = recording;
+            syncSpeechButtons();
+            updatePromptAvailability();
+        }
+
+        function suppressNextSpeechClick() {
+            ignoreNextSpeechClick = true;
+            if (ignoreSpeechClickTimeout) {
+                clearTimeout(ignoreSpeechClickTimeout);
+            }
+            ignoreSpeechClickTimeout = setTimeout(() => {
+                ignoreNextSpeechClick = false;
+                ignoreSpeechClickTimeout = null;
+            }, 450);
+        }
+
+        function floatToInt16(input) {
+            const output = new Int16Array(input.length);
+            for (let i = 0; i < input.length; i += 1) {
+                const sample = Math.max(-1, Math.min(1, input[i]));
+                output[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+            }
+            return output;
+        }
+
+        function downsampleToInt16(input, inputSampleRate) {
+            if (inputSampleRate === ASR_TARGET_SAMPLE_RATE) {
+                return floatToInt16(input).buffer;
+            }
+
+            const ratio = inputSampleRate / ASR_TARGET_SAMPLE_RATE;
+            const length = Math.floor(input.length / ratio);
+            const output = new Float32Array(length);
+            let inputOffset = 0;
+
+            for (let i = 0; i < length; i += 1) {
+                const nextOffset = Math.floor((i + 1) * ratio);
+                let sum = 0;
+                let count = 0;
+                for (let j = inputOffset; j < nextOffset && j < input.length; j += 1) {
+                    sum += input[j];
+                    count += 1;
+                }
+                output[i] = count ? sum / count : 0;
+                inputOffset = nextOffset;
+            }
+
+            return floatToInt16(output).buffer;
+        }
+
+        function getAudioRms(input) {
+            let sum = 0;
+            for (let i = 0; i < input.length; i += 1) {
+                sum += input[i] * input[i];
+            }
+            return Math.sqrt(sum / Math.max(1, input.length));
+        }
+
+        function formatBtLatencyMs(ms) {
+            if (ms == null || !Number.isFinite(ms) || ms < 0) return '--';
+            if (ms < 1000) return `${Math.round(ms)}ms`;
+            return `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)}s`;
+        }
+
+        function setBtLatencyText(element, text) {
+            if (element) element.textContent = text || '--';
+        }
+
+        function renderBtLatency() {
+            const now = performance.now();
+            const asrText = btLatency.asrStartAt
+                ? (btLatency.asrFirstPartialAt
+                    ? `first ${formatBtLatencyMs(btLatency.asrFirstPartialAt - btLatency.asrStartAt)}`
+                    : (btLatency.asrConnectedAt
+                        ? `conn ${formatBtLatencyMs(btLatency.asrConnectedAt - btLatency.asrStartAt)}`
+                        : `start ${formatBtLatencyMs(now - btLatency.asrStartAt)}`))
+                : '--';
+            const llmText = btLatency.sendStartAt
+                ? (btLatency.llmReplyAt
+                    ? formatBtLatencyMs(btLatency.llmReplyAt - btLatency.sendStartAt)
+                    : (btLatency.sendAckAt ? 'waiting' : 'posting'))
+                : '--';
+            const ttsText = btLatency.ttsStartAt
+                ? (btLatency.ttsReadyAt
+                    ? formatBtLatencyMs(btLatency.ttsReadyAt - btLatency.ttsStartAt)
+                    : 'loading')
+                : '--';
+            const endAt = btLatency.ttsReadyAt || btLatency.llmReplyAt || btLatency.sendAckAt;
+            const e2eText = btLatency.sendStartAt && endAt
+                ? formatBtLatencyMs(endAt - btLatency.sendStartAt)
+                : '--';
+            setBtLatencyText(btAsrLatencyValue, asrText);
+            setBtLatencyText(btLlmLatencyValue, llmText);
+            setBtLatencyText(btTtsLatencyValue, ttsText);
+            setBtLatencyText(btE2eLatencyValue, e2eText);
+        }
+
+        function resetBtTurnLatency() {
+            btLatency.sendStartAt = null;
+            btLatency.sendAckAt = null;
+            btLatency.llmReplyAt = null;
+            btLatency.ttsStartAt = null;
+            btLatency.ttsReadyAt = null;
+            btLatency.ttsPlayAt = null;
+            renderBtLatency();
+        }
+        function getMicErrorMessage(error) {
+            if (!window.isSecureContext) {
+                return '当前页面不是安全来源，浏览器会禁止麦克风。请用 localhost/127.0.0.1 访问，或改用 HTTPS。';
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                return '当前浏览器不支持麦克风采集，或页面没有麦克风权限。';
+            }
+            if (error && error.name === 'NotAllowedError') {
+                return '麦克风权限被拒绝，请在浏览器地址栏允许麦克风后重试。';
+            }
+            if (error && error.name === 'NotFoundError') {
+                return '没有找到可用麦克风。';
+            }
+            return `麦克风不可用：${error ? error.message : '未知错误'}`;
+        }
+
+        function sanitizeAsrTranscriptText(text) {
+            return String(text || '')
+                .replace(/<\/s>/gi, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trimStart();
+        }
+
+        function updatePromptFromSpeech() {
+            const text = sanitizeAsrTranscriptText([asrFinalText, asrPartialText].filter(Boolean).join(''));
+            promptText.value = text;
+            resizePromptInput();
+        }
+
+        function resetAsrTranscriptState(baseText = '') {
+            const text = String(baseText || '');
+            asrFinalText = text;
+            asrPartialText = '';
+            asrLastFinalText = text;
+        }
+
+        function resetActiveAsrSegment() {
+            if (!asrRecording || !asrStream || !asrAudioContext) {
+                return;
+            }
+            if (asrPromptInputResetTimer) {
+                clearTimeout(asrPromptInputResetTimer);
+            }
+            asrPromptInputResetTimer = setTimeout(() => {
+                asrPromptInputResetTimer = null;
+                if (!asrRecording || !asrStream || !asrAudioContext) {
+                    return;
+                }
+                const oldWs = asrWs;
+                asrResettingSegment = true;
+                asrWs = null;
+                try {
+                    if (oldWs && oldWs.readyState === WebSocket.OPEN) {
+                        oldWs.send(JSON.stringify({ type: 'segment_end' }));
+                    }
+                } catch (err) { /* ignore reset send errors */ }
+                try {
+                    if (oldWs && [WebSocket.CONNECTING, WebSocket.OPEN].includes(oldWs.readyState)) {
+                        oldWs.close();
+                    }
+                } catch (err) { /* ignore reset close errors */ }
+                connectAsrWebSocket();
+                setTimeout(() => {
+                    asrResettingSegment = false;
+                }, 500);
+            }, 120);
+        }
+
+        function handlePromptManualInput() {
+            resetAsrTranscriptState(promptText.value);
+            resetActiveAsrSegment();
+            resizePromptInput();
+        }
+
+        function handleAsrResult(data) {
+            const transcriptText = sanitizeAsrTranscriptText(data.text);
+            if (!transcriptText || !['IS_PARTIAL', 'IS_FINAL', 'IS_END'].includes(data.event)) {
+                return;
+            }
+            if (data.final) {
+                btLatency.asrFinalAt = performance.now();
+                renderBtLatency();
+                if (transcriptText === asrLastFinalText || asrFinalText.endsWith(transcriptText)) {
+                    asrPartialText = '';
+                    updatePromptFromSpeech();
+                    if (asrSendPromptWhenFinal) {
+                        stopSpeech({ sendEnd: false, sendPrompt: true });
+                    }
+                    return;
+                }
+                asrLastFinalText = transcriptText;
+                asrFinalText += transcriptText;
+                asrPartialText = '';
+                updatePromptFromSpeech();
+                if (asrSendPromptWhenFinal) {
+                    stopSpeech({ sendEnd: false, sendPrompt: true });
+                }
+            } else {
+                asrPartialText = transcriptText;
+                updatePromptFromSpeech();
+            }
+        }
+
+        async function prepareSpeechMic() {
+            asrStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+
+            asrAudioContext = new AudioContext();
+            asrSource = asrAudioContext.createMediaStreamSource(asrStream);
+            asrProcessor = asrAudioContext.createScriptProcessor(ASR_AUDIO_BUFFER_SIZE, 1, 1);
+            asrSilence = asrAudioContext.createGain();
+            asrSilence.gain.value = 0;
+            asrLastVoiceTime = performance.now();
+
+            asrProcessor.onaudioprocess = (event) => {
+                if (!asrRecording || !asrWs || asrWs.readyState !== WebSocket.OPEN) {
+                    return;
+                }
+
+                const input = event.inputBuffer.getChannelData(0);
+                const rms = getAudioRms(input);
+                const now = performance.now();
+                if (rms >= ASR_SILENCE_RMS_THRESHOLD) {
+                    asrLastVoiceTime = now;
+                } else if (asrStopMode === 'auto' && now - asrLastVoiceTime >= ASR_SILENCE_AUTO_STOP_MS) {
+                    stopSpeech();
+                    return;
+                }
+
+                const audio = downsampleToInt16(input, asrAudioContext.sampleRate);
+                if (audio.byteLength > 0) {
+                    asrWs.send(audio);
+                }
+            };
+
+            asrSource.connect(asrProcessor);
+            asrProcessor.connect(asrSilence);
+            asrSilence.connect(asrAudioContext.destination);
+        }
+
+        function connectAsrWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const continuous = asrStopMode === 'toggle' ? '&continuous=1' : '';
+            const wsUrl = `${protocol}//${window.location.host}${ASR_WS_PATH}?session_id=${encodeURIComponent(sessionId)}${continuous}`;
+            const ws = new WebSocket(wsUrl);
+            asrWs = ws;
+            ws.binaryType = 'arraybuffer';
+
+            ws.onmessage = (event) => {
+                if (asrWs !== ws) {
+                    return;
+                }
+                const data = JSON.parse(event.data);
+                if (data.type === 'status' && data.message === 'connected') {
+                    btLatency.asrConnectedAt = performance.now();
+                    renderBtLatency();
+                    setSpeechRecording(true);
+                    updatePromptAvailability();
+                    return;
+                }
+                if (data.type === 'error') {
+                    updateStatus(data.message, 'disconnected');
+                    stopSpeech({ sendEnd: false, sendPrompt: false });
+                    return;
+                }
+                if (data.type === 'result') {
+                    handleAsrResult(data);
+                }
+            };
+
+            ws.onclose = () => {
+                if (asrWs !== ws) {
+                    return;
+                }
+                const shouldSend = asrSendPromptWhenFinal && Boolean(promptText.value.trim());
+                asrWs = null;
+                if (!asrResettingSegment && (asrRecording || asrStream || asrAudioContext || asrSendPromptWhenFinal)) {
+                    stopSpeech({ sendEnd: false, sendPrompt: shouldSend });
+                }
+                updatePromptAvailability();
+            };
+
+            ws.onerror = () => {
+                if (asrWs !== ws) {
+                    return;
+                }
+                updateStatus(window.JoyI18n.localizeUiString('ASR connection failed'), 'disconnected');
+                stopSpeech({ sendEnd: false, sendPrompt: false });
+                updatePromptAvailability();
+            };
+        }
+
+        async function startSpeech({ mode = 'toggle' } = {}) {
+            if (isSpeechActive() || asrStream || asrAudioContext || asrWs) {
+                return;
+            }
+
+            const token = ++asrStartToken;
+            btLatency.asrStartAt = performance.now();
+            btLatency.asrMicReadyAt = null;
+            btLatency.asrConnectedAt = null;
+            btLatency.asrFirstPartialAt = null;
+            btLatency.asrFinalAt = null;
+            renderBtLatency();
+            asrStarting = true;
+            syncSpeechButtons();
+            updatePromptAvailability();
+            asrStopMode = mode;
+            asrStopRequested = false;
+            if (mode !== 'press') {
+                speechButtons.forEach(button => {
+                    button.disabled = true;
+                });
+            }
+            asrFinalText = '';
+            asrPartialText = '';
+            asrLastFinalText = '';
+            asrSendPromptWhenFinal = false;
+            if (asrFinalFallbackTimer) {
+                clearTimeout(asrFinalFallbackTimer);
+                asrFinalFallbackTimer = null;
+            }
+            promptText.value = '';
+            resizePromptInput();
+
+            try {
+                await prepareSpeechMic();
+                btLatency.asrMicReadyAt = performance.now();
+                renderBtLatency();
+                if (token !== asrStartToken || asrStopRequested) {
+                    await stopSpeech({ sendEnd: false, sendPrompt: false });
+                    return;
+                }
+                connectAsrWebSocket();
+            } catch (error) {
+                updateStatus(getMicErrorMessage(error), 'disconnected');
+                updatePromptAvailability();
+                await stopSpeech({ sendEnd: false, sendPrompt: false });
+            }
+        }
+
+        async function stopSpeech({ sendEnd = true, sendPrompt = true } = {}) {
+            asrStartToken += 1;
+            asrStopRequested = true;
+            const wasRecording = asrRecording;
+            asrPointerId = null;
+            asrStarting = false;
+            setSpeechRecording(false);
+            if (sendEnd && wasRecording) {
+                asrSendPromptWhenFinal = sendPrompt;
+                speechButtons.forEach(button => {
+                    button.disabled = true;
+                });
+                if (asrFinalFallbackTimer) {
+                    clearTimeout(asrFinalFallbackTimer);
+                }
+                asrFinalFallbackTimer = setTimeout(() => {
+                    if (asrSendPromptWhenFinal) {
+                        stopSpeech({
+                            sendEnd: false,
+                            sendPrompt: Boolean(promptText.value.trim())
+                        });
+                    }
+                }, ASR_FINAL_FALLBACK_MS);
+            }
+
+            if (asrProcessor) {
+                asrProcessor.disconnect();
+            }
+            if (asrSource) {
+                asrSource.disconnect();
+            }
+            if (asrSilence) {
+                asrSilence.disconnect();
+            }
+            if (asrStream) {
+                asrStream.getTracks().forEach(track => track.stop());
+            }
+            if (asrAudioContext) {
+                await asrAudioContext.close();
+            }
+
+            asrProcessor = null;
+            asrSource = null;
+            asrSilence = null;
+            asrStream = null;
+            asrAudioContext = null;
+
+            if (sendEnd && asrWs && asrWs.readyState === WebSocket.OPEN) {
+                asrWs.send(JSON.stringify({ type: 'end' }));
+            }
+            if (asrWs && !sendEnd && [WebSocket.CONNECTING, WebSocket.OPEN].includes(asrWs.readyState)) {
+                asrWs.close();
+            }
+            if (!sendEnd && sendPrompt && promptText.value.trim()) {
+                sendBtPrompt();
+            }
+            if (!sendEnd) {
+                if (asrFinalFallbackTimer) {
+                    clearTimeout(asrFinalFallbackTimer);
+                    asrFinalFallbackTimer = null;
+                }
+                if (asrPromptInputResetTimer) {
+                    clearTimeout(asrPromptInputResetTimer);
+                    asrPromptInputResetTimer = null;
+                }
+                asrResettingSegment = false;
+                asrSendPromptWhenFinal = false;
+                if (isMobileLayout()) {
+                    mobileVoiceMode = false;
+                }
+                updatePromptAvailability();
+            }
+        }
+
+        function finishPressToTalk({ sendEnd = true, sendPrompt = true } = {}) {
+            if (!isPressToTalkLayout() && asrPointerId === null) {
+                return;
+            }
+            asrPointerId = null;
+            stopSpeech({ sendEnd, sendPrompt });
+            mobileVoiceMode = false;
+            updatePromptAvailability();
+        }
+
+        promptPresetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const willOpen = promptPresetMenu.classList.contains('hidden');
+            closePromptPopovers(willOpen ? 'presets' : null);
+            promptPresetMenu.classList.toggle('hidden', !willOpen);
+            promptPresetBtn.classList.toggle('active', willOpen);
+        });
+
+        promptPresetOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                promptPresetOptions.forEach(item => item.classList.remove('selected'));
+                option.classList.add('selected');
+                promptText.value = option.dataset.prompt || '';
+                resizePromptInput();
+                closePromptPopovers();
+                promptText.focus();
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.chat-prompt-shell')) {
+                closePromptPopovers();
+            }
+        });
+
+        let promptImeComposing = false;
+        let promptCompositionEndedAt = 0;
+
+        promptText.addEventListener('compositionstart', () => {
+            promptImeComposing = true;
+        });
+
+        promptText.addEventListener('compositionend', () => {
+            promptImeComposing = false;
+            promptCompositionEndedAt = Date.now();
+        });
+
+        function isPromptImeEnter(e) {
+            return Boolean(
+                promptImeComposing ||
+                e.isComposing ||
+                e.keyCode === 229 ||
+                Date.now() - promptCompositionEndedAt < 30
+            );
+        }
+
+        // Apply prompt on Enter key (Shift+Enter for newline)
+        promptText.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                if (isPromptImeEnter(e)) {
+                    return;
+                }
+                e.preventDefault();
+                sendBtPrompt();
+            }
+        });
+
+        promptText.addEventListener('input', handlePromptManualInput);
+
+        function toggleSpeechByClick() {
+            if (asrRecording) {
+                stopSpeech();
+            } else {
+                startSpeech({ mode: 'toggle' });
+            }
+        }
+
+        function enterMobileVoiceMode(event) {
+            if (!isMobileLayout() || mobileVoiceMode) {
+                return false;
+            }
+            event.preventDefault();
+            mobileVoiceMode = true;
+            closePromptPopovers();
+            updatePromptAvailability();
+            return true;
+        }
+
+        function preventSpeechLongPressMenu(event) {
+            if (
+                isMobileLayout() &&
+                (event.target === speechBtn || event.target.closest?.('.speech-control, .mobile-voice-mode'))
+            ) {
+                event.preventDefault();
+            }
+        }
+
+        function startPressToTalk(event) {
+            if (!isMobileLayout()) {
+                return;
+            }
+            event.preventDefault();
+            if (enterMobileVoiceMode(event)) {
+                asrPointerId = event.pointerId;
+                suppressNextSpeechClick();
+                event.currentTarget.setPointerCapture?.(event.pointerId);
+                syncSpeechButtons();
+                startSpeech({ mode: 'press' });
+                return;
+            }
+            if (isSpeechActive() || asrStream || asrAudioContext || asrWs) {
+                return;
+            }
+            asrPointerId = event.pointerId;
+            suppressNextSpeechClick();
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            syncSpeechButtons();
+            startSpeech({ mode: 'press' });
+        }
+
+        function stopPressToTalk(event) {
+            if (!isPressToTalkLayout() || asrPointerId !== event.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+            finishPressToTalk({ sendEnd: true, sendPrompt: true });
+        }
+
+        speechBtn.addEventListener('pointerdown', startPressToTalk);
+        speechBtn.addEventListener('contextmenu', preventSpeechLongPressMenu);
+        speechBtn.addEventListener('selectstart', preventSpeechLongPressMenu);
+        promptEditor?.addEventListener('contextmenu', preventSpeechLongPressMenu);
+        promptEditor?.addEventListener('selectstart', preventSpeechLongPressMenu);
+        speechBtn.addEventListener('pointerup', stopPressToTalk);
+        speechBtn.addEventListener('pointercancel', stopPressToTalk);
+        speechBtn.addEventListener('pointerleave', stopPressToTalk);
+        document.addEventListener('pointerup', (event) => {
+            if (asrPointerId !== null && event.pointerId === asrPointerId) {
+                finishPressToTalk({ sendEnd: true, sendPrompt: true });
+            }
+        }, true);
+        document.addEventListener('pointercancel', (event) => {
+            if (asrPointerId !== null && event.pointerId === asrPointerId) {
+                finishPressToTalk({ sendEnd: false, sendPrompt: false });
+            }
+        }, true);
+        window.addEventListener('blur', () => {
+            if (asrPointerId !== null || isPressToTalkLayout()) {
+                finishPressToTalk({ sendEnd: false, sendPrompt: false });
+            }
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && (asrPointerId !== null || isPressToTalkLayout())) {
+                finishPressToTalk({ sendEnd: false, sendPrompt: false });
+            }
+        });
+        speechBtn.addEventListener('click', (event) => {
+            if (ignoreNextSpeechClick) {
+                event.preventDefault();
+                ignoreNextSpeechClick = false;
+                if (ignoreSpeechClickTimeout) {
+                    clearTimeout(ignoreSpeechClickTimeout);
+                    ignoreSpeechClickTimeout = null;
+                }
+                return;
+            }
+            if (isPressToTalkLayout()) {
+                event.preventDefault();
+                return;
+            }
+            if (enterMobileVoiceMode(event)) {
+                return;
+            }
+            toggleSpeechByClick();
+        });
+
+        const btMicGainSelectEl = document.getElementById('btMicGainSelect');
+        if (btMicGainSelectEl) {
+            btMicGainSelectEl.addEventListener('change', () => {
+                const v = parseFloat(btMicGainSelectEl.value || '1.0');
+                if (btListenGainNode && typeof btListenGainNode.gain === 'object') {
+                    btListenGainNode.gain.setTargetAtTime(v, btListenGainNode.context.currentTime, 0.02);
+                    console.log('BT mic gain set to', v + 'x');
+                } else {
+                    console.log('BT mic gain stored for next start:', v + 'x');
+                }
+            });
+        }
+
+        btListenBtn.addEventListener('click', async () => {
+            if (btListening || btListeningStarting) {
+                await stopBtListening();
+            } else {
+                await startBtListening();
+            }
+        });
+        promptSendBtn.addEventListener('click', () => {
+            sendBtPrompt();
+        });
+
+        // BT-7274 multimodal paper-plane: text + current captured frame (if any).
+        // The server replies with an llm_reply WS event; we then fetch
+        // /api/tts/synthesize and play the resulting WAV via <audio>.
+        // v3.35: when a screen capture (or webcam) video source is live, we
+        // snapshot the latest frame and ship it as image_b64 so the LLM can
+        // ground its answer in what BT-7274 is supposedly looking at. If no
+        // video source is active the server falls back to text-only.
+        const btTtsPlayer = document.getElementById('btTtsPlayer');
+        async function captureBtFrameB64() {
+            try {
+                const v = (typeof window.getScreenCaptureVideo === 'function'
+                            && window.getScreenCaptureVideo())
+                          || (typeof videoElement !== 'undefined' ? videoElement : null);
+                if (!v || !v.videoWidth || !v.videoHeight) return null;
+                const sw = v.videoWidth, sh = v.videoHeight;
+                const targetW = 800;
+                const scale = sw > targetW ? targetW / sw : 1;
+                const w = Math.max(1, Math.round(sw * scale));
+                const h = Math.max(1, Math.round(sh * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(v, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const commaIdx = dataUrl.indexOf(',');
+                return commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : null;
+            } catch (err) {
+                console.warn('[bt-send] captureBtFrameB64 failed:', err);
+                return null;
+            }
+        }
+        async function sendBtPrompt() {
+            const text = (promptText.value || '').trim();
+            if (!text) {
+                promptText.focus();
+                return;
+            }
+            resetBtTurnLatency();
+            btLatency.sendStartAt = performance.now();
+            if (isSpeechActive() || asrStream || asrAudioContext || asrWs) {
+                if (!btLatency.asrFinalAt) btLatency.asrFinalAt = performance.now();
+                await stopSpeech({ sendEnd: false, sendPrompt: false });
+            }
+            renderBtLatency();
+            appendPilotToResult(text);
+            promptText.value = '';
+            resetAsrTranscriptState('');
+            try {
+                const image_b64 = await captureBtFrameB64();
+                const payload = { text: text, session_id: sessionId };
+                if (image_b64) payload.image_b64 = image_b64;
+                const resp = await fetch('/api/llm/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                btLatency.sendAckAt = performance.now();
+                renderBtLatency();
+                if (!resp.ok) {
+                    appendJarvisToResult(`[bt-send] POST /api/llm/message failed: HTTP ${resp.status}`, 'error');
+                }
+            } catch (err) {
+                appendJarvisToResult(`[bt-send] POST /api/llm/message error: ${err && err.message ? err.message : err}`, 'error');
+            }
+            promptText.value = '';
+            resetAsrTranscriptState('');
+            flashPromptControl(promptText);
+        }
+        // Allow Cmd/Ctrl+Enter to send to BT-7274.
+        promptText.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                sendBtPrompt();
+            }
+        });
+
+        // Play TTS audio whenever an llm_reply WS event arrives.
+        // Hooked BEFORE connectWebSocket so the very first reply is caught.
+        let lastLlmReplyAt = 0;
+        let lastLlmReplyKey = null;
+        async function playLlmReplyAudio(text, meta) {
+            if (!text || !btTtsPlayer) return;
+            // The jarvis state machine streams TTS to the WebRTC audio_output
+            // track in addition to broadcasting llm_reply. Skip the front-end
+            // /api/tts/synthesize call in that case so we don't double-play.
+            // jarvis_voice is the back-end's tag for the streaming path;
+            // jarvis_text is the text-only path that needs the front-end TTS.
+            if (meta && meta.source === 'jarvis_voice') return;
+            // Dedupe: same reply text within 8s is treated as one utterance so a
+            // retry / late WS broadcast never replays the last reply.
+            const dedupKey = text + '|' + ((meta && meta.source) || 'default');
+            const now = Date.now();
+            if (lastLlmReplyKey === dedupKey && (now - lastLlmReplyAt) < 8000) return;
+            lastLlmReplyKey = dedupKey;
+            lastLlmReplyAt = now;
+            btLatency.ttsStartAt = performance.now();
+            btLatency.ttsReadyAt = null;
+            btLatency.ttsPlayAt = null;
+            renderBtLatency();
+            try {
+                const resp = await fetch('/api/tts/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text }),
+                });
+                if (!resp.ok) {
+                    console.warn('tts_synthesize failed', resp.status);
+                    return;
+                }
+                const blob = await resp.blob();
+                btLatency.ttsReadyAt = performance.now();
+                renderBtLatency();
+                const url = URL.createObjectURL(blob);
+                btTtsPlayer.src = url;
+                try {
+                    await btTtsPlayer.play();
+                    btLatency.ttsPlayAt = performance.now();
+                    renderBtLatency();
+                } catch (e) { console.warn('audio play blocked', e); }
+                btTtsPlayer.onended = () => URL.revokeObjectURL(url);
+            } catch (err) {
+                console.warn('playLlmReplyAudio error', err);
+            }
+        }
+
+        updatePromptAvailability();
+        resizePromptInput();
+
+        // refreshModelsBtn was removed by the Block 3 services-panel refactor (the
+        // "Probe" action covers re-probing). Guard so a missing element can't abort the
+        // IIFE before window.JoyWs.register() runs. fetchModels still fires on load and
+        // on API-base change via applyApiSettings({ refreshModels: true }).
+        if (refreshModelsBtn) refreshModelsBtn.addEventListener('click', fetchModels);
+
+        // Block 4: applyApiSettings + cleanupServerSession extracted to joy_ws.js (window.JoyWs)
+        // Block 5: connectWebSocket extracted to joy_ws.js; the onmessage protocol router stays
+        // inline as dispatchServerMessage (declared below) and is handed to JoyWs via register so
+        // connectWebSocket can wire ws.onmessage. Reassigned closure vars are bridged with live
+        // accessors (getWebSocket/setWebSocket/getSessionId).
+        const { applyApiSettings, cleanupServerSession } = window.JoyWs;
+        window.JoyWs.register({
+            apiBaseUrl,
+            apiKey,
+            modelSelect,
+            isValidModelName,
+            updateStatus,
+            fetchModels,
+            getWebSocket: () => websocket,
+            setWebSocket: (ws) => { websocket = ws; },
+            getSessionId: () => sessionId,
+            installLlmReplyHandler,
+            dispatchServerMessage
+        });
+
+        // Auto-apply API settings when API Base URL changes
+        apiBaseUrl.addEventListener('blur', (e) => {
+            checkApiKeyRequirement(e.target.value);
+            applyApiSettings({ refreshModels: true, showFeedback: true });
+
+            // Trigger flash animation
+            apiBaseUrl.classList.add('applied');
+            setTimeout(() => {
+                apiBaseUrl.classList.remove('applied');
+            }, 600);
+        });
+
+        apiBaseUrl.addEventListener('change', (e) => {
+            checkApiKeyRequirement(e.target.value);
+            applyApiSettings({ refreshModels: true, showFeedback: true });
+
+            // Trigger flash animation
+            apiBaseUrl.classList.add('applied');
+            setTimeout(() => {
+                apiBaseUrl.classList.remove('applied');
+            }, 600);
+        });
+
+        // Auto-apply API settings when API Key changes (with debounce)
+        let apiKeyDebounceTimer;
+        apiKey.addEventListener('input', () => {
+            clearTimeout(apiKeyDebounceTimer);
+            apiKeyDebounceTimer = setTimeout(() => {
+                applyApiSettings({ showFeedback: false });
+            }, 1000); // Wait 1 second after user stops typing
+        });
+
+        // Flash animation when API Key loses focus
+        apiKey.addEventListener('blur', () => {
+            clearTimeout(apiKeyDebounceTimer);
+            applyApiSettings({ showFeedback: false });
+
+            // Trigger flash animation
+            apiKey.classList.add('applied');
+            setTimeout(() => {
+                apiKey.classList.remove('applied');
+            }, 600);
+        });
+
+        // API Presets Menu
+        const apiPresetsBtn = document.getElementById('apiPresetsBtn');
+        const apiPresetsMenu = document.getElementById('apiPresetsMenu');
+
+        if (apiPresetsBtn && apiPresetsMenu) {
+            apiPresetsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                apiPresetsMenu.style.display = apiPresetsMenu.style.display === 'none' ? 'block' : 'none';
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!apiPresetsMenu.contains(e.target) && e.target !== apiPresetsBtn) {
+                    apiPresetsMenu.style.display = 'none';
+                }
+            });
+
+            // Handle preset selection
+            document.querySelectorAll('.api-preset-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const url = e.currentTarget.getAttribute('data-url');
+                    apiBaseUrl.value = url;
+                    apiPresetsMenu.style.display = 'none';
+
+                    // Trigger checks
+                    checkApiKeyRequirement(url);
+
+                    // Auto-apply new API settings
+                    applyApiSettings({ refreshModels: true, showFeedback: true });
+
+                    // Update hint
+                    const hint = document.getElementById('apiBaseHint');
+                    const serviceName = e.currentTarget.querySelector('strong').textContent;
+                    if (hint) hint.textContent = `Using ${serviceName}`;
+                });
+            });
+        }
+
+        // Mirror video toggle
+        mirrorBtn.addEventListener('click', () => {
+            videoElement.classList.toggle('mirrored');
+            mirrorBtn.classList.toggle('active');
+        });
+
+        // Auto-apply processing interval on change
+        if (processEvery) processEvery.addEventListener('change', () => {
+            const interval = parseFloat(processEvery.value) || 1.0;
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'update_processing',
+                    process_interval: interval
+                }));
+            }
+
+            // Trigger flash animation
+            processEvery.classList.add('applied');
+            setTimeout(() => {
+                processEvery.classList.remove('applied');
+            }, 600);
+        });
+
+        // Also trigger flash on blur
+        if (processEvery) processEvery.addEventListener('blur', () => {
+            const interval = parseFloat(processEvery.value) || 1.0;
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'update_processing',
+                    process_interval: interval
+                }));
+            }
+
+            // Trigger flash animation
+            processEvery.classList.add('applied');
+            setTimeout(() => {
+                processEvery.classList.remove('applied');
+            }, 600);
+        });
+
+        // Auto-apply frames per batch on change
+        if (framesPerBatch) framesPerBatch.addEventListener('change', () => {
+            const value = parseInt(framesPerBatch.value) || 1;
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'update_frames_per_batch',
+                    frames_per_batch: value
+                }));
+            }
+
+            framesPerBatch.classList.add('applied');
+            setTimeout(() => {
+                framesPerBatch.classList.remove('applied');
+            }, 600);
+        });
+
+        if (framesPerBatch) framesPerBatch.addEventListener('blur', () => {
+            const value = parseInt(framesPerBatch.value) || 1;
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'update_frames_per_batch',
+                    frames_per_batch: value
+                }));
+            }
+
+            framesPerBatch.classList.add('applied');
+            setTimeout(() => {
+                framesPerBatch.classList.remove('applied');
+            }, 600);
+        });
+
+        // Auto-apply max latency on change
+        maxLatency.addEventListener('change', () => {
+            const latency = parseFloat(maxLatency.value) || 1.0;
+
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                websocket.send(JSON.stringify({
+                    type: 'update_max_latency',
+                    max_latency: latency
+                }));
+            }
+        });
+
+        // Debug payload toggles (Settings modal): send set_debug so server includes request/response payload in vlm_response
+        function sendDebugFlags() {
+            if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+            const req = document.getElementById('debugShowRequestPayload');
+            const res = document.getElementById('debugShowResponsePayload');
+            const mem = document.getElementById('debugShowMemoryState');
+            websocket.send(JSON.stringify({
+                type: 'set_debug',
+                show_request_payload: !!req?.checked,
+                show_response_payload: !!res?.checked,
+                show_memory_state: !!mem?.checked
+            }));
+        }
+        const debugShowRequestPayload = document.getElementById('debugShowRequestPayload');
+        const debugShowResponsePayload = document.getElementById('debugShowResponsePayload');
+        const debugShowMemoryState = document.getElementById('debugShowMemoryState');
+        const requestPayloadDebugEl = document.getElementById('requestPayloadDebug');
+        const responsePayloadDebugEl = document.getElementById('responsePayloadDebug');
+        const memoryStateDebugEl = document.getElementById('memoryStateDebug');
+        if (debugShowRequestPayload) {
+            debugShowRequestPayload.addEventListener('change', () => {
+                sendDebugFlags();
+                if (requestPayloadDebugEl) requestPayloadDebugEl.style.display = debugShowRequestPayload.checked ? 'block' : 'none';
+            });
+        }
+        if (debugShowResponsePayload) {
+            debugShowResponsePayload.addEventListener('change', () => {
+                sendDebugFlags();
+                if (responsePayloadDebugEl) responsePayloadDebugEl.style.display = debugShowResponsePayload.checked ? 'block' : 'none';
+            });
+        }
+        if (debugShowMemoryState) {
+            debugShowMemoryState.addEventListener('change', () => {
+                sendDebugFlags();
+                if (memoryStateDebugEl) memoryStateDebugEl.style.display = debugShowMemoryState.checked ? 'block' : 'none';
+            });
+        }
+
+        [backgroundEnabledToggle, backgroundFrameMultiplier, backgroundMaxFrames].forEach(control => {
+            if (!control) return;
+            control.addEventListener('change', () => {
+                sendBackgroundConfig();
+                control.classList?.add('applied');
+                setTimeout(() => control.classList?.remove('applied'), 600);
+            });
+        });
+
+        // Memory state change detection for console logging
+        let _lastMemoryStateHash = '';
+
+
+        // WebSocket Connection
+        // Block 5: connectWebSocket extracted to joy_ws.js (window.JoyWs.connectWebSocket).
+        // Inline alias keeps the 6 existing call sites (capture start / resetSession / load) unchanged.
+        function connectWebSocket() {
+            window.JoyWs.connectWebSocket();
+        }
+
+        // dispatchServerMessage: server→client protocol router (was ws.onmessage).
+        // Kept INLINE so its reassignments of monolith closure vars (sessionId, serverConfigApplied,
+        // lastText, fadeTimeout) stay the single source of truth. window.JoyWs.connectWebSocket
+        // wires it via the dispatchServerMessage ref passed in JoyWs.register(...).
+        // Guard uses event.target (the socket that fired) vs the closure 'websocket' (current socket),
+        // preserving the original stale-socket protection.
+        function dispatchServerMessage(event) {
+            if (websocket !== event.target) {
+                return;
+            }
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'vlm_response') {
+                if (!isAnalysisRunning) {
+                    return;
+                }
+
+                if (data.text !== lastText) {
+                    resultText.classList.remove('fade');
+
+                    if (fadeTimeout) {
+                        clearTimeout(fadeTimeout);
+                    }
+
+                    // Start fade after 2 seconds if enabled
+                    if (settings.fade) {
+                        fadeTimeout = setTimeout(() => {
+                            resultText.classList.add('fade');
+                        }, 2000);
+                    }
+                }
+
+                updateResultText(data.text, data.metrics, data.metrics?.background_handoff || null);
+                lastText = data.text;
+
+                // Update video overlay (always, visibility is controlled by CSS)
+                const displayText = getVlmDisplayText(data.text);
+                videoOverlay.textContent = displayText;
+
+                // Latency loop closure (issue #43): correlate rendered vlm_response to the
+                // screen frame that produced it via frame_seq, and record the render segment.
+                if (data.frame_seq != null && typeof window !== 'undefined' && window.__screenSentAt) {
+                  const sentAt = window.__screenSentAt[data.frame_seq];
+                  if (sentAt != null) {
+                    const renderMs = performance.now() - sentAt;
+                    if (!window.__screenRenderLatency) window.__screenRenderLatency = [];
+                    const sample = {
+                      seq: data.frame_seq,
+                      render_ms: Math.round(renderMs * 100) / 100,
+                      ts: Date.now(),
+                      text_len: (data.text || '').length,
+                    };
+                    window.__screenRenderLatency.push(sample);
+                    if (window.__screenRenderLatency.length > 120) window.__screenRenderLatency.shift();
+                    console.info('[latency][render]', sample);
+                    delete window.__screenSentAt[data.frame_seq];
+                  }
+                }
+
+                videoOverlay.classList.remove('show', 'top', 'bottom');
+                if (displayText && settings.overlayPosition !== 'none') {
+                    videoOverlay.classList.add('show', settings.overlayPosition);
+                }
+
+                if (data.metrics) {
+                    metricsInline.style.display = 'flex';
+                    latencyValue.textContent = Math.round(data.metrics.last_latency_ms);
+                    avgLatencyValue.textContent = Math.round(data.metrics.avg_latency_ms);
+                    countValue.textContent = data.metrics.total_inferences;
+                    if (
+                        revealVideoAfterMetricsToken === streamStartToken &&
+                        Number(data.metrics.total_inferences) > 0
+                    ) {
+                        revealVideoWhenReady(streamStartToken);
+                    }
+                    logLatencyBreakdown(data.metrics);
+                }
+                if (data.summarizer_timing) {
+                    const st = data.summarizer_timing;
+                    const stKey = JSON.stringify(st);
+                    if (stKey !== window._lastSummarizerKey) {
+                        window._lastSummarizerKey = stKey;
+                        let parts = [];
+                        if (st.last_mid_term_ms != null) parts.push(`mid-term=${st.last_mid_term_ms}ms (chunk#${st.last_mid_term_chunk})`);
+                        if (st.barrier_wait_ms != null) parts.push(`barrier_wait=${st.barrier_wait_ms}ms`);
+                        if (st.last_long_term_ms != null) parts.push(`long-term=${st.last_long_term_ms}ms`);
+                        if (parts.length) console.log(`[summary model] ${parts.join(', ')}`);
+                    }
+                }
+                if (data.request_payload) {
+                    const block = document.getElementById('requestPayloadDebug');
+                    const pre = document.getElementById('requestPayloadContent');
+                    if (block && pre && document.getElementById('debugShowRequestPayload')?.checked) {
+                        block.style.display = 'block';
+                        pre.textContent = JSON.stringify(data.request_payload, null, 2);
+                    }
+                }
+                if (data.response_payload) {
+                    const block = document.getElementById('responsePayloadDebug');
+                    const pre = document.getElementById('responsePayloadContent');
+                    if (block && pre && document.getElementById('debugShowResponsePayload')?.checked) {
+                        block.style.display = 'block';
+                        // Redact model decision tokens before exposing the raw payload.
+                        pre.textContent = JSON.stringify(sanitizeDebugPayload(data.response_payload), null, 2);
+                    }
+                }
+                if (data.memory_state) {
+                    const summaries = data.memory_state.mid_term_summaries || [];
+                    const longTerm = data.memory_state.long_term_memory || '';
+                    const memHash = JSON.stringify(data.memory_state);
+                    if (memHash !== _lastMemoryStateHash) {
+                        _lastMemoryStateHash = memHash;
+                        // UI display (controlled by toggle)
+                        const memBlock = document.getElementById('memoryStateDebug');
+                        if (memBlock && document.getElementById('debugShowMemoryState')?.checked) {
+                            memBlock.style.display = 'block';
+                            const midPre = document.getElementById('midTermMemoryContent');
+                            if (midPre) {
+                                midPre.textContent = summaries.length
+                                    ? summaries.map(s => `[Chunk ${s.chunk_index} | ${s.frame_range}]\n${s.summary_text}`).join('\n\n')
+                                    : '(empty)';
+                            }
+                            const ltPre = document.getElementById('longTermMemoryContent');
+                            if (ltPre) {
+                                ltPre.textContent = longTerm || '(empty)';
+                            }
+                        }
+                        // Console output
+                        console.group('%c[Memory State]', 'color: #4fc3f7; font-weight: bold;');
+                        if (summaries.length) {
+                            console.groupCollapsed(`Mid-term memory (${summaries.length} chunks)`);
+                            summaries.forEach(s => {
+                                console.log(`%c[Chunk ${s.chunk_index} | ${s.frame_range}]`, 'color: #81c784;', '\n' + s.summary_text);
+                            });
+                            console.groupEnd();
+                        } else {
+                            console.log('Mid-term memory: (empty)');
+                        }
+                        if (longTerm) {
+                            console.groupCollapsed('Long-term memory');
+                            console.log(longTerm);
+                            console.groupEnd();
+                        } else {
+                            console.log('Long-term memory: (empty)');
+                        }
+                        console.groupEnd();
+                    }
+                }
+            } else if (data.type === 'status') {
+                // Don't show status messages in result balloon (too flashy)
+                // Status is already shown in the header
+            } else if (
+                data.type === 'background_task_started' ||
+                data.type === 'background_result_ready' ||
+                data.type === 'background_result_error'
+            ) {
+                appendOrUpdateBackgroundEntry(data);
+            } else if (data.type === 'server_config') {
+                if (data.session_id) {
+                    sessionId = data.session_id;
+                    window.sessionId = sessionId;
+                }
+                // Server sent its current configuration (model, api_base, prompt)
+                if (data.model) {
+                    document.getElementById('modelName').textContent = data.model;
+                    // Also update the model select if it matches
+                    if (modelSelect.querySelector(`option[value="${data.model}"]`)) {
+                        modelSelect.value = data.model;
+                    }
+                }
+                if (data.api_base) {
+                    apiBaseUrl.value = data.api_base;
+                    checkApiKeyRequirement(apiBaseUrl.value);
+                    serverConfigApplied = true;
+                    fetchModels();
+                }
+                if (data.process_interval != null && !isNaN(data.process_interval) && processEvery) {
+                    processEvery.value = String(data.process_interval);
+                }
+                if (data.frames_per_batch != null && !isNaN(data.frames_per_batch) && framesPerBatch) {
+                    framesPerBatch.value = String(data.frames_per_batch);
+                }
+                if (data.background_model) {
+                    applyBackgroundConfig(data.background_model);
+                }
+                const reqCb = document.getElementById('debugShowRequestPayload');
+                const resCb = document.getElementById('debugShowResponsePayload');
+                const memCb = document.getElementById('debugShowMemoryState');
+                if ((reqCb?.checked || resCb?.checked || memCb?.checked) && websocket && websocket.readyState === WebSocket.OPEN) {
+                    websocket.send(JSON.stringify({
+                        type: 'set_debug',
+                        show_request_payload: !!reqCb?.checked,
+                        show_response_payload: !!resCb?.checked,
+                        show_memory_state: !!memCb?.checked
+                    }));
+                }
+            } else if (data.type === 'model_updated') {
+                // Model was updated on server
+                if (data.model) {
+                    document.getElementById('modelName').textContent = data.model;
+                    console.log('Model updated to:', data.model);
+                }
+            } else if (data.type === 'prompt_updated') {
+                // Prompt was updated on server (already handled in applyPrompt)
+                console.log('Prompt updated:', data.prompt);
+            } else if (data.type === 'processing_updated') {
+                if (data.process_interval != null && processEvery) processEvery.value = String(data.process_interval);
+                console.log('Processing interval updated:', data.process_interval, 's');
+            } else if (data.type === 'frames_per_batch_updated') {
+                if (data.frames_per_batch != null && framesPerBatch) framesPerBatch.value = String(data.frames_per_batch);
+                if (data.background_model) applyBackgroundConfig(data.background_model);
+                console.log('Frames per batch updated:', data.frames_per_batch);
+            } else if (data.type === 'background_config_updated') {
+                applyBackgroundConfig(data.background_model);
+                console.log('Background model config updated:', data.background_model);
+            }
+
+        }
+
+        // cleanupServerSession moved to joy_ws.js (window.JoyWs) — see Block 4.
+        // The alias `const { cleanupServerSession } = window.JoyWs;` declared at the
+        // old applyApiSettings location keeps resetSession's await cleanupServerSession(...)
+        // working unchanged.
+
+        async function resetSession({ clearConversation = false, cleanupServer = true } = {}) {
+            const oldSessionId = sessionId;
+
+            if (!cleanupServer && websocket && websocket.readyState === WebSocket.OPEN) {
+                try {
+                    websocket.send(JSON.stringify({ type: 'reset_session' }));
+                } catch (e) {
+                    console.warn('Failed to send reset_session:', e);
+                }
+            }
+
+            sessionId = crypto.randomUUID ? crypto.randomUUID() : 'tab-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+            window.sessionId = sessionId;
+            console.log('Session reset:', oldSessionId, '->', sessionId);
+
+            // Reconnect WebSocket with new session_id
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+            connectWebSocket();
+
+            // Clear prompt input
+            promptText.value = '';
+            currentPromptText = '';
+
+            if (clearConversation) {
+                clearVlmConversation();
+            } else {
+                // Reset current streaming state, keep the visible history in the page
+                resultText.classList.remove('fade');
+                videoOverlay.textContent = '';
+                lastText = '';
+                lastTtsEventKey = '';
+                lastHistoryKey = null;
+                lastLoggedInferenceCount = 0;
+                renderVlmHistory();
+            }
+
+            if (cleanupServer) {
+                await cleanupServerSession(oldSessionId);
+            }
+        }
+
+        // Wire the Reset Session button (was orphaned — resetSession had no call site).
+        const resetSessionBtn = document.getElementById('resetSessionBtn');
+        if (resetSessionBtn) {
+            resetSessionBtn.addEventListener('click', () => {
+                resetSession({ clearConversation: true, cleanupServer: true });
+            });
+        }
+
+        // Start - dispatch to webcam or RTSP based on active tab
+
+        // Start WebRTC (Webcam mode)
+
+        // Start RTSP mode
+
+        // Stop (handles both webcam and RTSP)
+
+        // Sidebar start/stop buttons removed - using overlay buttons instead
+        // startBtn.addEventListener('click', start);
+        // stopBtn.addEventListener('click', stop);
+
+        // Load on page load
+        window.addEventListener('load', async () => {
+            connectWebSocket();
+
+            // Fallback for older servers that do not send server_config.
+            setTimeout(() => {
+                if (!serverConfigApplied) {
+                    checkApiKeyRequirement(apiBaseUrl.value);
+                    fetchModels();
+                }
+            }, 1000);
+
+            // Initialize prompt display
+            const initialPrompt = promptText.value.trim();
+            if (initialPrompt) {
+                currentPromptText = initialPrompt;
+            }
+
+            // Initialize Lucide icons
+            lucide.createIcons();
+        });
+    
+        // ====================================================================
+        // LLM reply panel + service-status polling
+        // ====================================================================
+        (function () {
+
+            // ---- Service-status polling (LLM / TTS / KWS) ----
+            const _STATUS_LABEL = { ok: 'OK', error: 'ERR', degraded: 'DEG', missing: 'MISS' };
+
+            function renderServiceBadge(el, status, kind) {
+                if (!el) return;
+                const norm = (status || 'unknown').toLowerCase();
+                let cls = 'llm-unknown';
+                if (norm === 'ok' || norm === 'present') cls = 'llm-ok';
+                else if (norm === 'error' || norm === 'missing' || norm === 'unreachable') cls = 'llm-err';
+                el.className = 'status-badge ' + cls;
+                const label = _STATUS_LABEL[norm] || '?';
+                const prefix = kind === 'llm' ? 'LLM' : kind === 'tts' ? 'TTS' : 'KWS';
+                el.textContent = prefix + ' ' + label;
+            }
+
+            async function pollServiceStatus() {
+                try {
+                    const resp = await fetch('/api/llm/status?session_id=' + encodeURIComponent(sessionId || 'default'));
+                    if (!resp.ok) {
+                        const llmEl = document.getElementById('llmServiceStatus');
+                        const ttsEl = document.getElementById('ttsServiceStatus');
+                        const kwsEl = document.getElementById('kwsServiceStatus');
+                        if (llmEl) { llmEl.className = 'status-badge llm-err'; llmEl.textContent = window.JoyI18n.localizeUiString('LLM ERR'); }
+                        if (ttsEl) { ttsEl.className = 'status-badge llm-err'; ttsEl.textContent = window.JoyI18n.localizeUiString('TTS ERR'); }
+                        if (kwsEl) { kwsEl.className = 'status-badge llm-err'; kwsEl.textContent = window.JoyI18n.localizeUiString('KWS ERR'); }
+                        return;
+                    }
+                    const data = await resp.json();
+                    renderServiceBadge(document.getElementById('llmServiceStatus'), (data.llm && data.llm.status) || 'unknown', 'llm');
+                    renderServiceBadge(document.getElementById('ttsServiceStatus'), (data.tts && data.tts.status) || 'unknown', 'tts');
+                    renderServiceBadge(document.getElementById('kwsServiceStatus'), (data.kws && data.kws.status) || 'unknown', 'kws');
+                } catch (e) {
+                    const llmEl = document.getElementById('llmServiceStatus');
+                    const ttsEl = document.getElementById('ttsServiceStatus');
+                    const kwsEl = document.getElementById('kwsServiceStatus');
+                    if (llmEl) { llmEl.className = 'status-badge llm-err'; llmEl.textContent = window.JoyI18n.localizeUiString('LLM ERR'); }
+                    if (ttsEl) { ttsEl.className = 'status-badge llm-err'; ttsEl.textContent = window.JoyI18n.localizeUiString('TTS ERR'); }
+                    if (kwsEl) { kwsEl.className = 'status-badge llm-err'; kwsEl.textContent = window.JoyI18n.localizeUiString('KWS ERR'); }
+                }
+            }
+
+            let _servicePollTimer = null;
+            function startServiceStatusPoll() {
+                if (_servicePollTimer) return;
+                pollServiceStatus();
+                _servicePollTimer = setInterval(pollServiceStatus, 3000);
+            }
+            function stopServiceStatusPoll() {
+                if (_servicePollTimer) {
+                    clearInterval(_servicePollTimer);
+                    _servicePollTimer = null;
+                }
+            }
+            window.startServiceStatusPoll = startServiceStatusPoll;
+            window.stopServiceStatusPoll = stopServiceStatusPoll;
+
+        // ====================================================================
+        // Jarvis state-pill (polls /api/jarvis/status every 1s)
+        // Shows the KWS_LISTENING / DIALOG_ACTIVE / TTS_PAUSED / etc. transitions.
+        // ====================================================================
+        const JARVIS_STATE_MAP = {
+            'KWS_LISTENING':  { emoji: '🟢', text: 'KWS 监听中', cls: 'jarvis-listening' },
+            'WAKE_DETECTED':  { emoji: '🔵', text: '唤醒已触发', cls: 'jarvis-wake' },
+            'WAIT_ASR_CONFIRM': { emoji: '🔎', text: 'ASR 确认中', cls: 'jarvis-confirm' },
+            'DIALOG_ACTIVE':  { emoji: '🟡', text: '对话中',     cls: 'jarvis-dialog' },
+            'TTS_PAUSED':     { emoji: '⏸️', text: '已打断',      cls: 'jarvis-paused' },
+            'EXIT_DETECTED':  { emoji: '👋', text: '退出中',     cls: 'jarvis-exit' },
+            'ERROR':          { emoji: '❌', text: '错误',       cls: 'jarvis-error' },
+        };
+        let _jarvisPollTimer = null;
+
+        function renderJarvisStatus(payload) {
+            const el = document.getElementById('jarvisStatus');
+            if (!el) return;
+            if (!payload || !payload.exists) {
+                el.textContent = '⚫ 未连接';
+                el.className = 'status-badge jarvis-disconnected';
+                return;
+            }
+            const info = JARVIS_STATE_MAP[payload.state] ||
+                { emoji: '⚪', text: payload.state, cls: 'jarvis-unknown' };
+            const awake = payload.is_awake ? ' (唤醒)' : '';
+            el.textContent = info.emoji + ' ' + info.text + awake;
+            el.className = 'status-badge ' + info.cls;
+        }
+
+        async function pollJarvisStatus() {
+            try {
+                const sid = sessionId || 'default';
+                const resp = await fetch('/api/jarvis/status?session_id=' + encodeURIComponent(sid));
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                renderJarvisStatus(data);
+            } catch (err) {
+                const el = document.getElementById('jarvisStatus');
+                if (el) {
+                    el.textContent = '⚪ 状态查询失败';
+                    el.className = 'status-badge jarvis-unknown';
+                }
+            }
+        }
+
+        function startJarvisStatusPoll() {
+            if (_jarvisPollTimer) return;
+            updateStatus(window.JoyI18n.localizeUiString('Connected'), 'connected');
+            _jarvisPollTimer = setInterval(pollJarvisStatus, 1000);
+        }
+
+        function stopJarvisStatusPoll() {
+            if (_jarvisPollTimer) {
+                clearInterval(_jarvisPollTimer);
+                _jarvisPollTimer = null;
+            }
+            const el = document.getElementById('jarvisStatus');
+            if (el) {
+                el.textContent = '⚫ 未连接';
+                el.className = 'status-badge jarvis-disconnected';
+            }
+        }
+
+        // ====================================================================
+        // Extended health badges: Memory / Wiki (#46)
+        // Polls /api/services/extended-status every 5s; renders two header
+        // badges with 3-state coloring (green / gray / red).
+        // ====================================================================
+        function renderExtBadge(el, info, kind) {
+            if (!el || !info) return;
+            const zh = kind === 'memory' ? '记忆' : '知识库';
+            const envFlag = kind === 'memory' ? 'JOYAI_ENABLE_MEMORY_STORE=1' : 'WIKI_RECALL_ENABLED=1';
+            let cls, text;
+            if (!info.enabled) {
+                cls = 'llm-unknown';
+                text = zh + ' 未启用';
+            } else if (!info.reachable) {
+                cls = 'llm-unknown';
+                text = zh + ' 离线';
+            } else if (info.ok === true) {
+                cls = 'llm-ok';
+                text = zh + ' 在线';
+            } else if (info.ok === false) {
+                cls = 'llm-err';
+                text = zh + ' 异常';
+            } else {
+                cls = 'llm-unknown';
+                text = zh + ' ?';
+            }
+            el.className = 'status-badge ' + cls;
+            el.textContent = text;
+            const detail = info.reason || (info.enabled ? '' : ('可选功能，未启用（设 ' + envFlag + ' 启用）'));
+            el.title = zh + ' 状态' + (detail ? '：' + detail : '');
+            if (info.ok === false && info.enabled) {
+                el.style.cursor = 'pointer';
+                el.onclick = function () {
+                    const sm = document.getElementById('settingsModal');
+                    if (sm) sm.classList.add('show');
+                    if (kind === 'wiki') {
+                        const kb = document.getElementById('knowledgeBaseToggle');
+                        if (kb) kb.click();
+                        if (window.JoyWiki) window.JoyWiki.loadHealth();
+                    }
+                };
+            } else {
+                el.style.cursor = '';
+                el.onclick = null;
+            }
+        }
+
+        async function pollExtendedStatus() {
+            try {
+                const resp = await fetch('/api/services/extended-status');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                renderExtBadge(document.getElementById('memoryBadge'), data.memory, 'memory');
+                renderExtBadge(document.getElementById('wikiBadge'), data.wiki, 'wiki');
+            } catch (err) {
+                const fallback = { enabled: false, reachable: false, ok: null, reason: String((err && err.message) || err) };
+                renderExtBadge(document.getElementById('memoryBadge'), fallback, 'memory');
+                renderExtBadge(document.getElementById('wikiBadge'), fallback, 'wiki');
+            }
+        }
+
+        let _extPollTimer = null;
+        function startExtendedStatusPoll() {
+            if (_extPollTimer) return;
+            pollExtendedStatus();
+            _extPollTimer = setInterval(pollExtendedStatus, 5000);
+        }
+        function stopExtendedStatusPoll() {
+            if (_extPollTimer) {
+                clearInterval(_extPollTimer);
+                _extPollTimer = null;
+            }
+        }
+        window.startExtendedStatusPoll = startExtendedStatusPoll;
+        window.stopExtendedStatusPoll = stopExtendedStatusPoll;
+
+        // Auto-start alongside the other status polls.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startJarvisStatusPoll);
+        } else {
+            startJarvisStatusPoll();
+        }
+
+            // Auto-start the service-status poll when the page is ready.
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', startServiceStatusPoll);
+            } else {
+                startServiceStatusPoll();
+            }
+
+            // Auto-start extended health badges poll (#46)
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', startExtendedStatusPoll);
+            } else {
+                startExtendedStatusPoll();
+            }
+        })();
+
+        // ---- WS `llm_reply` dispatch hook ----
+        // connectWebSocket assigns `ws.onmessage = (event) => { ... }`
+        // directly, so a wrapper that mutates onmessage would be
+        // overwritten. Instead we attach a `message` listener via
+        // addEventListener, which coexists with onmessage. To make
+        // sure we catch the ws created by connectWebSocket, we monkey-
+        // patch the WebSocket constructor with a thin subclass.
+        (function () {
+            const OrigWS = window.WebSocket;
+            function WrappedWS(url, protocols) {
+                const ws = protocols !== undefined
+                    ? new OrigWS(url, protocols)
+                    : new OrigWS(url);
+                try { installLlmReplyHandler(ws); } catch (e) { /* ignore */ }
+                return ws;
+            }
+            WrappedWS.prototype = OrigWS.prototype;
+            WrappedWS.CONNECTING = OrigWS.CONNECTING;
+            WrappedWS.OPEN = OrigWS.OPEN;
+            WrappedWS.CLOSING = OrigWS.CLOSING;
+            WrappedWS.CLOSED = OrigWS.CLOSED;
+            window.WebSocket = WrappedWS;
+
+            // Also wrap any ws already in flight (e.g. created before
+            // this script ran).
+            try { if (window.websocket) installLlmReplyHandler(window.websocket); } catch (e) { /* ignore */ }
+        })();
+
+    

@@ -1,0 +1,95 @@
+{
+ "datasets/convert_data.py": [
+  "BLE001"
+ ],
+ "services/asr/jarvis/asr.py": [
+  "S101"
+ ],
+ "services/asr/jarvis/kws.py": [
+  "S101"
+ ],
+ "services/background-agent/codex_api/main.py": [
+  "BLE001",
+  "S101"
+ ],
+ "services/background-agent/hermes_api/main.py": [
+  "BLE001"
+ ],
+ "services/kws-training/export_kws_onnx.py": [
+  "BLE001",
+  "S101"
+ ],
+ "services/memory-store/src/memory_store/backends/sqlite_backend.py": [
+  "BLE001"
+ ],
+ "services/scripts/analyze_kws_captures.py": [
+  "BLE001"
+ ],
+ "services/scripts/prep_kws_data.py": [
+  "S311"
+ ],
+ "services/scripts/smoke_voice_clone.py": [
+  "BLE001"
+ ],
+ "services/scripts/verify-services.py": [
+  "BLE001"
+ ],
+ "services/tts/http_synthesizer.py": [
+  "BLE001"
+ ],
+ "services/webinfer/app.py": [
+  "BLE001"
+ ],
+ "services/webinfer/infer_loop.py": [
+  "BLE001"
+ ],
+ "services/webinfer/io_utils.py": [
+  "BLE001"
+ ],
+ "services/webinfer/memory_io.py": [
+  "BLE001"
+ ],
+ "services/webinfer/memory_summarizer.py": [
+  "BLE001"
+ ],
+ "services/webinfer/prompt_assembly.py": [
+  "BLE001"
+ ],
+ "services/webinfer/session.py": [
+  "BLE001"
+ ],
+ "services/webinfer/summarizer_routing.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/asr.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/background_model.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/jarvis_mode.py": [
+  "BLE001",
+  "S101"
+ ],
+ "services/webui/src/joy_interaction_webui/jarvis_routes.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/jarvis_session.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/rtsp_track.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/server.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/tts.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/video_processor.py": [
+  "BLE001"
+ ],
+ "services/webui/src/joy_interaction_webui/vlm_service.py": [
+  "BLE001"
+ ]
+}

@@ -1,0 +1,13 @@
+{
+  "message": "Validation Failed",
+  "errors": [
+    {
+      "resource": "PullRequest",
+      "code": "custom",
+      "field": "state",
+      "message": "state cannot be changed. The ci/add-pytest-gate branch was force-pushed or recreated."
+    }
+  ],
+  "documentation_url": "https://docs.github.com/rest/pulls/pulls#update-a-pull-request",
+  "status": "422"
+}
