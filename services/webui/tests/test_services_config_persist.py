@@ -229,10 +229,18 @@ async def test_put_noop_does_not_probe(persist_path, monkeypatch):
     # A PUT carrying values identical to the current config must not trigger
     # any reachability probe (changing is empty -> early return). The probes
     # below would FAIL if called, proving they are not.
-    monkeypatch.setattr(server, "_probe_llm", lambda _u: {"status": "error", "reason": "must not be called"})
-    monkeypatch.setattr(server, "_probe_summary", lambda _c: {"ok": False, "reason": "must not be called"})
-    monkeypatch.setattr(server, "_probe_tts", lambda _u: {"status": "error", "reason": "must not be called"})
-    monkeypatch.setattr(server, "_probe_asr", lambda _c: {"ok": False, "reason": "must not be called"})
+    monkeypatch.setattr(
+        server, "_probe_llm", lambda _u: {"status": "error", "reason": "must not be called"}
+    )
+    monkeypatch.setattr(
+        server, "_probe_summary", lambda _c: {"ok": False, "reason": "must not be called"}
+    )
+    monkeypatch.setattr(
+        server, "_probe_tts", lambda _u: {"status": "error", "reason": "must not be called"}
+    )
+    monkeypatch.setattr(
+        server, "_probe_asr", lambda _c: {"ok": False, "reason": "must not be called"}
+    )
     runner, url = await _start_server()
     try:
         async with (
