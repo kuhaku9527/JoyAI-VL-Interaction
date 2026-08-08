@@ -4636,11 +4636,17 @@ limitations under the License.
 
         async function prepareSpeechMic() {
             asrStream = await navigator.mediaDevices.getUserMedia({
+                // 补齐 Chrome 显式 goog* 约束；googHighpassFilter/googTypingNoiseDetection 无标准等价物，去低频轰鸣/抑键盘噪声，提升 ASR 主采集流质量。
                 audio: {
                     channelCount: 1,
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true
+                    autoGainControl: true,
+                    googEchoCancellation: true,
+                    googNoiseSuppression: true,
+                    googAutoGainControl: true,
+                    googHighpassFilter: true,
+                    googTypingNoiseDetection: true
                 }
             });
 
